@@ -157,6 +157,7 @@ void loop()
       Serial.print(" RPM: ");
       Serial.println(rpm_anterior);
     }
+    rpm = 0;
     if ((tipo_ignicao_sequencial == 1) && (qtd_cilindro <= 2) && (cilindro <= qtd_cilindro))
     {
       if (cilindro == 1)
