@@ -20,7 +20,7 @@ volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_pms = 54 + grau_avanco;
+volatile unsigned int grau_pms = 70 + grau_avanco;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
@@ -46,10 +46,10 @@ volatile int tipo_ignicao_sequencial = 0;
 
 int rpm_adiciona_ponto(int rpm) {
     int ponto_ignicao = 0;
-    if (rpm >= 600) {
-        ponto_ignicao = rpm / 600;
+    if (rpm >= 1100) {
+        ponto_ignicao = (rpm - 1000) / 100;
     } 
-    return ponto_ignicao * 6;
+    return ponto_ignicao;
 }
 
 void leitor_sensor_roda_fonica()
@@ -115,17 +115,20 @@ void leitor_sensor_roda_fonica()
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     qtd_leitura = qtd_dente_faltante;
     falha++;
-    
-    
+    tempo_proxima_ignicao = micros() + (grau_pms * tempo_cada_grau) - (rpm_adiciona_ponto(rpm_anterior) * tempo_cada_grau);
+    pms = 1;
+    cilindro = 0;
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
-  if (posicao_atual_sensor == grau_pms  - rpm_adiciona_ponto(rpm_anterior))
+  /*
+  if (posicao_atual_sensor == grau_pms )
   {
     //Serial.print(posicao_atual_sensor);
     tempo_proxima_ignicao = micros();
     pms = 1;
     cilindro = 0;
   }
+  */
 
   tempo_anterior = tempo_atual;
   interrupts();
@@ -145,6 +148,25 @@ void setup()
 
 void loop()
 { 
+  static String btComando;
+  //Serial.println("Digite o 1 ou -1 para adicionar ponto");
+  while (Serial.available()) {
+     char comandoRec = Serial.read();
+     btComando += char( comandoRec );
+     //Serial.print(comandoRec);
+     if (comandoRec) {
+        if (btComando == "+") {
+            Serial.println(comandoRec);
+            grau_pms = grau_pms + 1;
+        }
+        if (btComando == "-") {
+            Serial.println(comandoRec);
+            grau_pms = grau_pms -1 ;
+        }
+         Serial.println(grau_pms);
+        btComando = ""; 
+     }
+  }
   long tempo_atual_ignicao = micros();
   if ((tempo_atual_ignicao + (dwell_bobina * 1000) >= tempo_proxima_ignicao) && (falha > 3) && (pms == 1) && (rpm >= 100))
   {
@@ -152,10 +174,11 @@ void loop()
     cilindro++;
     tempo_proxima_ignicao = tempo_atual_ignicao + (tempo_cada_grau * grau_entre_cada_cilindro);
     if(cilindro <= qtd_cilindro){
-      Serial.print("ign: ");
-      Serial.print(cilindro);
-      Serial.print(" RPM: ");
-      Serial.println(rpm_anterior);
+      //Serial.print(rpm_adiciona_ponto(rpm_anterior));
+      //Serial.print("ign");
+      //Serial.print(cilindro);
+      //Serial.print(" RPM: ");
+      //Serial.print(rpm_anterior);
     }
     rpm = 0;
     if ((tipo_ignicao_sequencial == 1) && (qtd_cilindro <= 2) && (cilindro <= qtd_cilindro))
