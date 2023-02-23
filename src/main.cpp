@@ -20,7 +20,7 @@ volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_pms = 60 + grau_avanco;
+volatile unsigned int grau_pms = 54 + grau_avanco;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
@@ -46,8 +46,8 @@ volatile int tipo_ignicao_sequencial = 0;
 
 int rpm_adiciona_ponto(int rpm) {
     int ponto_ignicao = 0;
-    if (rpm >= 100) {
-        ponto_ignicao = rpm / 100;
+    if (rpm >= 600) {
+        ponto_ignicao = rpm / 600;
     } 
     return ponto_ignicao * 6;
 }
@@ -93,7 +93,7 @@ void leitor_sensor_roda_fonica()
     tempo_dente_anterior[1] = (tempo_atual - tempo_anterior);
   }
 
-  Serial.print("|");
+  //Serial.print("|");
   if (verifica_falha < intervalo_tempo_entre_dente)
   {
     if (qtd_voltas == 1)
@@ -108,18 +108,20 @@ void leitor_sensor_roda_fonica()
       qtd_voltas = 1;
     }
 
-    Serial.println("");
-    Serial.print("__");
+    //Serial.println("");
+    //Serial.print("__");
     tempo_cada_grau = tempo_total_volta_completa / 360;
 
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     qtd_leitura = qtd_dente_faltante;
     falha++;
-    rpm_anterior = rpm;
+    
+    
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
-  if (posicao_atual_sensor == grau_pms)
+  if (posicao_atual_sensor == grau_pms  - rpm_adiciona_ponto(rpm_anterior))
   {
+    //Serial.print(posicao_atual_sensor);
     tempo_proxima_ignicao = micros();
     pms = 1;
     cilindro = 0;
@@ -146,9 +148,15 @@ void loop()
   long tempo_atual_ignicao = micros();
   if ((tempo_atual_ignicao + (dwell_bobina * 1000) >= tempo_proxima_ignicao) && (falha > 3) && (pms == 1) && (rpm >= 100))
   {
+    rpm_anterior = rpm;
     cilindro++;
     tempo_proxima_ignicao = tempo_atual_ignicao + (tempo_cada_grau * grau_entre_cada_cilindro);
-
+    if(cilindro <= qtd_cilindro){
+      Serial.print("ign: ");
+      Serial.print(cilindro);
+      Serial.print(" RPM: ");
+      Serial.println(rpm_anterior);
+    }
     if ((tipo_ignicao_sequencial == 1) && (qtd_cilindro <= 2) && (cilindro <= qtd_cilindro))
     {
       if (cilindro == 1)
@@ -156,32 +164,24 @@ void loop()
         digitalWrite(ign1, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign1, LOW);
-        Serial.print("ign1");
-        // Serial.print(cilindro);
       }
       if (cilindro == 2)
       {
         digitalWrite(ign2, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign2, LOW);
-        Serial.print("ign2");
-        // Serial.print(cilindro);
       }
       if (cilindro == 3)
       {
         digitalWrite(ign3, HIGH);
         delay(dwell_bobina / 1000);
         digitalWrite(ign3, LOW);
-        Serial.print("ign3");
-        // Serial.print(cilindro);
       }
       if (cilindro == 4)
       {
         digitalWrite(ign4, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign4, LOW);
-        Serial.print("ign4");
-        // Serial.print(cilindro);
       }
     }
     if ((tipo_ignicao_sequencial == 0) && (qtd_cilindro <= 2) && (cilindro <= qtd_cilindro))
@@ -191,32 +191,24 @@ void loop()
         digitalWrite(ign1, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign1, LOW);
-        Serial.print("ign1");
-        // Serial.print(cilindro);
       }
       if (cilindro == 2)
       {
         digitalWrite(ign2, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign2, LOW);
-        Serial.print("ign2");
-        // Serial.print(cilindro);
       }
       if (cilindro == 3)
       {
         digitalWrite(ign1, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign1, LOW);
-        Serial.print("ign1");
-        // Serial.print(cilindro);
       }
       if (cilindro == 4)
       {
         digitalWrite(ign2, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign2, LOW);
-        Serial.print("ign2");
-        // Serial.print(cilindro);
       }
     }
     if ((tipo_ignicao_sequencial == 0) && (qtd_cilindro > 2) && (qtd_cilindro < 4) && (cilindro <= qtd_cilindro))
@@ -226,48 +218,36 @@ void loop()
         digitalWrite(ign1, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign1, LOW);
-        Serial.print("ign1");
-        // Serial.print(cilindro);
       }
       if (cilindro == 2)
       {
         digitalWrite(ign2, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign2, LOW);
-        Serial.print("ign2");
-        // Serial.print(cilindro);
       }
       if (cilindro == 3)
       {
         digitalWrite(ign3, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign3, LOW);
-        Serial.print("ign3");
-        // Serial.print(cilindro);
       }
       if (cilindro == 4)
       {
         digitalWrite(ign1, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign1, LOW);
-        Serial.print("ign1");
-        // Serial.print(cilindro);
       }
       if (cilindro == 5)
       {
         digitalWrite(ign2, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign2, LOW);
-        Serial.print("ign2");
-        // Serial.print(cilindro);
       }
       if (cilindro == 6)
       {
         digitalWrite(ign3, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign3, LOW);
-        Serial.print("ign3");
-        // Serial.print(cilindro);
       }
     }
     if ((tipo_ignicao_sequencial == 0) && (qtd_cilindro > 3) && (cilindro <= qtd_cilindro))
@@ -277,64 +257,48 @@ void loop()
         digitalWrite(ign1, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign1, LOW);
-        Serial.print("ign1");
-        // Serial.print(cilindro);
       }
       if (cilindro == 2)
       {
         digitalWrite(ign2, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign2, LOW);
-        Serial.print("ign2");
-        // Serial.print(cilindro);
       }
       if (cilindro == 3)
       {
         digitalWrite(ign3, HIGH);
         delay(dwell_bobina / 1000);
         digitalWrite(ign3, LOW);
-        Serial.print("ign3");
-        // Serial.print(cilindro);
       }
       if (cilindro == 4)
       {
         digitalWrite(ign4, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign4, LOW);
-        Serial.print("ign4");
-        // Serial.print(cilindro);
       }
       if (cilindro == 5)
       {
         digitalWrite(ign1, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign1, LOW);
-        Serial.print("ign1");
-        // Serial.print(cilindro);
       }
       if (cilindro == 6)
       {
         digitalWrite(ign2, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign2, LOW);
-        Serial.print("ign2");
-        // Serial.print(cilindro);
       }
       if (cilindro == 7)
       {
         digitalWrite(ign3, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign3, LOW);
-        Serial.print("ign3");
-        // Serial.print(cilindro);
       }
       if (cilindro == 8)
       {
         digitalWrite(ign4, HIGH);
         delay(dwell_bobina);
         digitalWrite(ign4, LOW);
-        Serial.print("ign4");
-        // Serial.print(cilindro);
       }
     }
     if ((qtd_cilindro * local_rodafonica) == cilindro)
