@@ -20,7 +20,7 @@ volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_pms = 70 + grau_avanco;
+volatile unsigned int grau_pms = 70;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
@@ -37,19 +37,109 @@ volatile unsigned long tempo_proxima_ignicao = 0;
 volatile unsigned long tempo_atual;
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 volatile unsigned long verifica_falha = 0;
-volatile int angle;
 volatile int pms = 0;
 volatile long falha = 0;
 volatile int cilindro = 0;
 int dente = 0;
 volatile int tipo_ignicao_sequencial = 0;
+unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
+unsigned long ultima_execucao = 0; // variável para armazenar o tempo da última execução
 
-int rpm_adiciona_ponto(int rpm) {
-    int ponto_ignicao = 0;
-    if (rpm >= 1100) {
-        ponto_ignicao = (rpm - 1000) / 100;
+//variaveis reverente a entrada de dados pela serial
+const int MAX_VALUES = 500;   // tamanho máximo do vetor
+int values[MAX_VALUES];// vetor para armazenar os valores recebidos
+int matrix[16][16];
+int vetor_map[16];
+int vetor_rpm[16];
+int index = 0;                // índice atual do vetor
+char buffer[10];              // buffer temporário para armazenar caracteres recebidos
+int tipo_vetor_map = 0;
+int tipo_vetor_rpm = 0;
+int tipo_vetor_matrix = 0;
+
+int procura_indice(int value, int *arr, int size) {
+  int index = 0;
+  int closest = abs(arr[0] - value);
+  for (int i = 1; i < size; i++) {
+    int diff = abs(arr[i] - value);
+    if (diff < closest) {
+      closest = diff;
+      index = i;
+    }
+  }
+  return index;
+}
+
+void leitura_entrada_dados_serial(){
+ if (Serial.available() > 0) {
+    char data = Serial.read();
+    if(data == 'm'){
+     tipo_vetor_map = 1;
+    }
+    if(data == 'r'){
+     tipo_vetor_rpm = 1;
+    }
+    if(data == 'p'){
+     tipo_vetor_matrix = 1;
+    }
+    if(data == 'd'){
+      //procura valor do rpm mais proximo e map para achar o ponto na matriz
+      Serial.print("d,");
+      Serial.print(procura_indice(96, vetor_map, 16));
+      Serial.print(",");
+      Serial.print(procura_indice(rpm_anterior, vetor_rpm, 16));
+      Serial.print(",");
+      Serial.print(rpm_anterior);
+      Serial.print(",;");
+    }
+    if (data == ';') {  // final do vetor
+      if(tipo_vetor_map){
+        for (int i = 0; i < 16; i++) {
+          vetor_map[i] = values[i];
+        }
+        tipo_vetor_map = 0;
+      }
+      if(tipo_vetor_rpm){
+        for (int i = 0; i < 16; i++) {
+          vetor_rpm[i] = values[i];
+        }
+        tipo_vetor_rpm = 0;
+      }
+      if(tipo_vetor_matrix){
+      // transforma o vetor em matriz
+      int k = 0;
+      for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < 16; j++) {
+          matrix[i][j] = values[k];
+          k++;
+        }
+      }
+      tipo_vetor_matrix = 0;
+      }
+
+      index = 0;  // reinicia índice do vetor
+    } else if (isdigit(data)) {  // valor do vetor
+      buffer[strlen(buffer)] = data; // adiciona o caractere recebido no buffer temporário
+      if (strlen(buffer) >= sizeof(buffer) - 1) { // verifica se o buffer está cheio
+        buffer[sizeof(buffer) - 1] = '\0'; // adiciona um terminador de string para evitar um buffer overflow
+      }
+    } else if (data == ',' && strlen(buffer) > 0) { // final do número
+      buffer[strlen(buffer)] = '\0'; // adiciona um terminador de string para converter o buffer em uma string válida
+      values[index++] = atoi(buffer);  // adiciona ao vetor
+      if (index >= MAX_VALUES) {
+        index = 0;  // reinicia índice do vetor se estiver cheio
+      }
+      memset(buffer, 0, sizeof(buffer)); // reinicia o buffer
+    }
+  }
+}
+
+int map_rpm_adiciona_ponto() {
+    int ponto_ignicao = matrix[procura_indice(96, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    if (ponto_ignicao <= matrix[15][15]) {
+        return ponto_ignicao;
     } 
-    return ponto_ignicao;
+    return 1;
 }
 
 void leitor_sensor_roda_fonica()
@@ -115,7 +205,7 @@ void leitor_sensor_roda_fonica()
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     qtd_leitura = qtd_dente_faltante;
     falha++;
-    tempo_proxima_ignicao = micros() + (grau_pms * tempo_cada_grau) - (rpm_adiciona_ponto(rpm_anterior) * tempo_cada_grau);
+    tempo_proxima_ignicao = micros() + (grau_pms * tempo_cada_grau) - (map_rpm_adiciona_ponto() * tempo_cada_grau);
     pms = 1;
     cilindro = 0;
   }
@@ -148,38 +238,21 @@ void setup()
 
 void loop()
 { 
-  static String btComando;
-  //Serial.println("Digite o 1 ou -1 para adicionar ponto");
-  while (Serial.available()) {
-     char comandoRec = Serial.read();
-     btComando += char( comandoRec );
-     //Serial.print(comandoRec);
-     if (comandoRec) {
-        if (btComando == "+") {
-            Serial.println(comandoRec);
-            grau_pms = grau_pms + 1;
-        }
-        if (btComando == "-") {
-            Serial.println(comandoRec);
-            grau_pms = grau_pms -1 ;
-        }
-         Serial.println(grau_pms);
-        btComando = ""; 
-     }
+  
+  leitura_entrada_dados_serial();
+  // verifica se já passou o intervalo de tempo
+  if (millis() - ultima_execucao >= intervalo_execucao) {
+    // executa a função desejada
+    // atualiza o tempo da última execução
+    ultima_execucao = millis();
   }
   long tempo_atual_ignicao = micros();
   if ((tempo_atual_ignicao + (dwell_bobina * 1000) >= tempo_proxima_ignicao) && (falha > 3) && (pms == 1) && (rpm >= 100))
   {
     rpm_anterior = rpm;
+    //Serial.print(rpm_anterior);
     cilindro++;
     tempo_proxima_ignicao = tempo_atual_ignicao + (tempo_cada_grau * grau_entre_cada_cilindro);
-    if(cilindro <= qtd_cilindro){
-      //Serial.print(rpm_adiciona_ponto(rpm_anterior));
-      //Serial.print("ign");
-      //Serial.print(cilindro);
-      //Serial.print(" RPM: ");
-      //Serial.print(rpm_anterior);
-    }
     rpm = 0;
     if ((tipo_ignicao_sequencial == 1) && (qtd_cilindro <= 2) && (cilindro <= qtd_cilindro))
     {
