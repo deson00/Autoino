@@ -20,7 +20,7 @@ volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_pms = 70;
+volatile unsigned int grau_pms = 30;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
@@ -70,40 +70,6 @@ int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
 
-void acionar_ignicao(int ign)
-{
-  if (ign > 0)
-  {
-  //int pino, int duracao
-    digitalWrite(ignicao_pins[ign-1], HIGH);
-    delayMicroseconds(10); // aguarda alguns microssegundos para garantir que o pino tenha mudado de estado
-    unsigned long tempo_inicio_pulso = micros(); // armazena o tempo de início do pulso
-    while (micros() - tempo_inicio_pulso < 4000) {
-        // mantém o pino em nível alto por 4 ms
-    }
-    tempo_inicio_pulso = micros(); // armazena o tempo de início do pulso
-    digitalWrite(ignicao_pins[ign-1], LOW);
-  while (micros() - tempo_inicio_pulso < 4000) {
-        // mantém o pino em nível alto por 4 ms
-    }
-    // Aguarda o tempo restante para completar a duração total do pulso
-    // O valor 10 foi escolhido para compensar o tempo gasto nas instruções anteriores
-    //delayMicroseconds((duracao * 1000) - 10 - 4000);
-  }
-  
-}
-
-// void acionar_pino(int pino, int duracao)
-// {
-//     digitalWrite(pino, HIGH); // aciona o pino
-//     delayMicroseconds(10); // aguarda alguns microssegundos para garantir que o pino tenha mudado de estado
-//     digitalWrite(pino, LOW); // desativa o pino
-
-//     // Aguarda o tempo restante para completar a duração total do pulso
-//     // O valor 10 foi escolhido para compensar o tempo gasto nas instruções anteriores
-//     delayMicroseconds((duracao * 1000) - 10);
-// }
-
 
 int procura_indice(int value, int *arr, int size)
 {
@@ -119,6 +85,11 @@ int procura_indice(int value, int *arr, int size)
     }
   }
   return index;
+}
+
+int adiciona_ponto(){
+  int ponto_ignicao = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    return ponto_ignicao;
 }
 
 void leitura_entrada_dados_serial()
@@ -149,6 +120,17 @@ void leitura_entrada_dados_serial()
       Serial.print(rpm_anterior);
       Serial.print(",;");
     }
+    if (data == 'e')
+    {
+      Serial.print("vetormap,");
+      // procura valor do rpm mais proximo e map para achar o ponto na matriz
+      for (int  i = 0; i < 16; i++)
+      {
+        Serial.print(vetor_map[i]);
+        Serial.print(",");
+      }
+      Serial.print(",;");
+    }
     if (data == ';')
     { // final do vetor
       if (tipo_vetor_map)
@@ -158,6 +140,7 @@ void leitura_entrada_dados_serial()
           vetor_map[i] = values[i];
         }
         tipo_vetor_map = 0;
+        
       }
       if (tipo_vetor_rpm)
       {
@@ -166,6 +149,7 @@ void leitura_entrada_dados_serial()
           vetor_rpm[i] = values[i];
         }
         tipo_vetor_rpm = 0;
+        
       }
       if (tipo_vetor_matrix)
       {
@@ -205,16 +189,6 @@ void leitura_entrada_dados_serial()
   }
 }
 
-int map_rpm_adiciona_ponto()
-{
-  int ponto_ignicao = matrix[procura_indice(96, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
-  if (ponto_ignicao <= matrix[15][15])
-  {
-    return ponto_ignicao;
-  }
-    return 1;
-  
-}
 
 void leitor_sensor_roda_fonica()
 {
@@ -279,7 +253,8 @@ void leitor_sensor_roda_fonica()
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     qtd_leitura = qtd_dente_faltante;
     falha++;
-    tempo_proxima_ignicao = tempo_atual + (grau_pms * tempo_cada_grau) - (map_rpm_adiciona_ponto() * tempo_cada_grau);
+    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    tempo_proxima_ignicao = tempo_atual + (grau_pms * tempo_cada_grau);
     pms = 1;
     cilindro = 1;
   }
@@ -288,7 +263,8 @@ void leitor_sensor_roda_fonica()
 
 if ((captura_dwell == false) && (tempo_atual + (dwell_bobina * 1000) >= tempo_proxima_ignicao) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
-    tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) - (map_rpm_adiciona_ponto() * tempo_cada_grau);
+    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
     cilindro_ign = cilindro;
     captura_dwell = true;
     tempo_percorrido = tempo_atual;
@@ -298,7 +274,6 @@ if ((captura_dwell == false) && (tempo_atual + (dwell_bobina * 1000) >= tempo_pr
       cilindro = 0;
     }
     }
-Serial.println(map_rpm_adiciona_ponto());
 
   if((tempo_atual - tempo_percorrido) >= 4000){
     digitalWrite(ignicao_pins[cilindro_ign-1],0);
@@ -322,13 +297,21 @@ void setup()
 
 void loop()
 {
-    leitura_entrada_dados_serial();
-    rpm_anterior = rpm;
-    rpm = 0;
+    
+  leitura_entrada_dados_serial();
     
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
-  {
+  { 
+    //Serial.print(" < : ");
+    //grau_avanco = matrix[procura_indice(96, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    //Serial.print(adiciona_ponto());
+    //Serial.print(" : > ");
+  rpm_anterior = rpm;  
+  Serial.println(rpm_anterior);
+    //grau_avanco = adiciona_ponto(vetor_map, vetor_rpm, matrix, 800);
+    //Serial.println(procura_indice(96, vetor_map, 16));
+    
     // executa a função desejada
     // atualiza o tempo da última execução
     ultima_execucao = millis();
