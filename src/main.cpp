@@ -255,7 +255,7 @@ void leitor_sensor_roda_fonica()
     qtd_leitura = qtd_dente_faltante;
     falha++;
     pms = 1;
-    cilindro = 1;
+    cilindro = 0;
     cilindro_ign = 0;
     //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
@@ -281,17 +281,19 @@ if ((captura_dwell == false) && (cilindro_ign < 3) && (tempo_atual + (dwell_bobi
   //Serial.print(cilindro_ign);
   //Serial.print(" x ");
   //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
-  cilindro_ign++;  
+    
     //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
     captura_dwell = true;
     tempo_percorrido = tempo_atual;
-    digitalWrite(ignicao_pins[0],1);
+    digitalWrite(ignicao_pins[cilindro],1);
+    cilindro_ign++;
   }
 
   if((tempo_atual - tempo_percorrido) >= 4000){
-    digitalWrite(ignicao_pins[0],0);
+    digitalWrite(ignicao_pins[cilindro],0);
     captura_dwell = false;
+    cilindro = cilindro_ign;
   }
 
   tempo_anterior = tempo_atual;
