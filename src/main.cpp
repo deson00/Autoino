@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <BigInteger.h>
 
 #define qtd_dente 60
 #define qtd_dente_faltante 2
@@ -20,7 +21,7 @@ volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_pms = 30;
+volatile unsigned int grau_pms = 100;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
@@ -33,7 +34,7 @@ volatile unsigned long tempo_inicio_volta_completa = 0;
 volatile unsigned long tempo_final_volta_completa = 0;
 volatile unsigned long tempo_total_volta_completa = 0;
 volatile unsigned long tempo_cada_grau = 0;
-volatile unsigned long tempo_proxima_ignicao = 0;
+volatile unsigned long tempo_proxima_ignicao[8];
 volatile unsigned long tempo_atual = 0;
 volatile unsigned long tempo_inicio_dwell;
 volatile unsigned long tempo_final_dwell;
@@ -42,8 +43,8 @@ volatile unsigned long verifica_falha = 0;
 volatile int pms = 0;
 volatile long falha = 0;
 volatile int cilindro = 0;
-volatile int cilindro_anterior = 0;
-volatile int cilindro_ign = 0;
+volatile int cilindro_anterior = -1;
+int cilindro_ign = 0;
 int dente = 0;
 volatile int tipo_ignicao_sequencial = 0;
 unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
@@ -253,30 +254,43 @@ void leitor_sensor_roda_fonica()
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     qtd_leitura = qtd_dente_faltante;
     falha++;
-    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
-    tempo_proxima_ignicao = tempo_atual + (grau_pms * tempo_cada_grau);
     pms = 1;
     cilindro = 1;
+    cilindro_ign = 0;
+    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
+    
+    for (int i = 1; i < 3; i++)
+    {
+      tempo_proxima_ignicao[i] = tempo_atual + ((grau_pms + grau_entre_cada_cilindro * i) * tempo_cada_grau);
+    }
+    // Serial.print("1 > ");
+    // Serial.println(tempo_proxima_ignicao[cilindro_ign]);
+    // Serial.print("2 > ");
+    // Serial.println(tempo_proxima_ignicao[cilindro_ign+1]);
+    // Serial.print("3 > ");
+    // Serial.println(tempo_proxima_ignicao[cilindro_ign+2]);
+
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
 
 
-if ((captura_dwell == false) && (tempo_atual + (dwell_bobina * 1000) >= tempo_proxima_ignicao) && (falha > 3) && (pms == 1) && (rpm >= 100))
+if ((captura_dwell == false) && (cilindro_ign < 3) && (tempo_atual + (dwell_bobina * 1000) >= tempo_proxima_ignicao[cilindro_ign]) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
+  
+  //Serial.print(cilindro_ign);
+  //Serial.print(" x ");
+  //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
+  cilindro_ign++;  
     //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
-    tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
-    cilindro_ign = cilindro;
+    //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
     captura_dwell = true;
     tempo_percorrido = tempo_atual;
-    digitalWrite(ignicao_pins[cilindro_ign-1],1);
-    cilindro++;
-    if(cilindro > 3){
-      cilindro = 0;
-    }
-    }
+    digitalWrite(ignicao_pins[0],1);
+  }
 
   if((tempo_atual - tempo_percorrido) >= 4000){
-    digitalWrite(ignicao_pins[cilindro_ign-1],0);
+    digitalWrite(ignicao_pins[0],0);
     captura_dwell = false;
   }
 
@@ -308,7 +322,7 @@ void loop()
     //Serial.print(adiciona_ponto());
     //Serial.print(" : > ");
   rpm_anterior = rpm;  
-  Serial.println(rpm_anterior);
+  //Serial.println(rpm_anterior);
     //grau_avanco = adiciona_ponto(vetor_map, vetor_rpm, matrix, 800);
     //Serial.println(procura_indice(96, vetor_map, 16));
     
