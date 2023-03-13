@@ -21,7 +21,7 @@ volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_pms = 100;
+volatile unsigned int grau_pms = 60;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
@@ -57,8 +57,9 @@ volatile int estado_pino_ignicao = LOW;  // variavel armazenha o estado do pino 
 volatile bool estado_anterior_pino_ignicao = LOW;
 volatile unsigned long tempo_inicio_pulso = 0;
 const unsigned long duracao_pulso = 4; // duração do pulso em milissegundos
-volatile bool captura_dwell = false;
-volatile unsigned long tempo_percorrido;
+//volatile bool captura_dwell = false;
+volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
+volatile unsigned long tempo_percorrido[8];
 // variaveis reverente a entrada de dados pela serial
 const int MAX_VALUES = 500; // tamanho máximo do vetor
 int values[MAX_VALUES];     // vetor para armazenar os valores recebidos
@@ -255,7 +256,7 @@ void leitor_sensor_roda_fonica()
     qtd_leitura = qtd_dente_faltante;
     falha++;
     pms = 1;
-    cilindro = 0;
+    cilindro = 1;
     cilindro_ign = 0;
     //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
@@ -274,8 +275,8 @@ void leitor_sensor_roda_fonica()
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
 
-
-if ((captura_dwell == false) && (cilindro_ign < 3) && (tempo_atual + (dwell_bobina * 1000) >= tempo_proxima_ignicao[cilindro_ign]) && (falha > 3) && (pms == 1) && (rpm >= 100))
+//IGN1
+if ((captura_dwell[0] == false) && (cilindro == 1) && (tempo_atual + (dwell_bobina * 1000) >= tempo_proxima_ignicao[0]) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
   
   //Serial.print(cilindro_ign);
@@ -284,17 +285,59 @@ if ((captura_dwell == false) && (cilindro_ign < 3) && (tempo_atual + (dwell_bobi
     
     //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
-    captura_dwell = true;
-    tempo_percorrido = tempo_atual;
-    digitalWrite(ignicao_pins[cilindro],1);
-    cilindro_ign++;
+    captura_dwell[0] = true;
+    tempo_percorrido[0] = tempo_atual;
+    digitalWrite(ignicao_pins[0],1);
+    cilindro++;
   }
 
-  if((tempo_atual - tempo_percorrido) >= 4000){
-    digitalWrite(ignicao_pins[cilindro],0);
-    captura_dwell = false;
-    cilindro = cilindro_ign;
+  if((tempo_atual - tempo_percorrido[0]) >= 4000){
+    digitalWrite(ignicao_pins[0],0);
+    captura_dwell[0] = false;
   }
+
+//IGN2
+
+if ((captura_dwell[1] == false) && (cilindro == 2) && (tempo_atual + (dwell_bobina * 1000) >= tempo_proxima_ignicao[1]) && (falha > 3) && (pms == 1) && (rpm >= 100))
+{
+  
+  //Serial.print(cilindro_ign);
+  //Serial.print(" x ");
+  //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
+    
+    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
+    captura_dwell[1] = true;
+    tempo_percorrido[1] = tempo_atual;
+    digitalWrite(ignicao_pins[1],1);
+    cilindro++;
+  }
+
+  if((tempo_atual - tempo_percorrido[1]) >= 4000){
+    digitalWrite(ignicao_pins[1],0);
+    captura_dwell[1] = false;
+  }
+ //IGN3
+if ((captura_dwell[2] == false) && (cilindro == 3) && (tempo_atual + (dwell_bobina * 1000) >= tempo_proxima_ignicao[2]) && (falha > 3) && (pms == 1) && (rpm >= 100))
+{
+  
+  //Serial.print(cilindro_ign);
+  //Serial.print(" x ");
+  //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
+    
+    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
+    captura_dwell[2] = true;
+    tempo_percorrido[2] = tempo_atual;
+    digitalWrite(ignicao_pins[2],1);
+    cilindro++;
+  }
+
+  if((tempo_atual - tempo_percorrido[2]) >= 4000){
+    digitalWrite(ignicao_pins[2],0);
+    captura_dwell[2] = false;
+  } 
+
 
   tempo_anterior = tempo_atual;
   interrupts();
