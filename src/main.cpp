@@ -260,11 +260,11 @@ void leitor_sensor_roda_fonica()
     pms = 1;
     
     //cilindro_ign = 0;
-    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     cilindro = 2;
     tempo_atual_proxima_ignicao[0] = tempo_atual;
       //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
-      tempo_proxima_ignicao[0] = (grau_pms + grau_entre_cada_cilindro) * tempo_cada_grau;
+      tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + grau_entre_cada_cilindro) * tempo_cada_grau;
       //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
       //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
 
@@ -304,7 +304,7 @@ if ((captura_dwell[1] == false) && (tempo_proxima_ignicao[0]) && (cilindro == 2)
     cilindro_ign = 3;
   tempo_atual_proxima_ignicao[1] = tempo_atual_proxima_ignicao[0];
   //tempo_proxima_ignicao[0] = (grau_pms + grau_entre_cada_cilindro) * tempo_cada_grau;
-  tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
+  tempo_proxima_ignicao[1] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
   //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
 
   //Serial.print(cilindro_ign);
@@ -332,7 +332,7 @@ if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_
   tempo_atual_proxima_ignicao[2] = tempo_atual_proxima_ignicao[1];
   //tempo_proxima_ignicao[0] = (grau_pms + grau_entre_cada_cilindro) * tempo_cada_grau;
   //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
-  tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
+  tempo_proxima_ignicao[2] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
 
   //Serial.print(cilindro_ign);
   //Serial.print(" x ");
@@ -379,7 +379,7 @@ void loop()
     //Serial.print(adiciona_ponto());
     //Serial.print(" : > ");
   rpm_anterior = rpm;  
-  //Serial.println(tempo_proxima_ignicao[2]);
+  Serial.println(grau_avanco);
     //grau_avanco = adiciona_ponto(vetor_map, vetor_rpm, matrix, 800);
     //Serial.println(procura_indice(96, vetor_map, 16));
     
