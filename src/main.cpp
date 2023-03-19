@@ -74,7 +74,6 @@ int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
 
-
 void gravar_dados_eeprom(){
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
 for (int i = 0; i < 16; i++) {
@@ -87,7 +86,6 @@ for (int i = 0; i < 16; i++) {
     EEPROM.write(i*2+11, lowByte); // Armazena o byte menos significativo na posição i*2+11
   }
 }
-
  // Escrita da matrix na EEPROM
 for (int i = 0; i < 16; i++) {
   EEPROM.write(i+50, vetor_map[i]);
@@ -104,7 +102,6 @@ for (int i = 0; i < 16; i++) {
     int lowByte = EEPROM.read(i*2+11); // Lê o byte menos significativo da posição i*2+11
     vetor_rpm[i] = (highByte << 8) | lowByte; // Recria o valor original a partir dos dois bytes lidos  
 }
-
 // Leitura vetor_map e matrix da EEPROM
 for (int i = 0; i < 16; i++) {
   vetor_map[i] = EEPROM.read(i+50);
@@ -132,22 +129,6 @@ int procura_indice(int value, int *arr, int size)
   }
   return index;
 }
-
-// int procura_indice(int value, int *arr, int size)
-// {
-//   int index = 0;
-//   int closest = abs(arr[0] - value);
-//   for (int i = 1; i < size; i++)
-//   {
-//     int diff = abs(arr[i] - value);
-//     if (diff < closest)
-//     {
-//       closest = diff;
-//       index = i;
-//     }
-//   }
-//   return index;
-// }
 
 void leitura_entrada_dados_serial()
 {
@@ -280,7 +261,7 @@ delay(1000);
     }
   }
 }
-
+/*
 void inicializar_valores() {
      // seta os valores no vetor_map
       vetor_map[0] = 100;
@@ -344,133 +325,7 @@ void inicializar_valores() {
     }
   
 }
-
-void escrever_dados() {
-  // Escreve os valores na EEPROM
-  for (int i = 0; i < 16; i++) {
-    EEPROM.write(i, vetor_map[i]);
-  }
-  for (int i = 16; i < 32; i++) {
-    EEPROM.write(i, vetor_rpm[i - 16]);
-  }
-  for (int i = 32; i < 544; i += 2) {
-    EEPROM.write(i, matrix[(i - 32) / 32][(i - 32) % 32] >> 8);
-    EEPROM.write(i + 1, matrix[(i - 32) / 32][(i - 32) % 32] & 0xFF);
-  }
-}
-
-void inicializar_valores() {
-  // Lê os valores salvos na EEPROM
-  for (int i = 0; i < 16; i++) {
-    vetor_map[i] = EEPROM.read(i);
-  }
-  for (int i = 16; i < 32; i++) {
-    vetor_rpm[i - 16] = EEPROM.read(i);
-  }
-  for (int i = 32; i < 544; i += 2) {
-    matrix[(i - 32) / 32][(i - 32) % 32] = EEPROM.read(i) << 8 | EEPROM.read(i + 1);
-  }
-
-  // Verifica se os valores lidos são válidos
-  bool dadosValidos = true;
-  for (int i = 0; i < 16; i++) {
-    if (vetor_map[i] < 0 || vetor_map[i] > 255) {
-      dadosValidos = false;
-      break;
-    }
-  }
-  for (int i = 0; i < 16; i++) {
-    if (vetor_rpm[i] < 0 || vetor_rpm[i] > 255) {
-      dadosValidos = false;
-      break;
-    }
-  }
-  for (int i = 0; i < 16; i++) {
-    for (int j = 0; j < 16; j++) {
-      if (matrix[i][j] < 0 || matrix[i][j] > 65535) {
-        dadosValidos = false;
-        break;
-      }
-    }
-    if (!dadosValidos) {
-      break;
-    }
-  }
-
-  // Se os dados lidos forem inválidos, seta os valores default
-  if (!dadosValidos) {
-    for (int i = 0; i < 16; i++) {
-      vetor_map[i] = i;
-      vetor_rpm[i] = i + 16;
-      for (int j = 0; j < 16; j++) {
-        matrix[i][j] = i * 16 + j;
-      }
-    }
-     // seta os valores no vetor_map
-  vetor_map[0] = 100;
-  vetor_map[1] = 96;
-  vetor_map[2] = 88;
-  vetor_map[3] = 80;
-  vetor_map[4] = 74;
-  vetor_map[5] = 66;
-  vetor_map[6] = 56;
-  vetor_map[7] = 50;
-  vetor_map[8] = 46;
-  vetor_map[9] = 40;
-  vetor_map[10] = 36;
-  vetor_map[11] = 30;
-  vetor_map[12] = 26;
-  vetor_map[13] = 20;
-  vetor_map[14] = 16;
-  vetor_map[15] = 10;
-
-  // seta os valores no vetor_rpm
-  vetor_rpm[0] = 500;
-  vetor_rpm[1] = 700;
-  vetor_rpm[2] = 1200;
-  vetor_rpm[3] = 1700;
-  vetor_rpm[4] = 2200;
-  vetor_rpm[5] = 2700;
-  vetor_rpm[6] = 3200;
-  vetor_rpm[7] = 3700;
-  vetor_rpm[8] = 4200;
-  vetor_rpm[9] = 4700;
-  vetor_rpm[10] = 5200;
-  vetor_rpm[11] = 5700;
-  vetor_rpm[12] = 6200;
-  vetor_rpm[13] = 6700;
-  vetor_rpm[14] = 7200;
-  vetor_rpm[15] = 7700;
-
-int matrix_padrao[16][16] = {
-  {17,18,19,20,21,24,25,27,28,29,30,31,32,32,33,34},
-  {17,19,19,20,21,24,25,27,28,29,30,31,32,32,33,34},
-  {17,18,19,20,21,24,25,27,28,29,30,31,32,32,33,34},
-  {17,20,21,20,21,24,25,27,28,28,30,31,31,31,32,33},
-  {17,22,22,20,21,24,25,26,28,28,30,31,31,31,32,33},
-  {17,20,20,20,21,24,25,26,27,28,29,30,30,30,31,32},
-  {17,20,20,20,21,23,23,24,25,26,27,28,29,29,30,31},
-  {17,20,20,20,21,22,22,23,24,25,26,27,28,28,29,30},
-  {18,18,18,18,21,21,21,21,21,21,21,20,19,20,20,20},
-  {18,18,18,18,20,20,20,20,19,19,19,18,18,18,18,18},
-  {18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18},
-  {17,17,17,16,16,16,16,16,18,18,18,18,17,17,17,17},
-  {16,16,16,15,15,15,15,15,18,18,18,18,16,16,16,16},
-  {15,15,15,14,14,14,14,14,18,18,18,16,13,13,13,13},
-  {12,12,12,11,11,11,11,11,16,16,16,14,11,11,11,11},
-  {11,11,11,9,9,9,9,9,15,15,15,13,10,10,10,10}
-};
-// atualização dos valores da matriz
-for(int i = 0; i < 16; i++) {
-  for(int j = 0; j < 16; j++) {
-    matrix[i][j] = matrix_padrao[i][j];
-  }
-}
-    // Salva os valores default na EEPROM
-    escrever_dados();
-  }
-}
-
+*/
 
 void leitor_sensor_roda_fonica()
 {
@@ -635,7 +490,6 @@ if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_
 
 void setup()
 {
-
    // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
   //inicializar_valores();
   //delay(1000);
@@ -656,16 +510,10 @@ void setup()
 void loop()
 {    
   leitura_entrada_dados_serial();
-    
 //   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
-   //ler_dados_eeprom(); 
    rpm_anterior = rpm;
-   //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];    
-   //Serial.println(grau_avanco);
-   //Serial.println(vetor_rpm[1]);  
-  // executa a função desejada
   // atualiza o tempo da última execução
    ultima_execucao = millis();
 
