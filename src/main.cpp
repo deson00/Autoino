@@ -114,7 +114,6 @@ for (int i = 0; i < 16; i++) {
 }
 }
 
-
 int procura_indice(int value, int *arr, int size)
 {
   int index = 0;
@@ -127,9 +126,28 @@ int procura_indice(int value, int *arr, int size)
       closest = diff;
       index = i;
     }
+    if (arr[i] == value) {
+      return i;
+    }
   }
   return index;
 }
+
+// int procura_indice(int value, int *arr, int size)
+// {
+//   int index = 0;
+//   int closest = abs(arr[0] - value);
+//   for (int i = 1; i < size; i++)
+//   {
+//     int diff = abs(arr[i] - value);
+//     if (diff < closest)
+//     {
+//       closest = diff;
+//       index = i;
+//     }
+//   }
+//   return index;
+// }
 
 void leitura_entrada_dados_serial()
 {
@@ -152,11 +170,13 @@ void leitura_entrada_dados_serial()
     {
       // procura valor do rpm mais proximo e map para achar o ponto na matriz
       Serial.print("d,");
-      Serial.print(procura_indice(96, vetor_map, 16));
+      Serial.print(procura_indice(10, vetor_map, 16));
       Serial.print(",");
       Serial.print(procura_indice(rpm_anterior, vetor_rpm, 16));
       Serial.print(",");
       Serial.print(rpm_anterior);
+      Serial.print(",");
+      Serial.print(grau_avanco);
       Serial.print(",;");
     }
     if (data == 'e')//retorna dados da tabela caso e
@@ -200,6 +220,8 @@ delay(1000);
      if (data == 'f'){
       // Escrita dos valores na EEPROM
       gravar_dados_eeprom();
+      delay(1000);
+      ler_dados_eeprom();
     }
 
     if (data == ';')
@@ -390,7 +412,7 @@ void leitor_sensor_roda_fonica()
     pms = 1;
     
     //cilindro_ign = 0;
-    grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    grau_avanco = matrix[procura_indice(10, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     cilindro = 2;
     tempo_atual_proxima_ignicao[0] = tempo_atual;
       //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
@@ -493,8 +515,8 @@ void setup()
   //gravar_dados_eeprom();
   //delay(1000);
   //aqui le os dados da eeprom que forem salvo anteriormente
-  //ler_dados_eeprom();
-  //delay(1000);
+  ler_dados_eeprom();
+  delay(1000);
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
   pinMode(ign3, OUTPUT);
@@ -510,8 +532,12 @@ void loop()
     
 //   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
-  {    
-   rpm_anterior = rpm;  
+  {
+   //ler_dados_eeprom(); 
+   rpm_anterior = rpm;
+   //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];    
+   //Serial.println(grau_avanco);
+   //Serial.println(vetor_rpm[1]);  
   // executa a função desejada
   // atualiza o tempo da última execução
    ultima_execucao = millis();
