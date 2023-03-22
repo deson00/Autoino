@@ -21,12 +21,13 @@ volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
+volatile unsigned int grau_avanco_partida = 5;
 volatile unsigned int grau_pms = 70;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura = 0;
-volatile unsigned int rpm_anterior = 0;
+int rpm_anterior = 0;
 volatile unsigned long tempo_anterior = 0;
 volatile unsigned long tempo_dente_anterior[2] = {0,0};
 volatile unsigned long tempo_dente_anterior_pms;
@@ -48,7 +49,7 @@ volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
 int dente = 0;
 volatile int tipo_ignicao_sequencial = 0;
-unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
+unsigned long intervalo_execucao = 500; // intervalo de 1 segundo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
@@ -73,6 +74,7 @@ char buffer[10]; // buffer temporário para armazenar caracteres recebidos
 int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
+bool status_dados_ponto_ignicao = false;
 
 void gravar_dados_eeprom(){
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
@@ -129,7 +131,32 @@ int procura_indice(int value, int *arr, int size)
   }
   return index;
 }
+void envia_dados_ponto_ignicao(int status_rpm){
+    if(status_dados_ponto_ignicao)
+    {
+    // procura valor do rpm mais proximo e map para achar o ponto na matriz
+      Serial.print("d,");
+      Serial.print(procura_indice(10, vetor_map, 16));
+      Serial.print(",");
+      Serial.print(procura_indice(status_rpm, vetor_rpm, 16));
+      Serial.print(",");
+      Serial.print(status_rpm);
+      Serial.print(",");
+      Serial.print(grau_avanco);
+      Serial.print(",; ");
+    }
+    
+}
+void protege_ignicao(){
+  if(rpm_anterior < 20){
+    digitalWrite(ignicao_pins[0],0);
+    digitalWrite(ignicao_pins[1],0);
+    digitalWrite(ignicao_pins[2],0);
+    digitalWrite(ignicao_pins[3],0);
+  }
+}
 
+ 
 void leitura_entrada_dados_serial()
 {
   if (Serial.available() > 0)
@@ -149,16 +176,11 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'd')
     {
-      // procura valor do rpm mais proximo e map para achar o ponto na matriz
-      Serial.print("d,");
-      Serial.print(procura_indice(10, vetor_map, 16));
-      Serial.print(",");
-      Serial.print(procura_indice(rpm_anterior, vetor_rpm, 16));
-      Serial.print(",");
-      Serial.print(rpm_anterior);
-      Serial.print(",");
-      Serial.print(grau_avanco);
-      Serial.print(",;");
+     if(status_dados_ponto_ignicao){
+      status_dados_ponto_ignicao = false;
+     }else{
+      status_dados_ponto_ignicao = true;
+     }
     }
     if (data == 'e')//retorna dados da tabela caso e
     { 
@@ -201,8 +223,7 @@ delay(1000);
      if (data == 'f'){
       // Escrita dos valores na EEPROM
       gravar_dados_eeprom();
-      delay(1000);
-      ler_dados_eeprom();
+      
     }
     if (data == ';')
     { // final do vetor
@@ -392,8 +413,12 @@ void leitor_sensor_roda_fonica()
     falha++;
     pms = 1;
     
-    //cilindro_ign = 0;
-    grau_avanco = matrix[procura_indice(10, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    if(rpm_anterior < 500){
+      grau_avanco = grau_avanco_partida;
+    }else{
+      grau_avanco = matrix[procura_indice(10, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    }
+    
     cilindro = 2;
     tempo_atual_proxima_ignicao[0] = tempo_atual;
       //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
@@ -514,6 +539,8 @@ void loop()
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
    rpm_anterior = rpm;
+   envia_dados_ponto_ignicao(rpm_anterior);
+   protege_ignicao();
   // atualiza o tempo da última execução
    ultima_execucao = millis();
 
