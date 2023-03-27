@@ -109,20 +109,22 @@ for (int i = 0; i < 16; i++) {
 }
 }
 
-void gravar_dados_eeprom_configuracao_inicial(){
-   int highByte;
-   int lowByte;
-   EEPROM.write(0*2+260, tipo_ignicao); // Armazena o byte na posição i*2+260
-   EEPROM.write(1*2+260, qtd_dente);
-   EEPROM.write(2*2+260, local_rodafonica);
-   EEPROM.write(3*2+260, qtd_dente_faltante);
-   grau_pms = grau_pms + 255;//ajuste para que seja usando sempre 2 byte
-    highByte = grau_pms >> 8; // Obtém o byte mais significativo
-    lowByte = grau_pms & 0xFF; // Obtém o byte menos significativo
+void gravar_dados_eeprom_configuracao_inicial() {
+    int16_t grau_pms_16bit = (int16_t)grau_pms + 360; // Adiciona um offset de 360 para garantir que o valor seja sempre positivo
+    if (grau_pms_16bit < 0) { // Verifica se o valor é negativo
+        grau_pms_16bit = ~grau_pms_16bit + 1; // Calcula o valor em complemento de dois
+    }
+    uint8_t highByte = (uint8_t)(grau_pms_16bit >> 8); // Obtém o byte mais significativo
+    uint8_t lowByte = (uint8_t)(grau_pms_16bit & 0xFF); // Obtém o byte menos significativo
+    EEPROM.write(0*2+260, tipo_ignicao); // Armazena o byte na posição i*2+260
+    EEPROM.write(1*2+260, qtd_dente);
+    EEPROM.write(2*2+260, local_rodafonica);
+    EEPROM.write(3*2+260, qtd_dente_faltante);
     EEPROM.write(4*2+260, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(4*2+261, lowByte); // Armazena o byte menos significativo na posição i*2+11
-  EEPROM.write(5*2+260, qtd_cilindro );
+    EEPROM.write(5*2+260, qtd_cilindro);
 }
+
 
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
@@ -140,15 +142,15 @@ for (int i = 0; i < 16; i++) {
     matrix[i][j] = EEPROM.read(100 + i*16 + j);
   }
 }
-//leitura dos dados de configuraçoes iniciais
+//leitura dos dados de configurações iniciais
 tipo_ignicao = EEPROM.read(0*2+260); 
 qtd_dente = EEPROM.read(1*2+260);
 local_rodafonica = EEPROM.read(2*2+260);
 qtd_dente_faltante = EEPROM.read(3*2+260);
 highByte = EEPROM.read(4*2+260); // Lê o byte mais significativo 
-lowByte = EEPROM.read(4*2+261); // Lê o byte menos significativo
-grau_pms = (highByte << 8) | lowByte; //
-grau_pms = grau_pms - 255; //ajuste para usar 2 byte 
+lowByte = EEPROM.read(4*2+260+1); // Lê o byte menos significativo
+grau_pms = (highByte << 8) | lowByte; 
+grau_pms = grau_pms - 360;
 qtd_cilindro = EEPROM.read(5*2+260);
 }
 
@@ -644,10 +646,11 @@ void loop()
 //   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
-    gravar_dados_eeprom_configuracao_inicial();
+  gravar_dados_eeprom_configuracao_inicial();
    rpm_anterior = rpm;
    envia_dados_ponto_ignicao(rpm_anterior);
    protege_ignicao();
+      
   // atualiza o tempo da última execução
    ultima_execucao = millis();
 
