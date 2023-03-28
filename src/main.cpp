@@ -317,7 +317,7 @@ void leitura_entrada_dados_serial()
       Serial.print(",");
       Serial.print(grau_pms);
       Serial.print(",");
-      Serial.print(qtd_cilindro);
+      Serial.print(qtd_cilindro * local_rodafonica);
       Serial.print(",");
       Serial.print(";");
       
