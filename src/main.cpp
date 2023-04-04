@@ -1,32 +1,33 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 
-#define qtd_dente 60
-#define qtd_dente_faltante 2
+
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
 
-volatile int pulsos;
-volatile unsigned long ti = 0;
-volatile unsigned long tf;
-volatile unsigned int rpm;
-int inicia = 1;
+  int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
+  int qtd_dente = 60;
+  int qtd_dente_faltante = 2;
+  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
+  int qtd_cilindro = 6 / local_rodafonica;
+  int grau_pms = 70;
+  int dwell_bobina = 4;
+
 int ign1 = 40;
 int ign2 = 38;
 int ign3 = 52;
 int ign4 = 50;
-volatile unsigned int dwell_bobina = 4;
-volatile unsigned int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
-volatile unsigned int qtd_cilindro = 6 / local_rodafonica;
+
+int tipo_ignicao_sequencial = 0;
 volatile unsigned int qtd_voltas = 0;
 volatile unsigned int grau_cada_dente = 360 / qtd_dente;
 volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_pms = 70;
+volatile unsigned int grau_avanco_partida = 5;
 volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 volatile unsigned int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura = 0;
-volatile unsigned int rpm_anterior = 0;
+
 volatile unsigned long tempo_anterior = 0;
 volatile unsigned long tempo_dente_anterior[2] = {0,0};
 volatile unsigned long tempo_dente_anterior_pms;
@@ -41,16 +42,20 @@ volatile unsigned long tempo_inicio_dwell;
 volatile unsigned long tempo_final_dwell;
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 volatile unsigned long verifica_falha = 0;
+int inicia = 1;
 volatile int pms = 0;
 volatile long falha = 0;
 volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
 int dente = 0;
-volatile int tipo_ignicao_sequencial = 0;
-unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
+unsigned long intervalo_execucao = 500; // intervalo de 1 segundo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
-
+volatile int pulsos;
+volatile unsigned long ti = 0;
+volatile unsigned long tf;
+volatile unsigned int rpm;
+int rpm_anterior = 0;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
@@ -73,42 +78,80 @@ char buffer[10]; // buffer temporário para armazenar caracteres recebidos
 int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
+int tipo_vetor_configuracao_inicial = 0;
+bool status_dados_ponto_ignicao = false;
 
-void gravar_dados_eeprom(){
+void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
+  int highByte;
+  int lowByte;
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
+  //a primeira posição de escrita será a posição 10 ou 11 
+  //(dependendo do valor do primeiro elemento do vetor_rpm) e a última posição de escrita será a posição 42.
 for (int i = 0; i < 16; i++) {
   if (vetor_rpm[i] <= 255) {
     EEPROM.write(i*2+10, vetor_rpm[i]); // Armazena o byte na posição i*2+10
   } else {
-    int highByte = vetor_rpm[i] >> 8; // Obtém o byte mais significativo
-    int lowByte = vetor_rpm[i] & 0xFF; // Obtém o byte menos significativo
+    highByte = vetor_rpm[i] >> 8; // Obtém o byte mais significativo
+    lowByte = vetor_rpm[i] & 0xFF; // Obtém o byte menos significativo
     EEPROM.write(i*2+10, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(i*2+11, lowByte); // Armazena o byte menos significativo na posição i*2+11
   }
 }
  // Escrita da matrix na EEPROM
+ //A primeira chamada à função "EEPROM.write()" escreve 1 byte no endereço 50 da memória EEPROM, e cada iteração subsequente do loop escreve mais 1 byte no endereço seguinte. Assim, ao final do loop, a última posição escrita será a posição 65 (ou seja, 50 + 16).
+//A segunda chamada à função "EEPROM.write()" escreve 1 byte no endereço 100 da memória EEPROM, e cada iteração subsequente do loop escreve mais 1 byte no endereço seguinte. Assim, ao final da execução do loop interno (j), a última posição escrita será a posição 255 (ou seja, 100 + 16*16 - 1).
+//Portanto, a última posição da memória EEPROM utilizada pelo loop será a posição 255.
 for (int i = 0; i < 16; i++) {
-  EEPROM.write(i+50, vetor_map[i]);
+  EEPROM.write(i+50, vetor_map[i]);// endereço de memória começa em 50
   for (int j = 0; j < 16; j++) {
-    EEPROM.write(100 + i*16 + j, matrix[i][j]); // endereço de memória começa em 32 para a matriz
+    EEPROM.write(100 + i*16 + j, matrix[i][j]); // endereço de memória começa em 100 fim 255 para a matriz
   }
 }
 }
 
+void gravar_dados_eeprom_configuracao_inicial() {
+    int16_t grau_pms_16bit = (int16_t)grau_pms + 360; // Adiciona um offset de 360 para garantir que o valor seja sempre positivo
+    if (grau_pms_16bit < 0) { // Verifica se o valor é negativo
+        grau_pms_16bit = ~grau_pms_16bit + 1; // Calcula o valor em complemento de dois
+    }
+    uint8_t highByte = (uint8_t)(grau_pms_16bit >> 8); // Obtém o byte mais significativo
+    uint8_t lowByte = (uint8_t)(grau_pms_16bit & 0xFF); // Obtém o byte menos significativo
+    EEPROM.write(0*2+260, tipo_ignicao); // Armazena o byte na posição i*2+260
+    EEPROM.write(1*2+260, qtd_dente);
+    EEPROM.write(2*2+260, local_rodafonica);
+    EEPROM.write(3*2+260, qtd_dente_faltante);
+    EEPROM.write(4*2+260, highByte); // Armazena o byte mais significativo na posição i*2+10
+    EEPROM.write(4*2+261, lowByte); // Armazena o byte menos significativo na posição i*2+11
+    EEPROM.write(5*2+260, qtd_cilindro);
+}
+
+
 void ler_dados_eeprom(){
-  // Leitura dos valores da EEPROM
+  // Leitura dos valores RPM da EEPROM
+  int highByte;
+  int lowByte;
 for (int i = 0; i < 16; i++) {
-    int highByte = EEPROM.read(i*2+10); // Lê o byte mais significativo da posição i*2+10
-    int lowByte = EEPROM.read(i*2+11); // Lê o byte menos significativo da posição i*2+11
+    highByte = EEPROM.read(i*2+10); // Lê o byte mais significativo da posição i*2+10
+    lowByte = EEPROM.read(i*2+11); // Lê o byte menos significativo da posição i*2+11
     vetor_rpm[i] = (highByte << 8) | lowByte; // Recria o valor original a partir dos dois bytes lidos  
 }
-// Leitura vetor_map e matrix da EEPROM
+// Leitura map e matrix ponto da EEPROM
 for (int i = 0; i < 16; i++) {
   vetor_map[i] = EEPROM.read(i+50);
   for (int j = 0; j < 16; j++) {
     matrix[i][j] = EEPROM.read(100 + i*16 + j);
   }
 }
+//leitura dos dados de configurações iniciais
+tipo_ignicao = EEPROM.read(0*2+260); 
+qtd_dente = EEPROM.read(1*2+260);
+local_rodafonica = EEPROM.read(2*2+260);
+qtd_dente_faltante = EEPROM.read(3*2+260);
+highByte = EEPROM.read(4*2+260); // Lê o byte mais significativo 
+lowByte = EEPROM.read(4*2+260+1); // Lê o byte menos significativo
+grau_pms = (highByte << 8) | lowByte; 
+grau_pms = grau_pms - 360;
+qtd_cilindro = EEPROM.read(5*2+260);
 }
 
 int procura_indice(int value, int *arr, int size)
@@ -129,7 +172,32 @@ int procura_indice(int value, int *arr, int size)
   }
   return index;
 }
+void envia_dados_ponto_ignicao(int status_rpm){
+    if(status_dados_ponto_ignicao)
+    {
+    // procura valor do rpm mais proximo e map para achar o ponto na matriz
+      Serial.print("d,");
+      Serial.print(procura_indice(10, vetor_map, 16));
+      Serial.print(",");
+      Serial.print(procura_indice(status_rpm, vetor_rpm, 16));
+      Serial.print(",");
+      Serial.print(status_rpm);
+      Serial.print(",");
+      Serial.print(grau_avanco);
+      Serial.print(",; ");
+    }
+    
+}
+void protege_ignicao(){
+  if(rpm_anterior < 20){
+    digitalWrite(ignicao_pins[0],0);
+    digitalWrite(ignicao_pins[1],0);
+    digitalWrite(ignicao_pins[2],0);
+    digitalWrite(ignicao_pins[3],0);
+  }
+}
 
+ 
 void leitura_entrada_dados_serial()
 {
   if (Serial.available() > 0)
@@ -149,23 +217,17 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'd')
     {
-      // procura valor do rpm mais proximo e map para achar o ponto na matriz
-      Serial.print("d,");
-      Serial.print(procura_indice(10, vetor_map, 16));
-      Serial.print(",");
-      Serial.print(procura_indice(rpm_anterior, vetor_rpm, 16));
-      Serial.print(",");
-      Serial.print(rpm_anterior);
-      Serial.print(",");
-      Serial.print(grau_avanco);
-      Serial.print(",;");
+     if(status_dados_ponto_ignicao){
+      status_dados_ponto_ignicao = false;
+     }else{
+      status_dados_ponto_ignicao = true;
+     }
     }
     if (data == 'e')//retorna dados da tabela caso e
     { 
-// Leitura dos valores da EEPROM
-    ler_dados_eeprom();
-
-delay(1000);
+      // Leitura dos valores da EEPROM
+      ler_dados_eeprom();
+      delay(1000);
       Serial.print("a,");
       // vetor map
       for (int  i = 0; i < 16; i++)
@@ -200,12 +262,70 @@ delay(1000);
     }
      if (data == 'f'){
       // Escrita dos valores na EEPROM
-      gravar_dados_eeprom();
-      delay(1000);
-      ler_dados_eeprom();
+      gravar_dados_eeprom_tabela_ignicao_map_rpm();
+      
     }
+    if (data == 'g'){
+      tipo_vetor_configuracao_inicial = 1;
+    }
+     if (data == 'h')//retorna dados 
+    { 
+      // Leitura dos valores da EEPROM
+      ler_dados_eeprom();
+      delay(2000);
+      Serial.print("a,");
+      // vetor map
+      for (int  i = 0; i < 16; i++)
+      {
+        Serial.print(vetor_map[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+
+      Serial.print("b,");
+      // vetor rpm
+      for (int  i = 0; i < 16; i++)
+      {
+        Serial.print(vetor_rpm[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+      //matrix ponto 
+      // transforma matriz em vetor
+      Serial.print("c,");
+        int k = 0;
+        for (int i = 0; i < 16; i++)
+        {
+          for (int j = 0; j < 16; j++)
+          {
+            Serial.print(matrix[i][j]);
+            Serial.print(",");
+            k++;
+          }
+        }
+        Serial.print(";");
+
+      // dados configuração inicial
+      Serial.print("g,");
+      Serial.print(tipo_ignicao);
+      Serial.print(",");
+      Serial.print(qtd_dente);
+      Serial.print(",");
+      Serial.print(local_rodafonica);
+      Serial.print(",");
+      Serial.print(qtd_dente_faltante);
+      Serial.print(",");
+      Serial.print(grau_pms);
+      Serial.print(",");
+      Serial.print(qtd_cilindro * local_rodafonica);
+      Serial.print(",");
+      Serial.print(";");
+      
+    }
+
     if (data == ';')
     { // final do vetor
+      
       if (tipo_vetor_map)
       {
         for (int i = 0; i < 16; i++)
@@ -237,6 +357,16 @@ delay(1000);
           }
         }
         tipo_vetor_matrix = 0;
+      }
+      if (tipo_vetor_configuracao_inicial){
+          tipo_ignicao = values[0];
+          qtd_dente = values[1];
+          local_rodafonica = values[2]; // 2 para virabrequinho e 1 para comando
+          qtd_dente_faltante = values[3];
+          grau_pms = values[4];
+          qtd_cilindro = values[5] / local_rodafonica;
+          
+          tipo_vetor_configuracao_inicial = 0;
       }
 
       index = 0; // reinicia índice do vetor
@@ -392,8 +522,12 @@ void leitor_sensor_roda_fonica()
     falha++;
     pms = 1;
     
-    //cilindro_ign = 0;
-    grau_avanco = matrix[procura_indice(10, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    if(rpm_anterior < 500){
+      grau_avanco = grau_avanco_partida;
+    }else{
+      grau_avanco = matrix[procura_indice(10, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+    }
+    
     cilindro = 2;
     tempo_atual_proxima_ignicao[0] = tempo_atual;
       //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
@@ -493,11 +627,10 @@ void setup()
    // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
   //inicializar_valores();
   //delay(1000);
-  //gravar_dados_eeprom();
-  //delay(1000);
   //aqui le os dados da eeprom que forem salvo anteriormente
   ler_dados_eeprom();
   delay(1000);
+  
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
   pinMode(ign3, OUTPUT);
@@ -513,7 +646,11 @@ void loop()
 //   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
+  gravar_dados_eeprom_configuracao_inicial();
    rpm_anterior = rpm;
+   envia_dados_ponto_ignicao(rpm_anterior);
+   protege_ignicao();
+      
   // atualiza o tempo da última execução
    ultima_execucao = millis();
 
