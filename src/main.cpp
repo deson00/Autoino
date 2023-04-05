@@ -84,20 +84,17 @@ bool status_dados_ponto_ignicao = false;
 int valor_map = 10;
 
 void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
+  Serial.println("Gravando dados");
   int highByte;
   int lowByte;
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
   //a primeira posição de escrita será a posição 10 ou 11 
   //(dependendo do valor do primeiro elemento do vetor_rpm) e a última posição de escrita será a posição 42.
 for (int i = 0; i < 16; i++) {
-  if (vetor_rpm[i] <= 255) {
-    EEPROM.write(i*2+10, vetor_rpm[i]); // Armazena o byte na posição i*2+10
-  } else {
     highByte = vetor_rpm[i] >> 8; // Obtém o byte mais significativo
     lowByte = vetor_rpm[i] & 0xFF; // Obtém o byte menos significativo
     EEPROM.write(i*2+10, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(i*2+11, lowByte); // Armazena o byte menos significativo na posição i*2+11
-  }
 }
  // Escrita da matrix na EEPROM
  //A primeira chamada à função "EEPROM.write()" escreve 1 byte no endereço 50 da memória EEPROM, e cada iteração subsequente do loop escreve mais 1 byte no endereço seguinte. Assim, ao final do loop, a última posição escrita será a posição 65 (ou seja, 50 + 16).
@@ -110,18 +107,7 @@ for (int i = 0; i < 16; i++) {
   }
 }
 for (int i = 0; i < 16; i++) {
-  int storedValue;
-  if (vetor_rpm[i] <= 255) {
-    storedValue = EEPROM.read(i*2+10);
-    if (storedValue != vetor_rpm[i]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(": valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_rpm[i]);
-    }
-  } else {
+    int storedValue;
     int storedHighByte = EEPROM.read(i*2+10);
     int storedLowByte = EEPROM.read(i*2+11);
     storedValue = (storedHighByte << 8) | storedLowByte;
@@ -133,7 +119,6 @@ for (int i = 0; i < 16; i++) {
       Serial.print(", valor esperado = ");
       Serial.println(vetor_rpm[i]);
     }
-  }
 }
 
 for (int i = 0; i < 16; i++) {
@@ -160,8 +145,7 @@ for (int i = 0; i < 16; i++) {
     }
   }
 }
-
-
+Serial.println("Gravação finalizada");
 }
 
 void gravar_dados_eeprom_configuracao_inicial() {
@@ -171,13 +155,13 @@ void gravar_dados_eeprom_configuracao_inicial() {
     }
     uint8_t highByte = (uint8_t)(grau_pms_16bit >> 8); // Obtém o byte mais significativo
     uint8_t lowByte = (uint8_t)(grau_pms_16bit & 0xFF); // Obtém o byte menos significativo
-    EEPROM.write(0*2+260, tipo_ignicao); // Armazena o byte na posição i*2+260
-    EEPROM.write(1*2+260, qtd_dente);
-    EEPROM.write(2*2+260, local_rodafonica);
-    EEPROM.write(3*2+260, qtd_dente_faltante);
-    EEPROM.write(4*2+260, highByte); // Armazena o byte mais significativo na posição i*2+10
-    EEPROM.write(4*2+261, lowByte); // Armazena o byte menos significativo na posição i*2+11
-    EEPROM.write(5*2+260, qtd_cilindro);
+    EEPROM.write(0*2+360, tipo_ignicao); // Armazena o byte na posição i*2+260
+    EEPROM.write(1*2+360, qtd_dente);
+    EEPROM.write(2*2+360, local_rodafonica);
+    EEPROM.write(3*2+360, qtd_dente_faltante);
+    EEPROM.write(4*2+360, highByte); // Armazena o byte mais significativo na posição i*2+10
+    EEPROM.write(4*2+361, lowByte); // Armazena o byte menos significativo na posição i*2+11
+    EEPROM.write(5*2+360, qtd_cilindro);
 }
 
 
@@ -197,16 +181,89 @@ for (int i = 0; i < 16; i++) {
     matrix[i][j] = EEPROM.read(100 + i*16 + j);
   }
 }
+
+
+for (int i = 0; i < 16; i++) {
+  int storedValue = EEPROM.read(i+50);
+  if (storedValue != vetor_map[i]) {
+    Serial.print("Erro de gravação na posição ");
+    Serial.print(i);
+    Serial.print(" do vetor_map: valor lido da EEPROM = ");
+    Serial.print(storedValue);
+    Serial.print(", valor esperado = ");
+    Serial.println(vetor_map[i]);
+  }
+  for (int j = 0; j < 16; j++) {
+    storedValue = EEPROM.read(100 + i*16 + j);
+    if (storedValue != matrix[i][j]) {
+      Serial.print("Erro de gravação na posição ");
+      Serial.print(i);
+      Serial.print(",");
+      Serial.print(j);
+      Serial.print(" da matriz: valor lido da EEPROM = ");
+      Serial.print(storedValue);
+      Serial.print(", valor esperado = ");
+      Serial.println(matrix[i][j]);
+    }
+  }
+}
 //leitura dos dados de configurações iniciais
-tipo_ignicao = EEPROM.read(0*2+260); 
-qtd_dente = EEPROM.read(1*2+260);
-local_rodafonica = EEPROM.read(2*2+260);
-qtd_dente_faltante = EEPROM.read(3*2+260);
-highByte = EEPROM.read(4*2+260); // Lê o byte mais significativo 
-lowByte = EEPROM.read(4*2+260+1); // Lê o byte menos significativo
+tipo_ignicao = EEPROM.read(0*2+360); 
+qtd_dente = EEPROM.read(1*2+360);
+local_rodafonica = EEPROM.read(2*2+360);
+qtd_dente_faltante = EEPROM.read(3*2+360);
+highByte = EEPROM.read(4*2+360); // Lê o byte mais significativo 
+lowByte = EEPROM.read(4*2+360+1); // Lê o byte menos significativo
 grau_pms = (highByte << 8) | lowByte; 
-grau_pms = grau_pms - 360;
-qtd_cilindro = EEPROM.read(5*2+260);
+grau_pms = grau_pms - 360; //volta os dados para valor original 
+qtd_cilindro = EEPROM.read(5*2+360);
+Serial.print("a,");
+      // vetor map
+      for (int  i = 0; i < 16; i++)
+      {
+        Serial.print(vetor_map[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+
+      Serial.print("b,");
+      // vetor rpm
+      for (int  i = 0; i < 16; i++)
+      {
+        Serial.print(vetor_rpm[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+      //matrix ponto 
+      // transforma matriz em vetor
+      Serial.print("c,");
+        int k = 0;
+        for (int i = 0; i < 16; i++)
+        {
+          for (int j = 0; j < 16; j++)
+          {
+            Serial.print(matrix[i][j]);
+            Serial.print(",");
+            k++;
+          }
+        }
+        Serial.print(";");
+
+      // dados configuração inicial
+      Serial.print("g,");
+      Serial.print(tipo_ignicao);
+      Serial.print(",");
+      Serial.print(qtd_dente);
+      Serial.print(",");
+      Serial.print(local_rodafonica);
+      Serial.print(",");
+      Serial.print(qtd_dente_faltante);
+      Serial.print(",");
+      Serial.print(grau_pms);
+      Serial.print(",");
+      Serial.print(qtd_cilindro * local_rodafonica);
+      Serial.print(",");
+      Serial.print(";");
 }
 
 int procura_indice(int value, int *arr, int size)
@@ -258,19 +315,19 @@ void leitura_entrada_dados_serial()
   if (Serial.available() > 0)
   {
     char data = Serial.read();
-    if (data == 'a')
+    if (data == 'a')//entrada de dados do vetor map
     {
       tipo_vetor_map = 1;
     }
-    if (data == 'b')
+    if (data == 'b')//entrada de dados do vetor rpm
     {
       tipo_vetor_rpm = 1;
     }
-    if (data == 'c')
+    if (data == 'c')//entrada de dados do da matrix em vetor
     {
       tipo_vetor_matrix = 1;
     }
-    if (data == 'd')
+    if (data == 'd')// retorna ponto de igniçao 
     {
      if(status_dados_ponto_ignicao){
       status_dados_ponto_ignicao = false;
@@ -282,38 +339,6 @@ void leitura_entrada_dados_serial()
     { 
       // Leitura dos valores da EEPROM
       ler_dados_eeprom();
-      delay(1000);
-      Serial.print("a,");
-      // vetor map
-      for (int  i = 0; i < 16; i++)
-      {
-        Serial.print(vetor_map[i]);
-        Serial.print(",");
-      }
-      Serial.print(";");
-
-      Serial.print("b,");
-      // vetor rpm
-      for (int  i = 0; i < 16; i++)
-      {
-        Serial.print(vetor_rpm[i]);
-        Serial.print(",");
-      }
-      Serial.print(";");
-      //matrix ponto 
-      // transforma matriz em vetor
-      Serial.print("c,");
-        int k = 0;
-        for (int i = 0; i < 16; i++)
-        {
-          for (int j = 0; j < 16; j++)
-          {
-            Serial.print(matrix[i][j]);
-            Serial.print(",");
-            k++;
-          }
-        }
-        Serial.print(";");
     }
      if (data == 'f'){
       // Escrita dos valores na EEPROM
@@ -329,54 +354,6 @@ void leitura_entrada_dados_serial()
       // Leitura dos valores da EEPROM
       ler_dados_eeprom();
       //delay(2000);
-      Serial.print("a,");
-      // vetor map
-      for (int  i = 0; i < 16; i++)
-      {
-        Serial.print(vetor_map[i]);
-        Serial.print(",");
-      }
-      Serial.print(";");
-
-      Serial.print("b,");
-      // vetor rpm
-      for (int  i = 0; i < 16; i++)
-      {
-        Serial.print(vetor_rpm[i]);
-        Serial.print(",");
-      }
-      Serial.print(";");
-      //matrix ponto 
-      // transforma matriz em vetor
-      Serial.print("c,");
-        int k = 0;
-        for (int i = 0; i < 16; i++)
-        {
-          for (int j = 0; j < 16; j++)
-          {
-            Serial.print(matrix[i][j]);
-            Serial.print(",");
-            k++;
-          }
-        }
-        Serial.print(";");
-
-      // dados configuração inicial
-      Serial.print("g,");
-      Serial.print(tipo_ignicao);
-      Serial.print(",");
-      Serial.print(qtd_dente);
-      Serial.print(",");
-      Serial.print(local_rodafonica);
-      Serial.print(",");
-      Serial.print(qtd_dente_faltante);
-      Serial.print(",");
-      Serial.print(grau_pms);
-      Serial.print(",");
-      Serial.print(qtd_cilindro * local_rodafonica);
-      Serial.print(",");
-      Serial.print(";");
-      
     }
 
     if (data == ';')
@@ -414,7 +391,7 @@ void leitura_entrada_dados_serial()
         }
         tipo_vetor_matrix = 0;
       }
-      if (tipo_vetor_configuracao_inicial){
+      if (tipo_vetor_configuracao_inicial == 1){
           tipo_ignicao = values[0];
           qtd_dente = values[1];
           local_rodafonica = values[2]; // 2 para virabrequinho e 1 para comando
@@ -600,8 +577,8 @@ if ((captura_dwell[0] == false) && (tempo_proxima_ignicao[2] != 0) && (cilindro_
   tempo_proxima_ignicao[2] = 0;
   cilindro_ign = 0 ;
   cilindro = 2;
-  //Serial.print(cilindro_ign);
-  //Serial.print(" x ");
+  Serial.print(cilindro_ign);
+  Serial.print(" x ");
   //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
     
     //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
