@@ -50,13 +50,13 @@ volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
 int dente = 0;
-unsigned long intervalo_execucao = 500; // intervalo de 1 segundo em milissegundos
+unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 volatile int pulsos;
 volatile unsigned long ti = 0;
 volatile unsigned long tf;
 volatile unsigned int rpm;
-int rpm_anterior = 0;
+volatile int rpm_anterior = 0;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
@@ -81,7 +81,8 @@ int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
 int tipo_vetor_configuracao_inicial = 0;
 bool status_dados_ponto_ignicao = false;
-int valor_map = 10;
+bool status_dados_tempo_real = false;
+volatile int valor_map = 10;
 
 void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
   Serial.println("Gravando dados");
@@ -288,6 +289,7 @@ void envia_dados_ponto_ignicao(int status_map, int status_rpm){
     if(status_dados_ponto_ignicao)
     {
     // procura valor do rpm mais proximo e map para achar o ponto na matriz
+      Serial.print(",");
       Serial.print("d,");
       Serial.print(procura_indice(status_map, vetor_map, 16));
       Serial.print(",");
@@ -296,7 +298,26 @@ void envia_dados_ponto_ignicao(int status_map, int status_rpm){
       Serial.print(status_rpm);
       Serial.print(",");
       Serial.print(grau_avanco);
-      Serial.print(",; ");
+      //Serial.print(",; ");
+    }
+    
+}
+void envia_dados_tempo_real(){
+    while (status_dados_tempo_real)
+    {
+      Serial.print(",");
+      Serial.print(1);
+      Serial.print(",");
+      Serial.print(rpm);
+      Serial.print(",");
+      Serial.print(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]));
+      Serial.print(",");
+      Serial.print(80);
+      Serial.print(",");
+      Serial.print(grau_avanco);
+      //Serial.print(",");
+      //Serial.print(";");
+      delay(100);
     }
     
 }
@@ -340,20 +361,27 @@ void leitura_entrada_dados_serial()
       // Leitura dos valores da EEPROM
       ler_dados_eeprom();
     }
-     if (data == 'f'){
+     if (data == 'f'){//grava dados na eeprom
       // Escrita dos valores na EEPROM
       gravar_dados_eeprom_tabela_ignicao_map_rpm();
       gravar_dados_eeprom_configuracao_inicial();
       
     }
-    if (data == 'g'){
+    if (data == 'g'){//grava configuração inicial
       tipo_vetor_configuracao_inicial = 1;
     }
-     if (data == 'h')//retorna dados 
+     if (data == 'h')//retorna dados da ecu
     { 
       // Leitura dos valores da EEPROM
       ler_dados_eeprom();
       //delay(2000);
+    }
+    if (data == 'i') {// retorna ponto de igniçao
+     if(status_dados_tempo_real){
+      status_dados_tempo_real = false;
+     }else{
+      status_dados_tempo_real = true;
+     }
     }
 
     if (data == ';')
@@ -577,8 +605,8 @@ if ((captura_dwell[0] == false) && (tempo_proxima_ignicao[2] != 0) && (cilindro_
   tempo_proxima_ignicao[2] = 0;
   cilindro_ign = 0 ;
   cilindro = 2;
-  Serial.print(cilindro_ign);
-  Serial.print(" x ");
+  //Serial.print(cilindro_ign);
+  //Serial.print(" x ");
   //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
     
     //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
@@ -685,6 +713,7 @@ void loop()
   //gravar_dados_eeprom_tabela_ignicao_map_rpm();
    rpm_anterior = rpm;
    envia_dados_ponto_ignicao(valor_map, rpm_anterior);
+   envia_dados_tempo_real();
    protege_ignicao();
 
   //  Serial.print("Maior valor no vetor map:");
