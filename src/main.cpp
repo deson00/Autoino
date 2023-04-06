@@ -381,6 +381,7 @@ void leitura_entrada_dados_serial()
       status_dados_tempo_real = false;
      }else{
       status_dados_tempo_real = true;
+      envia_dados_tempo_real();
      }
     }
 
@@ -713,7 +714,7 @@ void loop()
   //gravar_dados_eeprom_tabela_ignicao_map_rpm();
    rpm_anterior = rpm;
    envia_dados_ponto_ignicao(valor_map, rpm_anterior);
-   envia_dados_tempo_real();
+  // envia_dados_tempo_real();
    protege_ignicao();
 
   //  Serial.print("Maior valor no vetor map:");
