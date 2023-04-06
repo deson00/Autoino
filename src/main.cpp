@@ -285,20 +285,22 @@ int procura_indice(int value, int *arr, int size)
   }
   return index;
 }
-void envia_dados_ponto_ignicao(int status_map, int status_rpm){
-    if(status_dados_ponto_ignicao)
+void envia_dados_ponto_ignicao(){
+    while(status_dados_ponto_ignicao)
     {
     // procura valor do rpm mais proximo e map para achar o ponto na matriz
       Serial.print(",");
       Serial.print("d,");
-      Serial.print(procura_indice(status_map, vetor_map, 16));
+      Serial.print(procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16));
       Serial.print(",");
-      Serial.print(procura_indice(status_rpm, vetor_rpm, 16));
+      Serial.print(procura_indice(rpm, vetor_rpm, 16));
       Serial.print(",");
-      Serial.print(status_rpm);
+      Serial.print(rpm);
       Serial.print(",");
-      Serial.print(grau_avanco);
+      Serial.print(matrix[procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)]);
       //Serial.print(",; ");
+      delay(100);
+      
     }
     
 }
@@ -354,6 +356,7 @@ void leitura_entrada_dados_serial()
       status_dados_ponto_ignicao = false;
      }else{
       status_dados_ponto_ignicao = true;
+      envia_dados_ponto_ignicao();
      }
     }
     if (data == 'e')//retorna dados da tabela caso e
@@ -713,7 +716,7 @@ void loop()
   //gravar_dados_eeprom_configuracao_inicial();
   //gravar_dados_eeprom_tabela_ignicao_map_rpm();
    rpm_anterior = rpm;
-   envia_dados_ponto_ignicao(valor_map, rpm_anterior);
+   //envia_dados_ponto_ignicao(valor_map, rpm_anterior);
   // envia_dados_tempo_real();
    protege_ignicao();
 
