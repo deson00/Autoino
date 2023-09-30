@@ -599,6 +599,32 @@ void leitor_sensor_roda_fonica()
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
 
+  tempo_anterior = tempo_atual;
+  interrupts();
+}
+
+void setup()
+{
+   // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
+  //inicializar_valores();
+  //delay(1000);
+  //aqui le os dados da eeprom que forem salvo anteriormente
+  ler_dados_eeprom();
+  //delay(1000);
+  
+  pinMode(ign1, OUTPUT);
+  pinMode(ign2, OUTPUT);
+  pinMode(ign3, OUTPUT);
+  pinMode(ign4, OUTPUT);
+  pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
+  pinMode(pino_sensor_map, INPUT);
+  attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
+  Serial.begin(9600);
+}
+
+void loop()
+{ 
+    tempo_atual = micros() ;
 //IGN1
 if ((captura_dwell[0] == false) && (tempo_proxima_ignicao[2] != 0) && (cilindro_ign == 4) && (tempo_atual - tempo_atual_proxima_ignicao[2] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[2]) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
@@ -679,31 +705,6 @@ if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_
     digitalWrite(ignicao_pins[2],0);
   } 
 
-  tempo_anterior = tempo_atual;
-  interrupts();
-}
-
-void setup()
-{
-   // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
-  //inicializar_valores();
-  //delay(1000);
-  //aqui le os dados da eeprom que forem salvo anteriormente
-  ler_dados_eeprom();
-  //delay(1000);
-  
-  pinMode(ign1, OUTPUT);
-  pinMode(ign2, OUTPUT);
-  pinMode(ign3, OUTPUT);
-  pinMode(ign4, OUTPUT);
-  pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
-  pinMode(pino_sensor_map, INPUT);
-  attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
-  Serial.begin(9600);
-}
-
-void loop()
-{ 
   valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]);   
   leitura_entrada_dados_serial();
 //   // verifica se já passou o intervalo de tempo
