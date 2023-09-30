@@ -53,9 +53,11 @@ int dente = 0;
 unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 volatile int pulsos;
-volatile unsigned long ti = 0;
-volatile unsigned long tf;
-volatile unsigned int rpm;
+unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
+unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
+//volatile unsigned long ti = 0;
+//volatile unsigned long tf;
+volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
@@ -456,7 +458,7 @@ void leitura_entrada_dados_serial()
     }
   }
 }
-/*
+
 void inicializar_valores() {
      // seta os valores no vetor_map
       vetor_map[0] = 100;
@@ -520,26 +522,15 @@ void inicializar_valores() {
     }
   
 }
-*/
+
 
 void leitor_sensor_roda_fonica()
 {
   noInterrupts();
   qtd_leitura++;
   pulsos++;
-  tf = micros();
-  long delta = tf - ti;
-  rpm = (60) / (float(delta) / 1000000 * 60);
-  ti = tf;
-  // calculo de mediana
-  /*if(n % 2 == 0){
-    md = n/2;
-    mediana = (v[md] + v[md-1])/2;
-  }
-  else{
-    md = n/2;
-    mediana = v[md];
-  })*/
+ 
+  
 
   tempo_atual = micros() ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
@@ -580,6 +571,11 @@ void leitor_sensor_roda_fonica()
 
     // Serial.println("");
     // Serial.print("__");
+    tempo_final_rpm = micros();
+    long delta = tempo_final_rpm - tempo_inicial_rpm;
+    rpm = (60) / (float(delta) / 1000000);
+    tempo_inicial_rpm = tempo_final_rpm;
+
     tempo_cada_grau = tempo_total_volta_completa / 360;
 
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
@@ -694,7 +690,7 @@ void setup()
   //delay(1000);
   //aqui le os dados da eeprom que forem salvo anteriormente
   ler_dados_eeprom();
-  delay(1000);
+  //delay(1000);
   
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
