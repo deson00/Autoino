@@ -53,9 +53,11 @@ int dente = 0;
 unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 volatile int pulsos;
-volatile unsigned long ti = 0;
-volatile unsigned long tf;
-volatile unsigned int rpm;
+unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
+unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
+//volatile unsigned long ti = 0;
+//volatile unsigned long tf;
+volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
@@ -456,7 +458,7 @@ void leitura_entrada_dados_serial()
     }
   }
 }
-/*
+
 void inicializar_valores() {
      // seta os valores no vetor_map
       vetor_map[0] = 100;
@@ -520,26 +522,15 @@ void inicializar_valores() {
     }
   
 }
-*/
+
 
 void leitor_sensor_roda_fonica()
 {
   noInterrupts();
   qtd_leitura++;
   pulsos++;
-  tf = micros();
-  long delta = tf - ti;
-  rpm = (60) / (float(delta) / 1000000 * 60);
-  ti = tf;
-  // calculo de mediana
-  /*if(n % 2 == 0){
-    md = n/2;
-    mediana = (v[md] + v[md-1])/2;
-  }
-  else{
-    md = n/2;
-    mediana = v[md];
-  })*/
+ 
+  
 
   tempo_atual = micros() ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
@@ -580,6 +571,11 @@ void leitor_sensor_roda_fonica()
 
     // Serial.println("");
     // Serial.print("__");
+    tempo_final_rpm = micros();
+    long delta = tempo_final_rpm - tempo_inicial_rpm;
+    rpm = (60) / (float(delta) / 1000000);
+    tempo_inicial_rpm = tempo_final_rpm;
+
     tempo_cada_grau = tempo_total_volta_completa / 360;
 
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
@@ -603,6 +599,32 @@ void leitor_sensor_roda_fonica()
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
 
+  tempo_anterior = tempo_atual;
+  interrupts();
+}
+
+void setup()
+{
+   // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
+  //inicializar_valores();
+  //delay(1000);
+  //aqui le os dados da eeprom que forem salvo anteriormente
+  ler_dados_eeprom();
+  //delay(1000);
+  
+  pinMode(ign1, OUTPUT);
+  pinMode(ign2, OUTPUT);
+  pinMode(ign3, OUTPUT);
+  pinMode(ign4, OUTPUT);
+  pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
+  pinMode(pino_sensor_map, INPUT);
+  attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
+  Serial.begin(9600);
+}
+
+void loop()
+{ 
+    tempo_atual = micros() ;
 //IGN1
 if ((captura_dwell[0] == false) && (tempo_proxima_ignicao[2] != 0) && (cilindro_ign == 4) && (tempo_atual - tempo_atual_proxima_ignicao[2] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[2]) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
@@ -683,31 +705,6 @@ if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_
     digitalWrite(ignicao_pins[2],0);
   } 
 
-  tempo_anterior = tempo_atual;
-  interrupts();
-}
-
-void setup()
-{
-   // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
-  //inicializar_valores();
-  //delay(1000);
-  //aqui le os dados da eeprom que forem salvo anteriormente
-  ler_dados_eeprom();
-  delay(1000);
-  
-  pinMode(ign1, OUTPUT);
-  pinMode(ign2, OUTPUT);
-  pinMode(ign3, OUTPUT);
-  pinMode(ign4, OUTPUT);
-  pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
-  pinMode(pino_sensor_map, INPUT);
-  attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
-  Serial.begin(9600);
-}
-
-void loop()
-{ 
   valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]);   
   leitura_entrada_dados_serial();
 //   // verifica se já passou o intervalo de tempo
