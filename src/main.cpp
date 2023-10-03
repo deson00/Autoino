@@ -632,47 +632,32 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 //IGN
 if ((captura_dwell[cilindro -1] == false) && (cilindro <= qtd_cilindro) && (tempo_atual - tempo_atual_proxima_ignicao[0] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[0]) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
-  // // Desative todos os pinos de ignição
-  // for (int i = 0; i < qtd_cilindro / 2; i++) {
-  //   digitalWrite(ignicao_pins[i], 0);
-  // }
-  //tempo_proxima_ignicao[0] = 0;
-  //tempo_atual_proxima_ignicao[0] = tempo_atual_proxima_ignicao[0];
-  //tempo_proxima_ignicao[0] = (grau_pms + grau_entre_cada_cilindro) * tempo_cada_grau;
-  tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * cilindro)) * tempo_cada_grau;
-  //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
-  
-  //Serial.print(cilindro_ign);
-  //Serial.print(" x ");
-  //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
-    
-    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
-    //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
+    tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * cilindro)) * tempo_cada_grau;
     captura_dwell[cilindro - 1] = true;
     tempo_percorrido[cilindro - 1] = tempo_atual;
-    if (cilindro <= 4) {
+    if (cilindro <= qtd_cilindro/2) {
       digitalWrite(ignicao_pins[cilindro - 1], 1); // Ativa os pinos 1 a 4 para a primeira sequência
     } else {
-      digitalWrite(ignicao_pins[cilindro - 5], 1); // Ativa os pinos 1 a 4 para a segunda sequência
+      digitalWrite(ignicao_pins[cilindro - qtd_cilindro/2 - 1], 1); // Ativa os pinos 1 a 4 para a segunda sequência
     }
     
     cilindro++;
     
   }
 
-  // Desliga as bobinas após 4ms
-  if(cilindro <= 5 ){
-    for (int i = 0; i < 4; i++) {
+  // Desliga as bobinas após dwell
+  if(cilindro <= qtd_cilindro/2 +1 ){
+    for (int i = 0; i < qtd_cilindro/2; i++) {
     if ((tempo_atual - tempo_percorrido[i]) >= 4000) {
       captura_dwell[i] = false;
       digitalWrite(ignicao_pins[i], 0);
     }
   }
   }else{
-    for (int i = 4; i < 8; i++) {
+    for (int i = qtd_cilindro/2; i < qtd_cilindro; i++) {
     if ((tempo_atual - tempo_percorrido[i]) >= 4000) {
       captura_dwell[i] = false;
-      digitalWrite(ignicao_pins[i], 0);
+      digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
     }
     }
   }  
