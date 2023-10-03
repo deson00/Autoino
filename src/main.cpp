@@ -7,11 +7,11 @@
 #define pino_sensor_map A3
 
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
-  int qtd_dente = 60;
-  int qtd_dente_faltante = 2;
-  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
+  int qtd_dente = 12; //60 
+  int qtd_dente_faltante = 1; //2
+  int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
   int qtd_cilindro = 6 / local_rodafonica;
-  int grau_pms = 70;
+  int grau_pms = 30;
   int dwell_bobina = 4;
 
 int ign1 = 40;
@@ -59,7 +59,7 @@ unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rp
 //volatile unsigned long tf;
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
+const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
 volatile int estado_pino_ignicao = LOW;  // variavel armazenha o estado do pino de ignição se esta ligado ou desligado
@@ -529,8 +529,6 @@ void leitor_sensor_roda_fonica()
   noInterrupts();
   qtd_leitura++;
   pulsos++;
- 
-  
 
   tempo_atual = micros() ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
@@ -595,7 +593,10 @@ void leitor_sensor_roda_fonica()
       tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + grau_entre_cada_cilindro) * tempo_cada_grau;
       //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
       //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
-
+    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){//apenas teste precisa resolver 
+      cilindro = 1;
+      tempo_proxima_ignicao[0] = (grau_pms - grau_avanco) * tempo_cada_grau;
+    }
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
 
@@ -624,7 +625,94 @@ void setup()
 
 void loop()
 { 
-    tempo_atual = micros() ;
+tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
+
+if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+ 
+//IGN
+if ((captura_dwell[cilindro -1] == false) && (cilindro <= qtd_cilindro) && (tempo_atual - tempo_atual_proxima_ignicao[0] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[0]) && (falha > 3) && (pms == 1) && (rpm >= 100))
+{
+    tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * cilindro)) * tempo_cada_grau;
+    captura_dwell[cilindro - 1] = true;
+    tempo_percorrido[cilindro - 1] = tempo_atual;
+    if (cilindro <= qtd_cilindro/2) {
+      digitalWrite(ignicao_pins[cilindro - 1], 1); // Ativa os pinos 1 a 4 para a primeira sequência
+    } else {
+      digitalWrite(ignicao_pins[cilindro - qtd_cilindro/2 - 1], 1); // Ativa os pinos 1 a 4 para a segunda sequência
+    }
+    
+    cilindro++;
+    
+  }
+
+  // Desliga as bobinas após dwell
+  if(cilindro <= qtd_cilindro/2 +1 ){
+    for (int i = 0; i < qtd_cilindro/2; i++) {
+    if ((tempo_atual - tempo_percorrido[i]) >= 4000) {
+      captura_dwell[i] = false;
+      digitalWrite(ignicao_pins[i], 0);
+    }
+  }
+  }else{
+    for (int i = qtd_cilindro/2; i < qtd_cilindro; i++) {
+    if ((tempo_atual - tempo_percorrido[i]) >= 4000) {
+      captura_dwell[i] = false;
+      digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
+    }
+    }
+  }  
+  
+  /*
+  //no comando 1 volta precisa acionar todos os cilindros por isso repetimos abaixo no semi sequencial
+  //IGN1
+  if((tempo_atual - tempo_percorrido[0]) >= 4000){
+    captura_dwell[0] = false;
+    digitalWrite(ignicao_pins[0],0);
+  }
+  //IGN2
+  if((tempo_atual - tempo_percorrido[1]) >= 4000){
+    captura_dwell[1] = false;
+    digitalWrite(ignicao_pins[1],0);
+  }
+  //IGN3
+  if((tempo_atual - tempo_percorrido[2]) >= 4000){
+    captura_dwell[2] = false;
+    digitalWrite(ignicao_pins[2],0);
+  }
+  //IGN4
+  if((tempo_atual - tempo_percorrido[3]) >= 4000){
+    captura_dwell[3] = false;
+    digitalWrite(ignicao_pins[3],0);
+  }
+  
+    //IGN1
+  if((tempo_atual - tempo_percorrido[4]) >= 4000){
+    captura_dwell[4] = false;
+    digitalWrite(ignicao_pins[0],0);
+  }
+  //IGN2
+  if((tempo_atual - tempo_percorrido[5]) >= 4000){
+    captura_dwell[5] = false;
+    digitalWrite(ignicao_pins[1],0);
+  }
+  //IGN3
+  if((tempo_atual - tempo_percorrido[6]) >= 4000){
+    captura_dwell[6] = false;
+    digitalWrite(ignicao_pins[2],0);
+  }
+  //IGN4
+  if((tempo_atual - tempo_percorrido[7]) >= 4000){
+    captura_dwell[7] = false;
+    digitalWrite(ignicao_pins[3],0);
+  }
+  */
+  
+  
+ 
+}
+
+//----------------------------//
+if(local_rodafonica == 2){ // 2 para virabrequinho e 1 para comando
 //IGN1
 if ((captura_dwell[0] == false) && (tempo_proxima_ignicao[2] != 0) && (cilindro_ign == 4) && (tempo_atual - tempo_atual_proxima_ignicao[2] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[2]) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
@@ -704,7 +792,7 @@ if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_
     captura_dwell[2] = false;
     digitalWrite(ignicao_pins[2],0);
   } 
-
+}
   valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]);   
   leitura_entrada_dados_serial();
 //   // verifica se já passou o intervalo de tempo
