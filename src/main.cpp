@@ -10,7 +10,7 @@
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
   int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
-  int qtd_cilindro = 8 / local_rodafonica;
+  int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 30;
   int dwell_bobina = 4;
 
@@ -59,7 +59,7 @@ unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rp
 //volatile unsigned long tf;
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
+const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
 volatile int estado_pino_ignicao = LOW;  // variavel armazenha o estado do pino de ignição se esta ligado ou desligado
@@ -632,6 +632,10 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 //IGN
 if ((captura_dwell[cilindro -1] == false) && (cilindro <= qtd_cilindro) && (tempo_atual - tempo_atual_proxima_ignicao[0] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[0]) && (falha > 3) && (pms == 1) && (rpm >= 100))
 {
+  // // Desative todos os pinos de ignição
+  // for (int i = 0; i < qtd_cilindro / 2; i++) {
+  //   digitalWrite(ignicao_pins[i], 0);
+  // }
   //tempo_proxima_ignicao[0] = 0;
   //tempo_atual_proxima_ignicao[0] = tempo_atual_proxima_ignicao[0];
   //tempo_proxima_ignicao[0] = (grau_pms + grau_entre_cada_cilindro) * tempo_cada_grau;
@@ -646,15 +650,34 @@ if ((captura_dwell[cilindro -1] == false) && (cilindro <= qtd_cilindro) && (temp
     //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
     captura_dwell[cilindro - 1] = true;
     tempo_percorrido[cilindro - 1] = tempo_atual;
-    if(tipo_ignicao_sequencial == 0 && cilindro >= 5){
-      digitalWrite(ignicao_pins[cilindro - 5 ],1);
-    }else{
-      digitalWrite(ignicao_pins[cilindro - 1],1);
+    if (cilindro <= 4) {
+      digitalWrite(ignicao_pins[cilindro - 1], 1); // Ativa os pinos 1 a 4 para a primeira sequência
+    } else {
+      digitalWrite(ignicao_pins[cilindro - 5], 1); // Ativa os pinos 1 a 4 para a segunda sequência
     }
     
     cilindro++;
     
   }
+
+  // Desliga as bobinas após 4ms
+  if(cilindro <= 5 ){
+    for (int i = 0; i < 4; i++) {
+    if ((tempo_atual - tempo_percorrido[i]) >= 4000) {
+      captura_dwell[i] = false;
+      digitalWrite(ignicao_pins[i], 0);
+    }
+  }
+  }else{
+    for (int i = 4; i < 8; i++) {
+    if ((tempo_atual - tempo_percorrido[i]) >= 4000) {
+      captura_dwell[i] = false;
+      digitalWrite(ignicao_pins[i], 0);
+    }
+    }
+  }  
+  
+  /*
   //no comando 1 volta precisa acionar todos os cilindros por isso repetimos abaixo no semi sequencial
   //IGN1
   if((tempo_atual - tempo_percorrido[0]) >= 4000){
@@ -676,10 +699,7 @@ if ((captura_dwell[cilindro -1] == false) && (cilindro <= qtd_cilindro) && (temp
     captura_dwell[3] = false;
     digitalWrite(ignicao_pins[3],0);
   }
-  if(tipo_ignicao_sequencial == 0 && cilindro > qtd_cilindro/2){
-    
-  }
- 
+  
     //IGN1
   if((tempo_atual - tempo_percorrido[4]) >= 4000){
     captura_dwell[4] = false;
@@ -700,7 +720,7 @@ if ((captura_dwell[cilindro -1] == false) && (cilindro <= qtd_cilindro) && (temp
     captura_dwell[7] = false;
     digitalWrite(ignicao_pins[3],0);
   }
-  
+  */
   
   
  
