@@ -587,7 +587,7 @@ void leitor_sensor_roda_fonica()
       grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     }
     
-    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){
+    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){
      
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
@@ -597,7 +597,6 @@ void leitor_sensor_roda_fonica()
         tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
         
     }
-
     }else{
       cilindro = 2;
     tempo_atual_proxima_ignicao[0] = tempo_atual;
