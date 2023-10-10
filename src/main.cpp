@@ -68,6 +68,7 @@ volatile unsigned long tempo_inicio_pulso = 0;
 const unsigned long duracao_pulso = 4; // duração do pulso em milissegundos
 //volatile bool captura_dwell = false;
 volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
+bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
 volatile bool alternar_funcao = true;
 // variaveis reverente a entrada de dados pela serial
@@ -586,22 +587,15 @@ void leitor_sensor_roda_fonica()
       grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     }
     
-    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){
-      if (alternar_funcao == true)
-      {
-        
-    tempo_atual_proxima_ignicao[qtd_cilindro / 2] = tempo_atual;
-    cilindro = qtd_cilindro / 2;
-    //tempo_proxima_ignicao[0] = (grau_pms - grau_avanco)  * tempo_cada_grau;
-        alternar_funcao = false;
-      }else{
-        
+    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
     //tempo_proxima_ignicao[0] = (grau_pms - grau_avanco)  * tempo_cada_grau;
-        alternar_funcao = true;
-      }
+        //alternar_funcao = true;
+        ign_acionado[0] = false;
       
+         
+       
     }else{
       cilindro = 2;
     tempo_atual_proxima_ignicao[0] = tempo_atual;
@@ -643,11 +637,11 @@ tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
 
-for (int i = qtd_cilindro / 2; i <= qtd_cilindro; i++)
+  for (int i = qtd_cilindro / 2; i <= qtd_cilindro; i++)
 {
-  tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+  tempo_proxima_ignicao[i] = (180 + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     // IGN
-    if ((captura_dwell[i] == false) && (i == cilindro) && 
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
         (falha > 3) && 
         (pms == 1) && 
@@ -657,9 +651,32 @@ for (int i = qtd_cilindro / 2; i <= qtd_cilindro; i++)
       tempo_percorrido[i] = tempo_atual;
       digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
       tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+      ign_acionado[i] = true;
+      ign_acionado[i+1] = false; 
       
     }
 }
+
+
+  for (int i = 0; i <= qtd_cilindro/2; i++)
+{
+  tempo_proxima_ignicao[i] = (180 + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    // IGN
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
+        (falha > 3) && 
+        (pms == 1) && 
+        (rpm >= 100))
+    {
+      captura_dwell[i] = true;
+      tempo_percorrido[i] = tempo_atual;
+      digitalWrite(ignicao_pins[i], 1);
+      tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+      ign_acionado[i] = true;
+      ign_acionado[i+1] = false;       
+    }
+}
+
 
 
     for (int i = 0; i < qtd_cilindro; i++) {
@@ -672,7 +689,7 @@ for (int i = qtd_cilindro / 2; i <= qtd_cilindro; i++)
               digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
             }
             cilindro++;
-            
+           
         }
     }
 }
