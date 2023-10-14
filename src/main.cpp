@@ -587,18 +587,19 @@ void leitor_sensor_roda_fonica()
       grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
     }
     
-    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
+    if(tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
     ign_acionado[0] = false;   
-    }else{
-      cilindro = 2;
-    tempo_atual_proxima_ignicao[0] = tempo_atual;
-      //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
-      tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + grau_entre_cada_cilindro) * tempo_cada_grau;
-      //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
-      //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau; 
     }
+    // else{
+    //   cilindro = 2;
+    // tempo_atual_proxima_ignicao[0] = tempo_atual;
+    //   //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
+    //   tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + grau_entre_cada_cilindro) * tempo_cada_grau;
+    //   //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
+    //   //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau; 
+    // }
     
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
@@ -647,14 +648,14 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
       digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
       tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
       ign_acionado[i] = true;
-      ign_acionado[i+1] = false; 
-      
+      ign_acionado[i+1] = false;
+      captura_dwell[i+1] = false; 
     }
 }
 
   for (int i = 0; i <= qtd_cilindro/2; i++)
 {
-  tempo_proxima_ignicao[i] = (180 + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+  tempo_proxima_ignicao[i] = (180 + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
@@ -667,7 +668,8 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
       digitalWrite(ignicao_pins[i], 1);
       tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
       ign_acionado[i] = true;
-      ign_acionado[i+1] = false;       
+      ign_acionado[i+1] = false;
+      captura_dwell[i+1] = false;       
     }
 }
 
@@ -684,59 +686,39 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
            
         }
     }
-}
+  }
 }
 
-//----------------------------//
-if(local_rodafonica == 2){ // 2 para virabrequinho e 1 para comando
-//IGN1
-if ((captura_dwell[0] == false) && (tempo_proxima_ignicao[2] != 0) && (cilindro_ign == 4) && (tempo_atual - tempo_atual_proxima_ignicao[2] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[2]) && (falha > 3) && (pms == 1) && (rpm >= 100))
-{
-  tempo_proxima_ignicao[2] = 0;
-  cilindro_ign = 0 ;
-  cilindro = 2;
-  captura_dwell[0] = true;
-  tempo_percorrido[0] = tempo_atual;
-  digitalWrite(ignicao_pins[0],1);  
-  }
-  if((tempo_atual - tempo_percorrido[0]) >= 4000){
-    captura_dwell[0] = false;
-    digitalWrite(ignicao_pins[0],0); 
-  }
+if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
 
-//IGN2
-if ((captura_dwell[1] == false) && (tempo_proxima_ignicao[0]) && (cilindro == 2) && (tempo_atual - tempo_atual_proxima_ignicao[0] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[0]) && (falha > 3) && (pms == 1) && (rpm >= 100))
+   for (int i = 0; i < qtd_cilindro; i++)
 {
-  tempo_proxima_ignicao[0] = 0;
-  cilindro++;
-  cilindro_ign = 3;
-  tempo_atual_proxima_ignicao[1] = tempo_atual_proxima_ignicao[0];
-  tempo_proxima_ignicao[1] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
-  captura_dwell[1] = true;
-  tempo_percorrido[1] = tempo_atual;
-  digitalWrite(ignicao_pins[1],1);
-  }
-  if((tempo_atual - tempo_percorrido[1]) >= 4000){
-    captura_dwell[1] = false;
-    digitalWrite(ignicao_pins[1],0);
-  }
- //IGN3
-if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_ign == 3) && (tempo_atual - tempo_atual_proxima_ignicao[1] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[1]) && (falha > 3) && (pms == 1) && (rpm >= 100))
-{
-  tempo_proxima_ignicao[1] = 0;
-  cilindro++;
-  cilindro_ign = 4;
-  tempo_atual_proxima_ignicao[2] = tempo_atual_proxima_ignicao[1];
-  tempo_proxima_ignicao[2] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
-  captura_dwell[2] = true;
-  tempo_percorrido[2] = tempo_atual;
-  digitalWrite(ignicao_pins[2],1);
-  }
-  if((tempo_atual - tempo_percorrido[2]) >= 4000){
-    captura_dwell[2] = false;
-    digitalWrite(ignicao_pins[2],0);
-  } 
+  //grau_entre_cada_cilindro = grau_entre_cada_cilindro * i+1;
+  tempo_proxima_ignicao[i] = (180+grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
+    // IGN
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000 >= tempo_proxima_ignicao[i]))
+    {
+      captura_dwell[i] = true;
+      tempo_percorrido[i] = tempo_atual;
+      digitalWrite(ignicao_pins[i], 1);
+      tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+      ign_acionado[i] = true;
+      ign_acionado[i+1] = false;
+      captura_dwell[i+1] = false;       
+    }
 }
+
+    for (int i = 0; i < qtd_cilindro; i++) {
+    if (captura_dwell[i] == true) {
+        if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000)) {
+            captura_dwell[i] = false;
+              digitalWrite(ignicao_pins[i], 0);
+        }
+    }
+  }
+}
+
   valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]);   
   leitura_entrada_dados_serial();
 //   // verifica se já passou o intervalo de tempo
@@ -748,7 +730,7 @@ if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_
    //envia_dados_ponto_ignicao(valor_map, rpm_anterior);
   // envia_dados_tempo_real();
    protege_ignicao();
-
+  
   //  Serial.print("Maior valor no vetor map:");
   //  Serial.println(vetor_map[0]);
   //  Serial.print("Menor valor no vetor map:");
