@@ -7,9 +7,9 @@
 #define pino_sensor_map A3
 
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
-  int qtd_dente = 12; //60 
-  int qtd_dente_faltante = 1; //2
-  int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
+  int qtd_dente = 60; //60 
+  int qtd_dente_faltante = 2; //2
+  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
   int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 30;
   int dwell_bobina = 3;
@@ -590,12 +590,7 @@ void leitor_sensor_roda_fonica()
     if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
-    //tempo_proxima_ignicao[0] = (grau_pms - grau_avanco)  * tempo_cada_grau;
-        //alternar_funcao = true;
-        ign_acionado[0] = false;
-      
-         
-       
+    ign_acionado[0] = false;   
     }else{
       cilindro = 2;
     tempo_atual_proxima_ignicao[0] = tempo_atual;
@@ -657,7 +652,6 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
 }
 
-
   for (int i = 0; i <= qtd_cilindro/2; i++)
 {
   tempo_proxima_ignicao[i] = (180 + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
@@ -677,8 +671,6 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
 }
 
-
-
     for (int i = 0; i < qtd_cilindro; i++) {
     if (captura_dwell[i] == true) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000)) {
@@ -693,56 +685,6 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         }
     }
 }
-
-    
-  
-  /*
-  //no comando 1 volta precisa acionar todos os cilindros por isso repetimos abaixo no semi sequencial
-  //IGN1
-  if((tempo_atual - tempo_percorrido[0]) >= 4000){
-    captura_dwell[0] = false;
-    digitalWrite(ignicao_pins[0],0);
-  }
-  //IGN2
-  if((tempo_atual - tempo_percorrido[1]) >= 4000){
-    captura_dwell[1] = false;
-    digitalWrite(ignicao_pins[1],0);
-  }
-  //IGN3
-  if((tempo_atual - tempo_percorrido[2]) >= 4000){
-    captura_dwell[2] = false;
-    digitalWrite(ignicao_pins[2],0);
-  }
-  //IGN4
-  if((tempo_atual - tempo_percorrido[3]) >= 4000){
-    captura_dwell[3] = false;
-    digitalWrite(ignicao_pins[3],0);
-  }
-  
-    //IGN1
-  if((tempo_atual - tempo_percorrido[4]) >= 4000){
-    captura_dwell[4] = false;
-    digitalWrite(ignicao_pins[0],0);
-  }
-  //IGN2
-  if((tempo_atual - tempo_percorrido[5]) >= 4000){
-    captura_dwell[5] = false;
-    digitalWrite(ignicao_pins[1],0);
-  }
-  //IGN3
-  if((tempo_atual - tempo_percorrido[6]) >= 4000){
-    captura_dwell[6] = false;
-    digitalWrite(ignicao_pins[2],0);
-  }
-  //IGN4
-  if((tempo_atual - tempo_percorrido[7]) >= 4000){
-    captura_dwell[7] = false;
-    digitalWrite(ignicao_pins[3],0);
-  }
-  */
-  
-  
- 
 }
 
 //----------------------------//
