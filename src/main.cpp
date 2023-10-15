@@ -46,6 +46,7 @@ volatile unsigned long verifica_falha = 0;
 int inicia = 1;
 volatile int pms = 0;
 volatile long falha = 0;
+volatile unsigned long qtd_revolucoes = 0;
 volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
@@ -569,11 +570,11 @@ void leitor_sensor_roda_fonica()
 
     // Serial.println("");
     // Serial.print("__");
-    tempo_final_rpm = micros();
-    long delta = tempo_final_rpm - tempo_inicial_rpm;
-    rpm = (60) / (float(delta) / 1000000);
-    tempo_inicial_rpm = tempo_final_rpm;
-
+    // tempo_final_rpm = micros();
+    // long delta = tempo_final_rpm - tempo_inicial_rpm;
+    // rpm = (60) / (float(delta) / 1000000);
+    // tempo_inicial_rpm = tempo_final_rpm;
+    qtd_revolucoes++;
     tempo_cada_grau = tempo_total_volta_completa / 360;
 
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
@@ -590,7 +591,7 @@ void leitor_sensor_roda_fonica()
     if(tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
-    ign_acionado[0] = false;   
+    ign_acionado[0] = false; 
     }
     // else{
     //   cilindro = 2;
@@ -691,10 +692,8 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
 
-   for (int i = 0; i < qtd_cilindro; i++)
-{
-  //grau_entre_cada_cilindro = grau_entre_cada_cilindro * i+1;
-  tempo_proxima_ignicao[i] = (180+grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
+   for (int i = 0; i < qtd_cilindro; i++){
+    tempo_proxima_ignicao[i] = (180+grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000 >= tempo_proxima_ignicao[i]))
@@ -705,15 +704,15 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
       tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
       ign_acionado[i] = true;
       ign_acionado[i+1] = false;
-      captura_dwell[i+1] = false;       
+      //captura_dwell[i+1] = false;       
     }
-}
+        }
 
     for (int i = 0; i < qtd_cilindro; i++) {
     if (captura_dwell[i] == true) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000)) {
             captura_dwell[i] = false;
-              digitalWrite(ignicao_pins[i], 0);
+            digitalWrite(ignicao_pins[i], 0);
         }
     }
   }
@@ -726,7 +725,9 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   {
   //gravar_dados_eeprom_configuracao_inicial();
   //gravar_dados_eeprom_tabela_ignicao_map_rpm();
-   rpm_anterior = rpm;
+  rpm = qtd_revolucoes  * 60 / (intervalo_execucao / 1000);
+  rpm_anterior = rpm;
+   
    //envia_dados_ponto_ignicao(valor_map, rpm_anterior);
   // envia_dados_tempo_real();
    protege_ignicao();
