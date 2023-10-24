@@ -7,9 +7,9 @@
 #define pino_sensor_map A3
 
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
-  int qtd_dente = 60; //60 
-  int qtd_dente_faltante = 2; //2
-  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
+  int qtd_dente = 12; //60 
+  int qtd_dente_faltante = 1; //2
+  int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
   int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 30;
   int dwell_bobina = 3;
@@ -21,11 +21,11 @@ int ign4 = 50;
 
 int tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
-volatile unsigned int grau_cada_dente = 360 / qtd_dente;
-volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_avanco_partida = 5;
-volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
-volatile unsigned int posicao_atual_sensor = 0;
+int grau_cada_dente = 360 / qtd_dente;
+int grau_avanco = 0;
+int grau_avanco_partida = 5;
+int grau_entre_cada_cilindro = 360 / qtd_cilindro;
+int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura = 0;
 
@@ -63,15 +63,9 @@ volatile int rpm_anterior = 0;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
-volatile int estado_pino_ignicao = LOW;  // variavel armazenha o estado do pino de ignição se esta ligado ou desligado
-volatile bool estado_anterior_pino_ignicao = LOW;
-volatile unsigned long tempo_inicio_pulso = 0;
-const unsigned long duracao_pulso = 4; // duração do pulso em milissegundos
-//volatile bool captura_dwell = false;
 volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
-bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
+volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
-volatile bool alternar_funcao = true;
 // variaveis reverente a entrada de dados pela serial
 const int MAX_VALUES = 500; // tamanho máximo do vetor
 int values[MAX_VALUES];     // vetor para armazenar os valores recebidos
