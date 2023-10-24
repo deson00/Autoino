@@ -284,7 +284,7 @@ int procura_indice(int value, int *arr, int size)
   return index;
 }
 void envia_dados_ponto_ignicao(){
-    while(status_dados_ponto_ignicao)
+    if(status_dados_ponto_ignicao)
     {
     // procura valor do rpm mais proximo e map para achar o ponto na matriz
       Serial.print(",");
@@ -297,13 +297,13 @@ void envia_dados_ponto_ignicao(){
       Serial.print(",");
       Serial.print(matrix[procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)]);
       //Serial.print(",; ");
-      delay(100);
+      //delay(400);
       
     }
     
 }
 void envia_dados_tempo_real(){
-    while (status_dados_tempo_real)
+    if (status_dados_tempo_real)
     {
       Serial.print(",");
       Serial.print(1);
@@ -317,7 +317,7 @@ void envia_dados_tempo_real(){
       Serial.print(grau_avanco);
       //Serial.print(",");
       //Serial.print(";");
-      delay(100);
+      //delay(400);
     }
     
 }
@@ -354,7 +354,6 @@ void leitura_entrada_dados_serial()
       status_dados_ponto_ignicao = false;
      }else{
       status_dados_ponto_ignicao = true;
-      envia_dados_ponto_ignicao();
      }
     }
     if (data == 'e')//retorna dados da tabela caso e
@@ -382,7 +381,6 @@ void leitura_entrada_dados_serial()
       status_dados_tempo_real = false;
      }else{
       status_dados_tempo_real = true;
-      envia_dados_tempo_real();
      }
     }
 
@@ -720,8 +718,10 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   //gravar_dados_eeprom_configuracao_inicial();
   //gravar_dados_eeprom_tabela_ignicao_map_rpm();
   rpm = qtd_revolucoes  * 60 / (intervalo_execucao / 1000);
+  qtd_revolucoes = 0; 
   rpm_anterior = rpm;
-   
+  envia_dados_tempo_real();
+  envia_dados_ponto_ignicao();
    //envia_dados_ponto_ignicao(valor_map, rpm_anterior);
   // envia_dados_tempo_real();
    protege_ignicao();
@@ -738,7 +738,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   //  Serial.println(procura_indice(valor_map, vetor_map, 16));
   //  Serial.print("valor do vetor:");
   //  Serial.println(vetor_map[procura_indice(valor_map, vetor_map, 16)]);
-      
+     
   // atualiza o tempo da última execução
    ultima_execucao = millis();
 
