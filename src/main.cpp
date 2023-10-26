@@ -1,23 +1,40 @@
 #include <Arduino.h>
 #include <EEPROM.h>
+//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
+#ifdef Uno
+#define pino_sensor_roda_fonica 2
+#define pino_sensor_fase 3
+#define pino_sensor_map A0
+int ign1 = 13;
+int ign2 = 6;
+int ign3 = 7;
+int ign4 = 8;
+#endif
 
+#ifdef Mega
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
 #define pino_sensor_map A3
+int ign1 = 40;
+int ign2 = 38;
+int ign3 = 52;
+int ign4 = 50;
+#endif
+
+
+
 
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
   int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
   int qtd_cilindro = 6 / local_rodafonica;
-  int grau_pms = 30;
+  int grau_pms = 60;
   int dwell_bobina = 3;
 
-int ign1 = 40;
-int ign2 = 38;
-int ign3 = 52;
-int ign4 = 50;
+
 
 int tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
@@ -51,7 +68,7 @@ volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
 int dente = 0;
-unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
+unsigned long intervalo_execucao = 500; // intervalo de 1 segundo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 volatile int pulsos;
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
@@ -585,15 +602,7 @@ void leitor_sensor_roda_fonica()
     cilindro = 1;
     ign_acionado[0] = false; 
     }
-    // else{
-    //   cilindro = 2;
-    // tempo_atual_proxima_ignicao[0] = tempo_atual;
-    //   //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
-    //   tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + grau_entre_cada_cilindro) * tempo_cada_grau;
-    //   //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
-    //   //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau; 
-    // }
-    
+
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
 
@@ -625,10 +634,13 @@ void loop()
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-
+ if(grau_pms <= 180){
+  grau_pms =  grau_pms + 180;
+ }
   for (int i = qtd_cilindro / 2; i <= qtd_cilindro; i++)
 {
-  tempo_proxima_ignicao[i] = (180 + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+  
+  tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
@@ -648,7 +660,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 
   for (int i = 0; i <= qtd_cilindro/2; i++)
 {
-  tempo_proxima_ignicao[i] = (180 + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
+  tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
@@ -683,9 +695,11 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-
+  if(grau_pms <= 180){
+  grau_pms =  grau_pms + 180;
+ }
    for (int i = 0; i < qtd_cilindro; i++){
-    tempo_proxima_ignicao[i] = (180+grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000 >= tempo_proxima_ignicao[i]))
@@ -717,7 +731,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   {
   //gravar_dados_eeprom_configuracao_inicial();
   //gravar_dados_eeprom_tabela_ignicao_map_rpm();
-  rpm = qtd_revolucoes  * 60 / (intervalo_execucao / 1000);
+  rpm = qtd_revolucoes  * 60 / (intervalo_execucao / 500);
   qtd_revolucoes = 0; 
   rpm_anterior = rpm;
   envia_dados_tempo_real();
