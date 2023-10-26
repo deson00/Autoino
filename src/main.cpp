@@ -23,18 +23,13 @@ int ign3 = 52;
 int ign4 = 50;
 #endif
 
-
-
-
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
-  int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
+  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
   int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 60;
   int dwell_bobina = 3;
-
-
 
 int tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
@@ -98,6 +93,7 @@ int tipo_vetor_configuracao_inicial = 0;
 bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
+int ajuste_pms =  0;
 
 void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
   Serial.println("Gravando dados");
@@ -443,7 +439,7 @@ void leitura_entrada_dados_serial()
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
           qtd_cilindro = values[5] / local_rodafonica;
-          
+          gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
       }
 
@@ -635,12 +631,14 @@ tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
  if(grau_pms <= 180){
-  grau_pms =  grau_pms + 180;
+  ajuste_pms =  180;
+ }else{
+  ajuste_pms =  0;
  }
   for (int i = qtd_cilindro / 2; i <= qtd_cilindro; i++)
 {
   
-  tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+  tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
@@ -660,7 +658,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 
   for (int i = 0; i <= qtd_cilindro/2; i++)
 {
-  tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
+  tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
@@ -696,10 +694,12 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
   if(grau_pms <= 180){
-  grau_pms =  grau_pms + 180;
- }
+    ajuste_pms =  180;
+  }else{
+    ajuste_pms =  0;
+  }
    for (int i = 0; i < qtd_cilindro; i++){
-    tempo_proxima_ignicao[i] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000 >= tempo_proxima_ignicao[i]))
@@ -736,23 +736,8 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   rpm_anterior = rpm;
   envia_dados_tempo_real();
   envia_dados_ponto_ignicao();
-   //envia_dados_ponto_ignicao(valor_map, rpm_anterior);
-  // envia_dados_tempo_real();
-   protege_ignicao();
-  
-  //  Serial.print("Maior valor no vetor map:");
-  //  Serial.println(vetor_map[0]);
-  //  Serial.print("Menor valor no vetor map:");
-  //  Serial.println(vetor_map[15]);
-  //  Serial.print("Leitura no pino:");
-  //  Serial.println(analogRead(pino_sensor_map));
-  //  Serial.print("Valor convertido:");
-  //  Serial.println(valor_map);
-  //  Serial.print("indice do vetor:");
-  //  Serial.println(procura_indice(valor_map, vetor_map, 16));
-  //  Serial.print("valor do vetor:");
-  //  Serial.println(vetor_map[procura_indice(valor_map, vetor_map, 16)]);
-     
+  protege_ignicao();
+      
   // atualiza o tempo da última execução
    ultima_execucao = millis();
 
