@@ -26,7 +26,7 @@ int ign4 = 50;
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
-  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
+  int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
   int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 60;
   int dwell_bobina = 3;
@@ -173,7 +173,7 @@ void gravar_dados_eeprom_configuracao_inicial() {
     EEPROM.write(3*2+360, qtd_dente_faltante);
     EEPROM.write(4*2+360, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(4*2+361, lowByte); // Armazena o byte menos significativo na posição i*2+11
-    EEPROM.write(5*2+360, qtd_cilindro);
+    EEPROM.write(5*2+360, qtd_cilindro / local_rodafonica);
 }
 
 
@@ -228,7 +228,7 @@ highByte = EEPROM.read(4*2+360); // Lê o byte mais significativo
 lowByte = EEPROM.read(4*2+360+1); // Lê o byte menos significativo
 grau_pms = (highByte << 8) | lowByte; 
 grau_pms = grau_pms - 360; //volta os dados para valor original 
-qtd_cilindro = EEPROM.read(5*2+360);
+qtd_cilindro = EEPROM.read(5*2+360) * local_rodafonica;
 Serial.print("a,");
       // vetor map
       for (int  i = 0; i < 16; i++)
@@ -273,7 +273,7 @@ Serial.print("a,");
       Serial.print(",");
       Serial.print(grau_pms);
       Serial.print(",");
-      Serial.print(qtd_cilindro * local_rodafonica);
+      Serial.print(qtd_cilindro);
       Serial.print(",");
       Serial.print(";");
 }
