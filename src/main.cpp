@@ -26,7 +26,7 @@ int ign4 = 50;
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
-  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
+  int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
   int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 60;
   int dwell_bobina = 3;
@@ -35,7 +35,7 @@ int tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
 int grau_cada_dente = 360 / qtd_dente;
 int grau_avanco = 0;
-int grau_avanco_partida = 5;
+int grau_avanco_partida = 1;
 int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
@@ -173,7 +173,7 @@ void gravar_dados_eeprom_configuracao_inicial() {
     EEPROM.write(3*2+360, qtd_dente_faltante);
     EEPROM.write(4*2+360, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(4*2+361, lowByte); // Armazena o byte menos significativo na posição i*2+11
-    EEPROM.write(5*2+360, qtd_cilindro);
+    EEPROM.write(5*2+360, qtd_cilindro / local_rodafonica);
 }
 
 
@@ -228,7 +228,7 @@ highByte = EEPROM.read(4*2+360); // Lê o byte mais significativo
 lowByte = EEPROM.read(4*2+360+1); // Lê o byte menos significativo
 grau_pms = (highByte << 8) | lowByte; 
 grau_pms = grau_pms - 360; //volta os dados para valor original 
-qtd_cilindro = EEPROM.read(5*2+360);
+qtd_cilindro = EEPROM.read(5*2+360) * local_rodafonica;
 Serial.print("a,");
       // vetor map
       for (int  i = 0; i < 16; i++)
@@ -273,7 +273,7 @@ Serial.print("a,");
       Serial.print(",");
       Serial.print(grau_pms);
       Serial.print(",");
-      Serial.print(qtd_cilindro * local_rodafonica);
+      Serial.print(qtd_cilindro);
       Serial.print(",");
       Serial.print(";");
 }
@@ -642,9 +642,9 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
-        (falha > 3) && 
+        (falha > 1) && 
         (pms == 1) && 
-        (rpm >= 100))
+        (rpm >= 50))
     {
       captura_dwell[i] = true;
       tempo_percorrido[i] = tempo_atual;
@@ -662,9 +662,9 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[i]) && 
-        (falha > 3) && 
+        (falha > 1) && 
         (pms == 1) && 
-        (rpm >= 100))
+        (rpm >= 50))
     {
       captura_dwell[i] = true;
       tempo_percorrido[i] = tempo_atual;
@@ -729,9 +729,10 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 //   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
-  //gravar_dados_eeprom_configuracao_inicial();
-  //gravar_dados_eeprom_tabela_ignicao_map_rpm();
-  rpm = qtd_revolucoes  * 60 / (intervalo_execucao / 500);
+  // Cálculo da RPM
+  // O cálculo é feito da seguinte forma:
+  // rpm = (número de revoluções * 60) / (tempo de execução / 500) * fator de correção para rodafônica
+  rpm = (qtd_revolucoes * 60) / (intervalo_execucao / 500) * local_rodafonica;
   qtd_revolucoes = 0; 
   rpm_anterior = rpm;
   envia_dados_tempo_real();
