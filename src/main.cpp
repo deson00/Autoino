@@ -63,7 +63,7 @@ volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
 int dente = 0;
-unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
+unsigned long intervalo_execucao = 400; // intervalo de 1 segundo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 volatile int pulsos;
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
@@ -308,7 +308,8 @@ void envia_dados_ponto_ignicao(){
       Serial.print(",");
       Serial.print(rpm);
       Serial.print(",");
-      Serial.print(matrix[procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)]);
+      Serial.print(grau_avanco);
+      //Serial.print(matrix[procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)]);
       //Serial.print(",; ");
       //delay(400);
       
@@ -579,7 +580,12 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     // Serial.print("__");
     tempo_final_rpm = micros();
     long delta = tempo_final_rpm - tempo_inicial_rpm;
-    rpm = (60) / (float(delta) / 1000000);
+    if(local_rodafonica == 1){
+      rpm = (60) / (float(delta) / 1000000) * 2;
+    }else{
+      rpm = (60) / (float(delta) / 1000000);
+    } 
+    
     tempo_inicial_rpm = tempo_final_rpm;
     qtd_revolucoes++;
     tempo_cada_grau = tempo_total_volta_completa / 360;
@@ -588,8 +594,8 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     qtd_leitura = qtd_dente_faltante;
     falha++;
     pms = 1;
-    
-    if(rpm < 200){
+    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]); 
+    if(rpm < 300){
       grau_avanco = grau_avanco_partida;
     }else{
       grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
@@ -726,19 +732,13 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   }
 }
 
-  valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]);   
+    
   leitura_entrada_dados_serial();
 //   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
-  if(local_rodafonica == 1){
-  // Cálculo da RPM
-  // O cálculo é feito da seguinte forma:
-  // rpm = (número de revoluções * 60) / (tempo de execução / 500) * fator de correção para rodafônica
-  //rpm = ((qtd_revolucoes * 60) / (intervalo_execucao / 1000)) * 2;
-  }else{
-    //rpm = (qtd_revolucoes * 60) / (intervalo_execucao / 1000);
-  } 
+  //Serial.println(analogRead(pino_sensor_map));
+  //Serial.println(valor_map);
   rpm_anterior = rpm;
   envia_dados_tempo_real();
   envia_dados_ponto_ignicao();
