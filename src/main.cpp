@@ -296,6 +296,17 @@ int procura_indice(int value, int *arr, int size)
   }
   return index;
 }
+
+int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo, int grau_maximo) {
+  // Cálculo da proporção
+  float proporcao = float(rpm_atual - rpm_minimo) / float(rpm_maximo - rpm_minimo);
+
+  // Mapeamento linear
+  int grau = proporcao * (grau_maximo - grau_minimo) + grau_minimo;
+  
+  return grau;
+}
+
 void envia_dados_ponto_ignicao(){
     if(status_dados_ponto_ignicao)
     {
@@ -595,10 +606,15 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     falha++;
     pms = 1;
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]); 
+    int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+    int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
+    int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
+    int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
     if(rpm < 300){
       grau_avanco = grau_avanco_partida;
     }else{
-      grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      //grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      grau_avanco = grau_linear;
     }
     
     if(tipo_ignicao_sequencial == 0 ){  
@@ -638,7 +654,7 @@ void loop()
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
- if(grau_pms <= 180){
+ if(rpm > 5000){
   ajuste_pms =  180;
  }else{
   ajuste_pms =  0;
@@ -701,7 +717,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-  if(grau_pms <= 180){
+  if(rpm > 5000){
     ajuste_pms =  180;
   }else{
     ajuste_pms =  0;
@@ -738,7 +754,8 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
   //Serial.println(analogRead(pino_sensor_map));
-  //Serial.println(valor_map);
+  
+  //Serial.println(grau_linear);
   rpm_anterior = rpm;
   envia_dados_tempo_real();
   envia_dados_ponto_ignicao();
