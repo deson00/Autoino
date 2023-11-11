@@ -302,7 +302,7 @@ void envia_dados_ponto_ignicao(){
     // procura valor do rpm mais proximo e map para achar o ponto na matriz
       Serial.print(",");
       Serial.print("d,");
-      Serial.print(procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16));
+      Serial.print(procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]), vetor_map, 16));
       Serial.print(",");
       Serial.print(procura_indice(rpm, vetor_rpm, 16));
       Serial.print(",");
@@ -324,7 +324,7 @@ void envia_dados_tempo_real(){
       Serial.print(",");
       Serial.print(rpm);
       Serial.print(",");
-      Serial.print(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]));
+      Serial.print(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]));
       Serial.print(",");
       Serial.print(80);
       Serial.print(",");
