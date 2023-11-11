@@ -654,7 +654,7 @@ void loop()
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
- if(rpm > 5000){
+ if(rpm > 2000){
   ajuste_pms =  180;
  }else{
   ajuste_pms =  0;
@@ -717,7 +717,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-  if(rpm > 5000){
+  if(rpm > 2000){
     ajuste_pms =  180;
   }else{
     ajuste_pms =  0;
