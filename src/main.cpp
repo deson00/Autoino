@@ -1,16 +1,16 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+//#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
 #ifdef Uno
 #define pino_sensor_roda_fonica 2
 #define pino_sensor_fase 3
 #define pino_sensor_map A0
-int ign1 = 13;
-int ign2 = 6;
-int ign3 = 7;
-int ign4 = 8;
+int ign1 = 4;
+int ign2 = 5;
+int ign3 = 6;
+int ign4 = 7;
 #endif
 
 #ifdef Mega
@@ -79,13 +79,13 @@ volatile bool captura_dwell[8] = {false, false, false, false, false, false, fals
 volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
 // variaveis reverente a entrada de dados pela serial
-const int MAX_VALUES = 500; // tamanho máximo do vetor
+const int MAX_VALUES = 270; // tamanho máximo do vetor
 int values[MAX_VALUES];     // vetor para armazenar os valores recebidos
 int matrix[16][16];
 int vetor_map[16];
 int vetor_rpm[16];
 int index = 0;   // índice atual do vetor
-char buffer[10]; // buffer temporário para armazenar caracteres recebidos
+char buffer[6]; // buffer temporário para armazenar caracteres recebidos
 int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
@@ -94,7 +94,7 @@ bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
 int ajuste_pms =  0;
-
+/*
 void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
   Serial.println("Gravando dados");
   int highByte;
@@ -158,6 +158,81 @@ for (int i = 0; i < 16; i++) {
   }
 }
 Serial.println("Gravação finalizada");
+}
+*/
+
+void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
+  Serial.println("Gravando dados");
+
+  int highByte;
+  int lowByte;
+
+  // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
+  for (int i = 0; i < 16; i++) {
+    highByte = vetor_rpm[i] >> 8; // Obtém o byte mais significativo
+    lowByte = vetor_rpm[i] & 0xFF; // Obtém o byte menos significativo
+    EEPROM.write(i * 2 + 10, highByte); // Armazena o byte mais significativo na posição i*2+10
+    EEPROM.write(i * 2 + 11, lowByte); // Armazena o byte menos significativo na posição i*2+11
+  }
+
+  // Escrita da matrix na EEPROM
+  for (int i = 0; i < 16; i++) {
+    EEPROM.write(i + 50, vetor_map[i]); // Endereço de memória começa em 50
+    for (int j = 0; j < 16; j++) {
+      EEPROM.write(100 + i * 16 + j, matrix[i][j]); // Endereço de memória começa em 100, fim em 255 para a matriz
+    }
+  }
+}
+
+void verificar_dados_eeprom_tabela_ignicao_map_rpm() {
+  Serial.println("Verificando dados gravado da tabela");
+  // Verificar dados do vetor_rpm na EEPROM
+  for (int i = 0; i < 16; i++) {
+    int storedValue;
+    int storedHighByte = EEPROM.read(i * 2 + 10);
+    int storedLowByte = EEPROM.read(i * 2 + 11);
+    storedValue = (storedHighByte << 8) | storedLowByte;
+    Serial.print("Gravação na posição ");
+      Serial.print(i);
+      Serial.print(": valor lido da EEPROM = ");
+      Serial.print(storedValue);
+      Serial.print(", valor esperado = ");
+      Serial.println(vetor_rpm[i]);
+    if (storedValue != vetor_rpm[i]) {
+      Serial.print("Erro de gravação na posição ");
+      Serial.print(i);
+      Serial.print(": valor lido da EEPROM = ");
+      Serial.print(storedValue);
+      Serial.print(", valor esperado = ");
+      Serial.println(vetor_rpm[i]);
+    }
+  }
+
+  // Verificar dados do vetor_map e da matrix na EEPROM
+  for (int i = 0; i < 16; i++) {
+    int storedValue = EEPROM.read(i + 50);
+    if (storedValue != vetor_map[i]) {
+      Serial.print("Erro de gravação na posição ");
+      Serial.print(i);
+      Serial.print(" do vetor_map: valor lido da EEPROM = ");
+      Serial.print(storedValue);
+      Serial.print(", valor esperado = ");
+      Serial.println(vetor_map[i]);
+    }
+    for (int j = 0; j < 16; j++) {
+      storedValue = EEPROM.read(100 + i * 16 + j);
+      if (storedValue != matrix[i][j]) {
+        Serial.print("Erro de gravação na posição ");
+        Serial.print(i);
+        Serial.print(",");
+        Serial.print(j);
+        Serial.print(" da matriz: valor lido da EEPROM = ");
+        Serial.print(storedValue);
+        Serial.print(", valor esperado = ");
+        Serial.println(matrix[i][j]);
+      }
+    }
+  }
 }
 
 void gravar_dados_eeprom_configuracao_inicial() {
@@ -367,7 +442,7 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'b')//entrada de dados do vetor rpm
     {
-      tipo_vetor_rpm = 1;
+      tipo_vetor_rpm = 1;//b,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000; exmplo
     }
     if (data == 'c')//entrada de dados do da matrix em vetor
     {
@@ -389,6 +464,7 @@ void leitura_entrada_dados_serial()
      if (data == 'f'){//grava dados na eeprom
       // Escrita dos valores na EEPROM
       gravar_dados_eeprom_tabela_ignicao_map_rpm();
+      verificar_dados_eeprom_tabela_ignicao_map_rpm();
       gravar_dados_eeprom_configuracao_inicial();
       
     }
@@ -458,7 +534,10 @@ void leitura_entrada_dados_serial()
       index = 0; // reinicia índice do vetor
     }
     else if (isdigit(data))
-    {                                // valor do vetor
+    {                                
+      // Valor do vetor
+      //Serial.print("Caractere recebido: ");
+      //Serial.println(data);
       buffer[strlen(buffer)] = data; // adiciona o caractere recebido no buffer temporário
       if (strlen(buffer) >= sizeof(buffer) - 1)
       {                                    // verifica se o buffer está cheio
@@ -466,9 +545,13 @@ void leitura_entrada_dados_serial()
       }
     }
     else if (data == ',' && strlen(buffer) > 0)
-    {                                 // final do número
+    {                                 
+      //Serial.print("Número recebido como string: ");
+      //Serial.println(buffer);
       buffer[strlen(buffer)] = '\0';  // adiciona um terminador de string para converter o buffer em uma string válida
-      values[index++] = atoi(buffer); // adiciona ao vetor
+      //values[index++] = atoi(buffer); // adiciona ao vetor
+      //Substituído por strtol
+      values[index++] = strtol(buffer, NULL, 10);
       if (index >= MAX_VALUES)
       {
         index = 0; // reinicia índice do vetor se estiver cheio
