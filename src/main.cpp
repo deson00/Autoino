@@ -35,11 +35,16 @@ int tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
 int grau_cada_dente = 360 / qtd_dente;
 int grau_avanco = 0;
-int grau_avanco_partida = 1;
+int grau_avanco_partida = 1; // avanço definido apenas na partida
 int grau_entre_cada_cilindro = 360 / qtd_cilindro;
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura = 0;
+int referencia_leitura = 1;//map 1 e tps 2
+int modo_ignicao = 1; // 1 para centelha perdida e 2 para centelha unica  
+int avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
+int grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
+int tipo_sinal_bobina = 1 ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
 
 volatile unsigned long tempo_anterior = 0;
 volatile unsigned long tempo_dente_anterior[2] = {0,0};
@@ -90,10 +95,12 @@ int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
 int tipo_vetor_configuracao_inicial = 0;
+int tipo_vetor_configuracao_faisca = 0;
 bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
 int ajuste_pms =  0;
+
 /*
 void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
   Serial.println("Gravando dados");
@@ -251,6 +258,15 @@ void gravar_dados_eeprom_configuracao_inicial() {
     EEPROM.write(5*2+360, qtd_cilindro / local_rodafonica);
 }
 
+void gravar_dados_eeprom_configuracao_faisca() {
+    EEPROM.write(1*2+380, referencia_leitura);
+    EEPROM.write(2*2+380, modo_ignicao);
+    EEPROM.write(3*2+380, grau_avanco_partida);
+    EEPROM.write(4*2+380, avanco_fixo);
+    EEPROM.write(5*2+380, grau_avanco_fixo);
+    EEPROM.write(6*2+380, tipo_sinal_bobina); 
+}
+
 
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
@@ -304,6 +320,15 @@ lowByte = EEPROM.read(4*2+360+1); // Lê o byte menos significativo
 grau_pms = (highByte << 8) | lowByte; 
 grau_pms = grau_pms - 360; //volta os dados para valor original 
 qtd_cilindro = EEPROM.read(5*2+360) * local_rodafonica;
+
+//leitura dos dados de configurações de faisca 
+referencia_leitura = EEPROM.read(1*2+370); 
+modo_ignicao = EEPROM.read(2*2+370);
+grau_avanco_partida = EEPROM.read(3*2+370);
+avanco_fixo = EEPROM.read(4*2+370);
+grau_avanco_fixo = EEPROM.read(5*2+370);
+tipo_sinal_bobina = EEPROM.read(6*2+370);
+
 Serial.print("a,");
       // vetor map
       for (int  i = 0; i < 16; i++)
@@ -349,6 +374,22 @@ Serial.print("a,");
       Serial.print(grau_pms);
       Serial.print(",");
       Serial.print(qtd_cilindro);
+      Serial.print(",");
+      Serial.print(";");
+
+      // dados configuração faisca
+      Serial.print("j,");
+      Serial.print(referencia_leitura);
+      Serial.print(",");
+      Serial.print(modo_ignicao);
+      Serial.print(",");
+      Serial.print(grau_avanco_partida);
+      Serial.print(",");
+      Serial.print(avanco_fixo);
+      Serial.print(",");
+      Serial.print(grau_avanco_fixo);
+      Serial.print(",");
+      Serial.print(tipo_sinal_bobina);
       Serial.print(",");
       Serial.print(";");
 }
@@ -484,6 +525,9 @@ void leitura_entrada_dados_serial()
       status_dados_tempo_real = true;
      }
     }
+    if (data == 'j') {// configuração da faisca
+      tipo_vetor_configuracao_faisca = 1;
+    }
 
     if (data == ';')
     { // final do vetor
@@ -529,6 +573,16 @@ void leitura_entrada_dados_serial()
           qtd_cilindro = values[5] / local_rodafonica;
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
+      }
+      if (tipo_vetor_configuracao_faisca == 1){
+          referencia_leitura = values[0];//map 1 e tps 2
+          modo_ignicao = values[1]; // 1 para centelha perdida e 2 para centelha unica
+          grau_avanco_partida = values[2]; // avanço definido apenas na partida 
+          avanco_fixo = values[3]; // avanço fixo 0 desligado e 1 ligado
+          grau_avanco_fixo = values[4]; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
+          tipo_sinal_bobina = values[5] ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
+          gravar_dados_eeprom_configuracao_faisca();
+          tipo_vetor_configuracao_faisca = 0;
       }
 
       index = 0; // reinicia índice do vetor
@@ -830,20 +884,14 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
   }
 }
-
-    
   leitura_entrada_dados_serial();
-//   // verifica se já passou o intervalo de tempo
+  // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao)
   {
-  //Serial.println(analogRead(pino_sensor_map));
-  
-  //Serial.println(grau_linear);
   rpm_anterior = rpm;
   envia_dados_tempo_real();
   envia_dados_ponto_ignicao();
-  protege_ignicao();
-      
+  protege_ignicao();   
   // atualiza o tempo da última execução
    ultima_execucao = millis();
 
