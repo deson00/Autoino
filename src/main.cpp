@@ -30,6 +30,8 @@ int ign4 = 50;
   int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 60;
   int dwell_bobina = 4;
+  int dwell_partida = 5;
+  int dwell_funcionamento = 3;
 
 int tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
@@ -96,6 +98,7 @@ int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
 int tipo_vetor_configuracao_inicial = 0;
 int tipo_vetor_configuracao_faisca = 0;
+int tipo_vetor_configuracao_dwell = 0;
 bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
@@ -267,6 +270,11 @@ void gravar_dados_eeprom_configuracao_faisca() {
     EEPROM.write(6*2+380, tipo_sinal_bobina); 
 }
 
+void gravar_dados_eeprom_configuracao_dwell() {
+    EEPROM.write(1*2+400, dwell_partida);
+    EEPROM.write(2*2+400, dwell_funcionamento); 
+}
+
 
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
@@ -329,6 +337,11 @@ avanco_fixo = EEPROM.read(4*2+370);
 grau_avanco_fixo = EEPROM.read(5*2+370);
 tipo_sinal_bobina = EEPROM.read(6*2+370);
 
+//leitura dos dados de configurações de dwell 
+dwell_partida = EEPROM.read(1*2+400); 
+dwell_funcionamento = EEPROM.read(2*2+400);
+
+
 Serial.print("a,");
       // vetor map
       for (int  i = 0; i < 16; i++)
@@ -390,6 +403,14 @@ Serial.print("a,");
       Serial.print(grau_avanco_fixo);
       Serial.print(",");
       Serial.print(tipo_sinal_bobina);
+      Serial.print(",");
+      Serial.print(";");
+
+      // dados configuração dwell
+      Serial.print("k,");
+      Serial.print(dwell_partida);
+      Serial.print(",");
+      Serial.print(dwell_funcionamento);
       Serial.print(",");
       Serial.print(";");
 }
@@ -506,7 +527,7 @@ void leitura_entrada_dados_serial()
       // Escrita dos valores na EEPROM
       gravar_dados_eeprom_tabela_ignicao_map_rpm();
       verificar_dados_eeprom_tabela_ignicao_map_rpm();
-      gravar_dados_eeprom_configuracao_inicial();
+      //gravar_dados_eeprom_configuracao_inicial();
       
     }
     if (data == 'g'){//grava configuração inicial
@@ -527,6 +548,9 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'j') {// configuração da faisca
       tipo_vetor_configuracao_faisca = 1;
+    }
+    if (data == 'k') {// configuração da faisca
+      tipo_vetor_configuracao_dwell = 1;
     }
 
     if (data == ';')
@@ -583,6 +607,12 @@ void leitura_entrada_dados_serial()
           tipo_sinal_bobina = values[5] ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
           gravar_dados_eeprom_configuracao_faisca();
           tipo_vetor_configuracao_faisca = 0;
+      }
+      if (tipo_vetor_configuracao_dwell == 1){
+          dwell_partida = values[0];
+          dwell_funcionamento = values[1];
+          gravar_dados_eeprom_configuracao_dwell();
+          tipo_vetor_configuracao_dwell = 0;
       }
 
       index = 0; // reinicia índice do vetor
@@ -749,9 +779,16 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
     if(rpm < 300){
       grau_avanco = grau_avanco_partida;
-    }else{
+      dwell_bobina = dwell_partida;
+    }
+    else if(avanco_fixo){
+      grau_avanco = grau_avanco_fixo;
+      dwell_bobina = dwell_funcionamento;
+    }
+    else{
       //grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
       grau_avanco = grau_linear;
+      dwell_bobina = dwell_funcionamento;
     }
     
     if(tipo_ignicao_sequencial == 0 ){  
