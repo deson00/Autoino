@@ -258,7 +258,7 @@ void gravar_dados_eeprom_configuracao_inicial() {
     EEPROM.write(3*2+360, qtd_dente_faltante);
     EEPROM.write(4*2+360, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(4*2+361, lowByte); // Armazena o byte menos significativo na posição i*2+11
-    EEPROM.write(5*2+360, qtd_cilindro / local_rodafonica);
+    EEPROM.write(5*2+360, qtd_cilindro);
 }
 
 void gravar_dados_eeprom_configuracao_faisca() {
@@ -328,6 +328,7 @@ lowByte = EEPROM.read(4*2+360+1); // Lê o byte menos significativo
 grau_pms = (highByte << 8) | lowByte; 
 grau_pms = grau_pms - 360; //volta os dados para valor original 
 qtd_cilindro = EEPROM.read(5*2+360) * local_rodafonica;
+grau_entre_cada_cilindro = 360 / qtd_cilindro;
 
 //leitura dos dados de configurações de faisca 
 referencia_leitura = EEPROM.read(1*2+380); 
@@ -386,7 +387,7 @@ Serial.print("a,");
       Serial.print(",");
       Serial.print(grau_pms);
       Serial.print(",");
-      Serial.print(qtd_cilindro * local_rodafonica);
+      Serial.print(qtd_cilindro);
       Serial.print(",");
       Serial.print(";");
 
@@ -595,6 +596,7 @@ void leitura_entrada_dados_serial()
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
           qtd_cilindro = values[5] / local_rodafonica;
+          grau_entre_cada_cilindro = 360 / qtd_cilindro;
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
       }
@@ -828,7 +830,7 @@ void loop()
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
- if(rpm > 2000){
+ if(rpm > 1000){
   ajuste_pms =  180;
  }else{
   ajuste_pms =  0;
