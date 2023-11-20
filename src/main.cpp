@@ -27,7 +27,7 @@ int ign4 = 50;
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
   int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
-  int qtd_cilindro = 6 / local_rodafonica;
+  int qtd_cilindro = 8 / local_rodafonica;
   int grau_pms = 60;
   int dwell_bobina = 4;
   int dwell_partida = 5;
@@ -330,12 +330,12 @@ grau_pms = grau_pms - 360; //volta os dados para valor original
 qtd_cilindro = EEPROM.read(5*2+360) * local_rodafonica;
 
 //leitura dos dados de configurações de faisca 
-referencia_leitura = EEPROM.read(1*2+370); 
-modo_ignicao = EEPROM.read(2*2+370);
-grau_avanco_partida = EEPROM.read(3*2+370);
-avanco_fixo = EEPROM.read(4*2+370);
-grau_avanco_fixo = EEPROM.read(5*2+370);
-tipo_sinal_bobina = EEPROM.read(6*2+370);
+referencia_leitura = EEPROM.read(1*2+380); 
+modo_ignicao = EEPROM.read(2*2+380);
+grau_avanco_partida = EEPROM.read(3*2+380);
+avanco_fixo = EEPROM.read(4*2+380);
+grau_avanco_fixo = EEPROM.read(5*2+380);
+tipo_sinal_bobina = EEPROM.read(6*2+380);
 
 //leitura dos dados de configurações de dwell 
 dwell_partida = EEPROM.read(1*2+400); 
@@ -386,7 +386,7 @@ Serial.print("a,");
       Serial.print(",");
       Serial.print(grau_pms);
       Serial.print(",");
-      Serial.print(qtd_cilindro);
+      Serial.print(qtd_cilindro * local_rodafonica);
       Serial.print(",");
       Serial.print(";");
 
@@ -777,7 +777,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
     int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
     int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
-    if(rpm < 300){
+    if(rpm < 400){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
     }
@@ -833,7 +833,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
  }else{
   ajuste_pms =  0;
  }
-  for (int i = qtd_cilindro / 2; i <= qtd_cilindro; i++)
+  for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++)
 {
   
   tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
@@ -854,7 +854,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
 }
 
-  for (int i = 0; i <= qtd_cilindro/2; i++)
+  for (int i = 0; i < qtd_cilindro/2; i++)
 {
   tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
     // IGN
