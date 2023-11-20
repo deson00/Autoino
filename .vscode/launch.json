@@ -39,8 +39,8 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "C:/Users/byllt/OneDrive/Documentos/Autoino/Autoino_ignicao/.pio/build/megaatmega2560/firmware.elf",
-            "projectEnvName": "megaatmega2560",
+            "executable": "C:/Users/byllt/OneDrive/Documentos/Autoino/Autoino_ignicao/.pio/build/nanoatmega328/firmware.elf",
+            "projectEnvName": "nanoatmega328",
             "toolchainBinDir": "C:/Users/byllt/.platformio/packages/toolchain-atmelavr/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "preLaunchTask": {
@@ -52,8 +52,8 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "C:/Users/byllt/OneDrive/Documentos/Autoino/Autoino_ignicao/.pio/build/megaatmega2560/firmware.elf",
-            "projectEnvName": "megaatmega2560",
+            "executable": "C:/Users/byllt/OneDrive/Documentos/Autoino/Autoino_ignicao/.pio/build/nanoatmega328/firmware.elf",
+            "projectEnvName": "nanoatmega328",
             "toolchainBinDir": "C:/Users/byllt/.platformio/packages/toolchain-atmelavr/bin",
             "internalConsoleOptions": "openOnSessionStart"
         },
@@ -61,8 +61,8 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (without uploading)",
-            "executable": "C:/Users/byllt/OneDrive/Documentos/Autoino/Autoino_ignicao/.pio/build/megaatmega2560/firmware.elf",
-            "projectEnvName": "megaatmega2560",
+            "executable": "C:/Users/byllt/OneDrive/Documentos/Autoino/Autoino_ignicao/.pio/build/nanoatmega328/firmware.elf",
+            "projectEnvName": "nanoatmega328",
             "toolchainBinDir": "C:/Users/byllt/.platformio/packages/toolchain-atmelavr/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "loadMode": "manual"
