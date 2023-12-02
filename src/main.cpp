@@ -1,12 +1,13 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-//#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
 #ifdef Uno
 #define pino_sensor_roda_fonica 2
 #define pino_sensor_fase 3
 #define pino_sensor_map A0
+#define pino_sensor_clt A2
 int ign1 = 4;
 int ign2 = 5;
 int ign3 = 6;
@@ -17,6 +18,7 @@ int ign4 = 7;
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
 #define pino_sensor_map A3
+#define pino_sensor_clt A1
 int ign1 = 40;
 int ign2 = 38;
 int ign3 = 52;
@@ -103,6 +105,11 @@ bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
 int ajuste_pms =  0;
+float referencia_temperatura_clt1 = 20;
+float referencia_resistencia_clt1 = 2400;
+float referencia_temperatura_clt2 = 100;
+float referencia_resistencia_clt2 = 200;
+
 
 /*
 void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
@@ -445,6 +452,33 @@ int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo,
   return grau;
 }
 
+
+
+float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
+  float T1 = ntcTemperature1 + 273.15;   // converte a temperatura em Celsius para Kelvin
+  float T2 = ntcTemperature2 + 273.15;
+  float beta = log(ntcResistance2/ntcResistance1) / ((1/T2) - (1/T1));   // aplica a equação do coeficiente beta
+  return beta;
+}
+
+float calculateTemperature(float ntcResistance, float ntcBeta, float ntcReferenceResistance, float ntcReferenceTemperature) {
+  float steinhart;
+  steinhart = log(ntcResistance/ntcReferenceResistance) / ntcBeta;     // parte da equação de Steinhart-Hart
+  steinhart += 1.0 / (ntcReferenceTemperature + 273.15);                    // adiciona a temperatura de referência em Kelvin
+  steinhart = 1.0 / steinhart;                                             // inverte a equação
+  steinhart -= 273.15;                                                     // converte para Celsius
+  return steinhart;
+}
+
+float temperatura_clt(){
+  int sensor_clt = analogRead(pino_sensor_clt);  // Lê o valor analógico
+  float voltage_clt = sensor_clt * (5.0 / 1023.0);     // Converte o valor para tensão (0 a 5V)
+  float resistance = 1000.0 * (5.0 / voltage_clt - 1.0);  // Resistência usando um resistor conhecido de 10k ohms
+  float beta = calculateBeta(referencia_resistencia_clt1, referencia_temperatura_clt1, referencia_resistencia_clt2, referencia_temperatura_clt2);  
+  return calculateTemperature(resistance, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
+  //return referencia_resistencia_clt1;
+}
+
 void envia_dados_ponto_ignicao(){
     if(status_dados_ponto_ignicao)
     {
@@ -475,7 +509,7 @@ void envia_dados_tempo_real(){
       Serial.print(",");
       Serial.print(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]));
       Serial.print(",");
-      Serial.print(80);
+      Serial.print(temperatura_clt());
       Serial.print(",");
       Serial.print(grau_avanco);
       //Serial.print(",");
@@ -933,6 +967,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   protege_ignicao();   
   // atualiza o tempo da última execução
    ultima_execucao = millis();
-
+   //Serial.print("temperatura: ");
+  //Serial.println(temperatura_clt()); 
   }
 }
