@@ -28,8 +28,8 @@ int ign4 = 50;
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
-  int local_rodafonica = 1; // 2 para virabrequinho e 1 para comando
-  int qtd_cilindro = 8 / local_rodafonica;
+  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
+  int qtd_cilindro = 6 / local_rodafonica;
   int grau_pms = 60;
   int dwell_bobina = 4;
   int dwell_partida = 5;
@@ -334,7 +334,7 @@ highByte = EEPROM.read(4*2+360); // Lê o byte mais significativo
 lowByte = EEPROM.read(4*2+360+1); // Lê o byte menos significativo
 grau_pms = (highByte << 8) | lowByte; 
 grau_pms = grau_pms - 360; //volta os dados para valor original 
-qtd_cilindro = EEPROM.read(5*2+360) * local_rodafonica;
+qtd_cilindro = EEPROM.read(5*2+360);
 grau_entre_cada_cilindro = 360 / qtd_cilindro;
 
 //leitura dos dados de configurações de faisca 
@@ -394,7 +394,7 @@ Serial.print("a,");
       Serial.print(",");
       Serial.print(grau_pms);
       Serial.print(",");
-      Serial.print(qtd_cilindro);
+      Serial.print(qtd_cilindro * local_rodafonica);
       Serial.print(",");
       Serial.print(";");
 
@@ -755,7 +755,7 @@ void leitor_sensor_roda_fonica()
   tempo_atual = micros() ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
   //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
-  verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
+  verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
 
   if (inicia)
   {
@@ -776,7 +776,7 @@ void leitor_sensor_roda_fonica()
   }
 
   // Serial.print("|");
-if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < tempo_dente_anterior[leitura] * 4))
+if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4))))
   {
     if (qtd_voltas == 1)
     {
@@ -807,35 +807,20 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     qtd_leitura = qtd_dente_faltante;
     falha++;
-    pms = 1;
-    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]); 
-    int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
-    int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
-    int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
-    int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
-    if(rpm < 400){
-      grau_avanco = grau_avanco_partida;
-      dwell_bobina = dwell_partida;
-    }
-    else if(avanco_fixo){
-      grau_avanco = grau_avanco_fixo;
-      dwell_bobina = dwell_funcionamento;
-    }
-    else{
-      //grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
-      grau_avanco = grau_linear;
-      dwell_bobina = dwell_funcionamento;
-    }
-    
-    if(tipo_ignicao_sequencial == 0 ){  
+    pms = 1;    
+    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
-    ign_acionado[0] = false; 
+    ign_acionado[0] = false;
+    // captura_dwell[0] = false; 
     }
-
+    if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+      tempo_atual_proxima_ignicao[0] = tempo_atual;
+      ign_acionado[0] = false;
+      captura_dwell[0] = false; 
+    }
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
-
   tempo_anterior = tempo_atual;
   interrupts();
 }
@@ -847,7 +832,7 @@ void setup()
   //delay(1000);
   //aqui le os dados da eeprom que forem salvo anteriormente
   ler_dados_eeprom();
-  //delay(1000);
+  delay(1000);
   
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
@@ -861,10 +846,31 @@ void setup()
 
 void loop()
 { 
+    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]); 
+    if(rpm < 400){
+      grau_avanco = grau_avanco_partida;
+      dwell_bobina = dwell_partida;
+    }
+    else if(avanco_fixo){
+      grau_avanco = grau_avanco_fixo;
+      dwell_bobina = dwell_funcionamento;
+    }
+    else if(rpm < 3000){
+      int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
+      int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
+      int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
+      grau_avanco = grau_linear;
+      dwell_bobina = dwell_funcionamento;
+    }
+    else{
+      grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      dwell_bobina = dwell_funcionamento;
+    }
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
- if(rpm > 1000){
+ if(rpm > 500){
   ajuste_pms =  180;
  }else{
   ajuste_pms =  0;
@@ -933,7 +939,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     ajuste_pms =  0;
   }
    for (int i = 0; i < qtd_cilindro; i++){
-    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000 >= tempo_proxima_ignicao[i]))
@@ -944,14 +950,15 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
       tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
       ign_acionado[i] = true;
       ign_acionado[i+1] = false;
-      //captura_dwell[i+1] = false;       
+      captura_dwell[i+1] = false;       
     }
         }
 
     for (int i = 0; i < qtd_cilindro; i++) {
-    if (captura_dwell[i] == true) {
+    if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000)) {
             captura_dwell[i] = false;
+            // ign_acionado[i] = false;
             digitalWrite(ignicao_pins[i], 0);
         }
     }
@@ -967,7 +974,5 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   protege_ignicao();   
   // atualiza o tempo da última execução
    ultima_execucao = millis();
-   //Serial.print("temperatura: ");
-  //Serial.println(temperatura_clt()); 
   }
 }
