@@ -473,7 +473,7 @@ float calculateTemperature(float ntcResistance, float ntcBeta, float ntcReferenc
 float temperatura_clt(){
   int sensor_clt = analogRead(pino_sensor_clt);  // Lê o valor analógico
   float voltage_clt = sensor_clt * (5.0 / 1023.0);     // Converte o valor para tensão (0 a 5V)
-  float resistance = 1000.0 * (5.0 / voltage_clt - 1.0);  // Resistência usando um resistor conhecido de 10k ohms
+  float resistance = 2490.0 * (5.0 / voltage_clt - 1.0);  // Resistência usando um resistor conhecido de 10k ohms
   float beta = calculateBeta(referencia_resistencia_clt1, referencia_temperatura_clt1, referencia_resistencia_clt2, referencia_temperatura_clt2);  
   return calculateTemperature(resistance, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
   //return referencia_resistencia_clt1;
