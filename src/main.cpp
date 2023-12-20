@@ -105,85 +105,15 @@ bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
 int ajuste_pms =  0;
-float referencia_temperatura_clt1 = 20;
-float referencia_resistencia_clt1 = 2400;
-float referencia_temperatura_clt2 = 100;
-float referencia_resistencia_clt2 = 200;
-
-
-/*
-void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
-  Serial.println("Gravando dados");
-  int highByte;
-  int lowByte;
-  // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
-  //a primeira posição de escrita será a posição 10 ou 11 
-  //(dependendo do valor do primeiro elemento do vetor_rpm) e a última posição de escrita será a posição 42.
-for (int i = 0; i < 16; i++) {
-    highByte = vetor_rpm[i] >> 8; // Obtém o byte mais significativo
-    lowByte = vetor_rpm[i] & 0xFF; // Obtém o byte menos significativo
-    EEPROM.write(i*2+10, highByte); // Armazena o byte mais significativo na posição i*2+10
-    EEPROM.write(i*2+11, lowByte); // Armazena o byte menos significativo na posição i*2+11
-}
- // Escrita da matrix na EEPROM
- //A primeira chamada à função "EEPROM.write()" escreve 1 byte no endereço 50 da memória EEPROM, e cada iteração subsequente do loop escreve mais 1 byte no endereço seguinte. Assim, ao final do loop, a última posição escrita será a posição 65 (ou seja, 50 + 16).
-//A segunda chamada à função "EEPROM.write()" escreve 1 byte no endereço 100 da memória EEPROM, e cada iteração subsequente do loop escreve mais 1 byte no endereço seguinte. Assim, ao final da execução do loop interno (j), a última posição escrita será a posição 255 (ou seja, 100 + 16*16 - 1).
-//Portanto, a última posição da memória EEPROM utilizada pelo loop será a posição 255.
-for (int i = 0; i < 16; i++) {
-  EEPROM.write(i+50, vetor_map[i]);// endereço de memória começa em 50
-  for (int j = 0; j < 16; j++) {
-    EEPROM.write(100 + i*16 + j, matrix[i][j]); // endereço de memória começa em 100 fim 255 para a matriz
-  }
-}
-for (int i = 0; i < 16; i++) {
-    int storedValue;
-    int storedHighByte = EEPROM.read(i*2+10);
-    int storedLowByte = EEPROM.read(i*2+11);
-    storedValue = (storedHighByte << 8) | storedLowByte;
-    if (storedValue != vetor_rpm[i]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(": valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_rpm[i]);
-    }
-}
-
-for (int i = 0; i < 16; i++) {
-  int storedValue = EEPROM.read(i+50);
-  if (storedValue != vetor_map[i]) {
-    Serial.print("Erro de gravação na posição ");
-    Serial.print(i);
-    Serial.print(" do vetor_map: valor lido da EEPROM = ");
-    Serial.print(storedValue);
-    Serial.print(", valor esperado = ");
-    Serial.println(vetor_map[i]);
-  }
-  for (int j = 0; j < 16; j++) {
-    storedValue = EEPROM.read(100 + i*16 + j);
-    if (storedValue != matrix[i][j]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(",");
-      Serial.print(j);
-      Serial.print(" da matriz: valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(matrix[i][j]);
-    }
-  }
-}
-Serial.println("Gravação finalizada");
-}
-*/
+int referencia_temperatura_clt1 = 20;
+int referencia_resistencia_clt1 = 2400;
+int referencia_temperatura_clt2 = 100;
+int referencia_resistencia_clt2 = 200;
 
 void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   Serial.println("Gravando dados");
-
   int highByte;
   int lowByte;
-
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
   for (int i = 0; i < 16; i++) {
     highByte = vetor_rpm[i] >> 8; // Obtém o byte mais significativo
@@ -191,7 +121,6 @@ void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
     EEPROM.write(i * 2 + 10, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(i * 2 + 11, lowByte); // Armazena o byte menos significativo na posição i*2+11
   }
-
   // Escrita da matrix na EEPROM
   for (int i = 0; i < 16; i++) {
     EEPROM.write(i + 50, vetor_map[i]); // Endereço de memória começa em 50
@@ -280,6 +209,13 @@ void gravar_dados_eeprom_configuracao_faisca() {
 void gravar_dados_eeprom_configuracao_dwell() {
     EEPROM.write(1*2+400, dwell_partida);
     EEPROM.write(2*2+400, dwell_funcionamento); 
+}
+
+void gravar_dados_eeprom_configuracao_clt() {
+    EEPROM.write(1*2+410, referencia_temperatura_clt1);
+    EEPROM.write(2*2+410, referencia_resistencia_clt1);
+    EEPROM.write(3*2+410, referencia_temperatura_clt2);
+    EEPROM.write(4*2+410, referencia_resistencia_clt2); 
 }
 
 
@@ -870,7 +806,7 @@ void loop()
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
- if(rpm > 500){
+ if(rpm > 200 && grau_pms < 180){
   ajuste_pms =  180;
  }else{
   ajuste_pms =  0;
@@ -933,7 +869,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-  if(rpm > 500 && grau_pms < 180){
+  if(rpm > 200 && grau_pms < 180){
     ajuste_pms =  180;
   }else{
     ajuste_pms =  0;
