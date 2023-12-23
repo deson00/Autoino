@@ -79,7 +79,7 @@ unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rp
 //volatile unsigned long tf;
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-int rpm_partida = 400;
+int rpm_partida = 200;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
@@ -740,8 +740,8 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     tempo_inicial_rpm = tempo_final_rpm;
     qtd_revolucoes++;
     tempo_cada_grau = tempo_total_volta_completa / 360;
-
-    posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
+    // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
+    posicao_atual_sensor = 0;
     qtd_leitura = qtd_dente_faltante;
     falha++;
     pms = 1;    
@@ -819,7 +819,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
-        (falha > 1) && 
+        (falha > 2) && 
         (pms == 1) && 
         (rpm >= 50))
     {
@@ -831,6 +831,8 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         ign_acionado[i] = true;
         ign_acionado[i+1] = false;
         captura_dwell[i+1] = false;
+        // Serial.println(posicao_atual_sensor);
+        // Serial.println(ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i));
       }
       if(rpm > rpm_partida){
         captura_dwell[i] = true;
@@ -861,7 +863,9 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
         ign_acionado[i] = true;
         ign_acionado[i+1] = false;
-        captura_dwell[i+1] = false;       
+        captura_dwell[i+1] = false;
+        // Serial.println(posicao_atual_sensor);
+        // Serial.println(ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i));       
       }
       if(rpm > rpm_partida){
         captura_dwell[i] = true;
@@ -933,8 +937,8 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
             captura_dwell[i] = false;
             // ign_acionado[i] = false;
             digitalWrite(ignicao_pins[i], 0);
-            Serial.println( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i));
-            Serial.print("*");
+            // Serial.println( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i));
+            // Serial.print("*");
         }
     }
   }
