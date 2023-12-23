@@ -71,16 +71,15 @@ volatile unsigned long qtd_revolucoes = 0;
 volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
-int dente = 0;
 unsigned long intervalo_execucao = 200; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
-volatile int pulsos;
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 //volatile unsigned long ti = 0;
 //volatile unsigned long tf;
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
+int rpm_partida = 400;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
@@ -272,6 +271,7 @@ grau_pms = (highByte << 8) | lowByte;
 grau_pms = grau_pms - 360; //volta os dados para valor original 
 qtd_cilindro = EEPROM.read(5*2+360);
 grau_entre_cada_cilindro = 360 / qtd_cilindro;
+grau_cada_dente = 360 / qtd_dente;
 
 //leitura dos dados de configurações de faisca 
 referencia_leitura = EEPROM.read(1*2+380); 
@@ -687,7 +687,6 @@ void leitor_sensor_roda_fonica()
 {
   noInterrupts();
   qtd_leitura++;
-  pulsos++;
   tempo_atual = micros() ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
   //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
@@ -710,8 +709,9 @@ void leitor_sensor_roda_fonica()
     leitura = 0;
     tempo_dente_anterior[1] = (tempo_atual - tempo_anterior);
   }
-
-  // Serial.print("|");
+  
+  //Serial.print("|");
+  //Serial.print(posicao_atual_sensor); 
 if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4))))
   {
     if (qtd_voltas == 1)
@@ -726,8 +726,9 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
       qtd_voltas = 1;
     }
 
-    // Serial.println("");
-    // Serial.print("__");
+    //Serial.println("");
+    //Serial.print("__");
+    //Serial.print(posicao_atual_sensor); 
     tempo_final_rpm = micros();
     long delta = tempo_final_rpm - tempo_inicial_rpm;
     if(local_rodafonica == 1){
@@ -783,7 +784,7 @@ void setup()
 void loop()
 { 
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]); 
-    if(rpm < 400){
+    if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
     }
@@ -806,7 +807,7 @@ void loop()
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
- if(rpm > 200 && grau_pms < 180){
+ if(rpm > rpm_partida && grau_pms < 180){
   ajuste_pms =  180;
  }else{
   ajuste_pms =  0;
@@ -822,13 +823,24 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         (pms == 1) && 
         (rpm >= 50))
     {
-      captura_dwell[i] = true;
-      tempo_percorrido[i] = tempo_atual;
-      digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
-      tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
-      ign_acionado[i] = true;
-      ign_acionado[i+1] = false;
-      captura_dwell[i+1] = false; 
+      if(rpm < rpm_partida &&  posicao_atual_sensor >= ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+      }
+      if(rpm > rpm_partida){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+      } 
     }
 }
 
@@ -842,13 +854,25 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         (pms == 1) && 
         (rpm >= 50))
     {
-      captura_dwell[i] = true;
-      tempo_percorrido[i] = tempo_atual;
-      digitalWrite(ignicao_pins[i], 1);
-      tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
-      ign_acionado[i] = true;
-      ign_acionado[i+1] = false;
-      captura_dwell[i+1] = false;       
+      if(rpm < rpm_partida &&  posicao_atual_sensor >= ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;       
+      }
+      if(rpm > rpm_partida){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;       
+      }
+      
     }
 }
 
@@ -869,7 +893,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-  if(rpm > 200 && grau_pms < 180){
+  if(rpm > rpm_partida && grau_pms < 180){
     ajuste_pms =  180;
   }else{
     ajuste_pms =  0;
@@ -880,13 +904,26 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000ul >= tempo_proxima_ignicao[i]))
     {
-      captura_dwell[i] = true;
-      tempo_percorrido[i] = tempo_atual;
-      digitalWrite(ignicao_pins[i], 1);
-      tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
-      ign_acionado[i] = true;
-      ign_acionado[i+1] = false;
-      captura_dwell[i+1] = false;       
+      if(rpm < rpm_partida &&  posicao_atual_sensor >= ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+      }
+      if(rpm > rpm_partida){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+      }
+      
+             
     }
         }
 
@@ -896,6 +933,8 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
             captura_dwell[i] = false;
             // ign_acionado[i] = false;
             digitalWrite(ignicao_pins[i], 0);
+            Serial.println( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i));
+            Serial.print("*");
         }
     }
   }
