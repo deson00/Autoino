@@ -105,9 +105,9 @@ bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
 int ajuste_pms =  0;
 int referencia_temperatura_clt1 = 20;
-int referencia_resistencia_clt1 = 2400;
+int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;
-int referencia_resistencia_clt2 = 200;
+int referencia_resistencia_clt2 = 187;
 
 void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   Serial.println("Gravando dados");
@@ -409,10 +409,12 @@ float calculateTemperature(float ntcResistance, float ntcBeta, float ntcReferenc
 float temperatura_clt(){
   int sensor_clt = analogRead(pino_sensor_clt);  // Lê o valor analógico
   float voltage_clt = sensor_clt * (5.0 / 1023.0);     // Converte o valor para tensão (0 a 5V)
-  float resistance = 2490.0 * (5.0 / voltage_clt - 1.0);  // Resistência usando um resistor conhecido de 10k ohms
+  //float resistencia = 2000.0 * (5.0 / voltage_clt - 1.0);  // Resistência usando um resistor conhecido em ohms
+  float resistencia_total = 2400.0;  // Substitua pelo valor real do seu potenciômetro
+  float resistencia = resistencia_total * sensor_clt / 1023.0;
+  //rpm = resistencia;
   float beta = calculateBeta(referencia_resistencia_clt1, referencia_temperatura_clt1, referencia_resistencia_clt2, referencia_temperatura_clt2);  
-  return calculateTemperature(resistance, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
-  //return referencia_resistencia_clt1;
+  return calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
 }
 
 void envia_dados_ponto_ignicao(){
@@ -900,8 +902,8 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   rpm_anterior = rpm;
   envia_dados_tempo_real();
   envia_dados_ponto_ignicao();
-  protege_ignicao();   
-  // atualiza o tempo da última execução
+  protege_ignicao();  
+   // atualiza o tempo da última execução
    ultima_execucao = millis();
   }
 }
