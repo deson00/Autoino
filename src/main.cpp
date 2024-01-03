@@ -100,6 +100,7 @@ int tipo_vetor_matrix = 0;
 int tipo_vetor_configuracao_inicial = 0;
 int tipo_vetor_configuracao_faisca = 0;
 int tipo_vetor_configuracao_dwell = 0;
+int tipo_vetor_configuracao_clt = 0;
 bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
@@ -109,6 +110,16 @@ int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 
+int ler_valor_eeprom_2byte(int endereco) {
+    // Lê os dois bytes da EEPROM
+    byte byte_menos_significativo = EEPROM.read(endereco);
+    byte byte_mais_significativo = EEPROM.read(endereco + 1);
+
+    // Reconstrói o valor inteiro a partir dos bytes lidos
+    int valor = byte_mais_significativo << 8 | byte_menos_significativo;
+
+    return valor;
+}
 void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   Serial.println("Gravando dados");
   int highByte;
@@ -211,12 +222,19 @@ void gravar_dados_eeprom_configuracao_dwell() {
 }
 
 void gravar_dados_eeprom_configuracao_clt() {
-    EEPROM.write(1*2+410, referencia_temperatura_clt1);
-    EEPROM.write(2*2+410, referencia_resistencia_clt1);
-    EEPROM.write(3*2+410, referencia_temperatura_clt2);
-    EEPROM.write(4*2+410, referencia_resistencia_clt2); 
-}
+    // Gravar os valores divididos em bytes
+    EEPROM.write(410, referencia_temperatura_clt1 & 0xFF);        // Byte menos significativo
+    EEPROM.write(411, (referencia_temperatura_clt1 >> 8) & 0xFF);  // Byte mais significativo
 
+    EEPROM.write(412, referencia_resistencia_clt1 & 0xFF);
+    EEPROM.write(413, (referencia_resistencia_clt1 >> 8) & 0xFF);
+
+    EEPROM.write(414, referencia_temperatura_clt2 & 0xFF);
+    EEPROM.write(415, (referencia_temperatura_clt2 >> 8) & 0xFF);
+
+    EEPROM.write(416, referencia_resistencia_clt2 & 0xFF);
+    EEPROM.write(417, (referencia_resistencia_clt2 >> 8) & 0xFF);
+}
 
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
@@ -285,6 +303,11 @@ tipo_sinal_bobina = EEPROM.read(6*2+380);
 dwell_partida = EEPROM.read(1*2+400); 
 dwell_funcionamento = EEPROM.read(2*2+400);
 
+//leitura dos dados de calibração de ctl
+referencia_temperatura_clt1 = ler_valor_eeprom_2byte(410);
+referencia_resistencia_clt1 = ler_valor_eeprom_2byte(412);
+referencia_temperatura_clt2 = ler_valor_eeprom_2byte(414);
+referencia_resistencia_clt2 = ler_valor_eeprom_2byte(416); 
 
 Serial.print("a,");
       // vetor map
@@ -355,6 +378,18 @@ Serial.print("a,");
       Serial.print(dwell_partida);
       Serial.print(",");
       Serial.print(dwell_funcionamento);
+      Serial.print(",");
+      Serial.print(";");
+
+      // dados configuração calibrate temperature sensor ctl
+      Serial.print("l,");//letra L minusculo
+      Serial.print(referencia_resistencia_clt1);
+      Serial.print(",");
+      Serial.print(referencia_temperatura_clt1);
+      Serial.print(",");
+      Serial.print(referencia_resistencia_clt2);
+      Serial.print(",");
+      Serial.print(referencia_temperatura_clt2);
       Serial.print(",");
       Serial.print(";");
 }
@@ -525,6 +560,9 @@ void leitura_entrada_dados_serial()
     if (data == 'k') {// configuração da faisca
       tipo_vetor_configuracao_dwell = 1;
     }
+    if (data == 'l') {// configuração sensor temperatura clt
+      tipo_vetor_configuracao_clt = 1;
+    }
 
     if (data == ';')
     { // final do vetor
@@ -587,6 +625,14 @@ void leitura_entrada_dados_serial()
           dwell_funcionamento = values[1];
           gravar_dados_eeprom_configuracao_dwell();
           tipo_vetor_configuracao_dwell = 0;
+      }
+      if (tipo_vetor_configuracao_clt == 1){
+          referencia_resistencia_clt1 = values[0];
+          referencia_temperatura_clt1 = values[1];
+          referencia_resistencia_clt2 = values[2];
+          referencia_temperatura_clt2 = values[3];
+          gravar_dados_eeprom_configuracao_clt();
+          tipo_vetor_configuracao_clt = 0;
       }
 
       index = 0; // reinicia índice do vetor
