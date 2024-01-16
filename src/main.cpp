@@ -104,6 +104,7 @@ int tipo_vetor_configuracao_clt = 0;
 bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
+volatile int valor_map_minimo = 0; //estrategia para melhorar a precisao da verificação do map
 int ajuste_pms =  0;
 int referencia_temperatura_clt1 = 20;
 int referencia_resistencia_clt1 = 2500;
@@ -759,7 +760,7 @@ void leitor_sensor_roda_fonica()
   }
   
   //Serial.print("|");
-  //Serial.print(posicao_atual_sensor); 
+  //Serial.print(qtd_leitura); 
 if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4))))
   {
     if (qtd_voltas == 1)
@@ -774,8 +775,9 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
       qtd_voltas = 1;
     }
 
-    //Serial.println("");
+    
     //Serial.print("__");
+    //Serial.println("");
     //Serial.print(posicao_atual_sensor); 
     tempo_final_rpm = micros();
     long delta = tempo_final_rpm - tempo_inicial_rpm;
@@ -787,12 +789,12 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     
     tempo_inicial_rpm = tempo_final_rpm;
     qtd_revolucoes++;
-    tempo_cada_grau = tempo_total_volta_completa / 360;
+    //tempo_cada_grau = tempo_total_volta_completa / 360;
     // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     posicao_atual_sensor = 0;
-    qtd_leitura = qtd_dente_faltante;
-    falha++;
-    pms = 1;    
+    qtd_leitura = 0;
+    falha++;// reservado para escapar rotação caso necessario no futuro
+    pms = 1;// utilizado para garantir a sentelha apenas apos encontrar a falha    
     if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
@@ -804,6 +806,8 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
       ign_acionado[0] = false;
       captura_dwell[0] = false; 
     }
+  }else{
+    tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;
@@ -831,8 +835,14 @@ void setup()
 
 void loop()
 { 
-    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]); 
-    if(rpm < rpm_partida){
+    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);
+    if(valor_map > valor_map_minimo){
+      valor_map = valor_map_minimo;
+    }else{
+     valor_map_minimo = valor_map; 
+    }  
+     
+    if(rpm_anterior < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
     }
@@ -840,7 +850,7 @@ void loop()
       grau_avanco = grau_avanco_fixo;
       dwell_bobina = dwell_funcionamento;
     }
-    else if(rpm < 3000){
+    else if(rpm_anterior < 3000){
       int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
       int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
@@ -862,7 +872,6 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
  }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
   tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
-    // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (falha > 1) && 
@@ -874,12 +883,12 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
         ign_acionado[i] = true;
         ign_acionado[i+1] = false;
-        captura_dwell[i+1] = false; 
+        captura_dwell[i+1] = false;
+        //Serial.print(grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)); 
     }
 }
   for (int i = 0; i < qtd_cilindro/2; i++){
   tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
-    // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (falha > 1) && 
@@ -892,6 +901,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         ign_acionado[i] = true;
         ign_acionado[i+1] = false;
         captura_dwell[i+1] = false;
+        //Serial.print(grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)); 
     }
 }
   for (int i = 0; i < qtd_cilindro; i++) {
@@ -910,7 +920,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-  if(rpm > rpm_partida && grau_pms < 180){
+  if(rpm_anterior > rpm_partida && grau_pms < 180){
     ajuste_pms =  180;
   }else{
     ajuste_pms =  0;
