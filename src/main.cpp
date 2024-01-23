@@ -71,6 +71,7 @@ volatile unsigned long qtd_revolucoes = 0;
 volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
+int qtd_loop = 0;
 unsigned long intervalo_execucao = 200; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
@@ -459,9 +460,9 @@ void envia_dados_ponto_ignicao(){
     // procura valor do rpm mais proximo e map para achar o ponto na matriz
       Serial.print(",");
       Serial.print("d,");
-      Serial.print(procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]), vetor_map, 16));
+      Serial.print(procura_indice(valor_map, vetor_map, 16));
       Serial.print(",");
-      Serial.print(procura_indice(rpm, vetor_rpm, 16));
+      Serial.print(procura_indice(rpm_anterior, vetor_rpm, 16));
       Serial.print(",");
       Serial.print(rpm);
       Serial.print(",");
@@ -481,13 +482,15 @@ void envia_dados_tempo_real(){
       Serial.print(",");
       Serial.print(rpm);
       Serial.print(",");
-      Serial.print(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]));
+      Serial.print(valor_map);
       Serial.print(",");
-      Serial.print(temperatura_clt());
+      Serial.print("85");
+      //Serial.print(temperatura_clt());
       Serial.print(",");
-      Serial.print(grau_avanco);
+      //Serial.print(grau_avanco);
       //Serial.print(",");
-      //Serial.print(";");
+      Serial.print(";");
+      Serial.flush(); // Limpa o buffer serial
       //delay(400);
     }
     
@@ -799,7 +802,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     cilindro = 1;
     ign_acionado[0] = false;
-    // captura_dwell[0] = false; 
+    captura_dwell[0] = false; 
     }
     if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
       tempo_atual_proxima_ignicao[0] = tempo_atual;
@@ -834,8 +837,8 @@ void setup()
 }
 
 void loop()
-{ 
-    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);
+{ qtd_loop++;
+    
     if(valor_map > valor_map_minimo){
       valor_map = valor_map_minimo;
     }else{
@@ -888,7 +891,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
 }
   for (int i = 0; i < qtd_cilindro/2; i++){
-  tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau;
+  tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * (i+1))) * tempo_cada_grau;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (falha > 1) && 
@@ -953,13 +956,15 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 }
   leitura_entrada_dados_serial();
   // verifica se já passou o intervalo de tempo
-  if (millis() - ultima_execucao >= intervalo_execucao)
-  {
+  if (millis() - ultima_execucao >= intervalo_execucao){
+  valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);  
   rpm_anterior = rpm;
   envia_dados_tempo_real();
   envia_dados_ponto_ignicao();
-  protege_ignicao();  
+  protege_ignicao();
+  //Serial.println(qtd_loop*(1000/intervalo_execucao));  
    // atualiza o tempo da última execução
    ultima_execucao = millis();
+   qtd_loop = 0;
   }
 }
