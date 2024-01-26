@@ -87,6 +87,7 @@ const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // 
 volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
 volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
+volatile bool flag_interrupcao = false;
 // variaveis reverente a entrada de dados pela serial
 const int MAX_VALUES = 270; // tamanho máximo do vetor
 int values[MAX_VALUES];     // vetor para armazenar os valores recebidos
@@ -94,6 +95,7 @@ int matrix[16][16];
 int vetor_map[16];
 int vetor_rpm[16];
 int index = 0;   // índice atual do vetor
+//int indice_envio = 0;   // índice atual do vetor de envio
 char buffer[6]; // buffer temporário para armazenar caracteres recebidos
 int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
@@ -111,6 +113,23 @@ int referencia_temperatura_clt1 = 20;
 int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
+int temperatura_motor = 0;
+
+void enviar_byte_serial(int valor) {
+  // Verifica se o valor é um caractere
+  if (valor >= 0 && valor <= 255) {
+    // Se for um caractere, envia o byte diretamente
+    Serial.write((char)valor);
+  } else {
+    // Se não for um caractere, divide o valor em dois bytes
+    char byteBaixo = valor & 0xFF;        // Os 8 bits menos significativos
+    char byteAlto = (valor >> 8) & 0xFF;  // Os 8 bits mais significativos
+
+    // Envia os dois bytes pela porta serial
+    Serial.write(byteBaixo);
+    Serial.write(byteAlto);
+  }
+}
 
 int ler_valor_eeprom_2byte(int endereco) {
     // Lê os dois bytes da EEPROM
@@ -451,7 +470,15 @@ float temperatura_clt(){
   float resistencia = resistencia_total * sensor_clt / 1023.0;
   //rpm = resistencia;
   float beta = calculateBeta(referencia_resistencia_clt1, referencia_temperatura_clt1, referencia_resistencia_clt2, referencia_temperatura_clt2);  
-  return calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
+  //return calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
+  int resultado_temperatura = calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
+
+  if (resultado_temperatura > 250 || resultado_temperatura < 0) {
+      return 250;
+  } else {
+      return resultado_temperatura;
+  }
+
 }
 
 void envia_dados_ponto_ignicao(){
@@ -474,24 +501,14 @@ void envia_dados_ponto_ignicao(){
     }
     
 }
-void envia_dados_tempo_real(){
-    if (status_dados_tempo_real)
-    {
-      Serial.print(",");
-      Serial.print(1);
-      Serial.print(",");
-      Serial.print(rpm);
-      Serial.print(",");
-      Serial.print(valor_map);
-      Serial.print(",");
-      Serial.print("85");
-      //Serial.print(temperatura_clt());
-      Serial.print(",");
-      //Serial.print(grau_avanco);
-      //Serial.print(",");
-      Serial.print(";");
-      Serial.flush(); // Limpa o buffer serial
-      //delay(400);
+void envia_dados_tempo_real(int indice_envio){
+    if (status_dados_tempo_real){
+      if(indice_envio == 1){
+        enviar_byte_serial(rpm_anterior);
+        enviar_byte_serial(valor_map);
+        enviar_byte_serial(temperatura_motor);
+        enviar_byte_serial(grau_avanco);
+      }
     }
     
 }
@@ -503,6 +520,7 @@ void protege_ignicao(){
     digitalWrite(ignicao_pins[3],0);
   }
 }
+
 
  
 void leitura_entrada_dados_serial()
@@ -551,7 +569,7 @@ void leitura_entrada_dados_serial()
       ler_dados_eeprom();
       //delay(2000);
     }
-    if (data == 'i') {// retorna ponto de igniçao
+    if (data == 'i') {
      if(status_dados_tempo_real){
       status_dados_tempo_real = false;
      }else{
@@ -819,13 +837,12 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
 
 void setup()
 {
-   // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
+  // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
   //inicializar_valores();
   //delay(1000);
   //aqui le os dados da eeprom que forem salvo anteriormente
   ler_dados_eeprom();
-  delay(1000);
-  
+  delay(1000);  
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
   pinMode(ign3, OUTPUT);
@@ -836,15 +853,14 @@ void setup()
   Serial.begin(9600);
 }
 
-void loop()
-{ qtd_loop++;
-    
+void loop(){ 
+    qtd_loop++;   
     if(valor_map > valor_map_minimo){
       valor_map = valor_map_minimo;
     }else{
      valor_map_minimo = valor_map; 
     }  
-     
+
     if(rpm_anterior < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
@@ -948,19 +964,21 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
             captura_dwell[i] = false;
-            // ign_acionado[i] = false;
+            //ign_acionado[i] = false;
             digitalWrite(ignicao_pins[i], 0);
+            delay(5); //um pequeno atraso
         }
     }
   }
 }
-  leitura_entrada_dados_serial();
+  leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){
   valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);  
   rpm_anterior = rpm;
-  envia_dados_tempo_real();
+  envia_dados_tempo_real(1);
   envia_dados_ponto_ignicao();
+  temperatura_motor = temperatura_clt();
   protege_ignicao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao));  
    // atualiza o tempo da última execução
