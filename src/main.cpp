@@ -95,7 +95,7 @@ int matrix[16][16];
 int vetor_map[16];
 int vetor_rpm[16];
 int index = 0;   // índice atual do vetor
-//int indice_envio = 0;   // índice atual do vetor de envio
+int indice_envio = 0;   // índice atual do vetor de envio
 char buffer[6]; // buffer temporário para armazenar caracteres recebidos
 int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
@@ -107,7 +107,6 @@ int tipo_vetor_configuracao_clt = 0;
 bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
-volatile int valor_map_minimo = 0; //estrategia para melhorar a precisao da verificação do map
 int ajuste_pms =  0;
 int referencia_temperatura_clt1 = 20;
 int referencia_resistencia_clt1 = 2500;
@@ -855,12 +854,7 @@ void setup()
 
 void loop(){ 
     qtd_loop++;   
-    if(valor_map > valor_map_minimo){
-      valor_map = valor_map_minimo;
-    }else{
-     valor_map_minimo = valor_map; 
-    }  
-
+    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);  
     if(rpm_anterior < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
@@ -974,7 +968,6 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){
-  valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);  
   rpm_anterior = rpm;
   envia_dados_tempo_real(1);
   envia_dados_ponto_ignicao();
