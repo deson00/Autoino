@@ -507,6 +507,7 @@ void envia_dados_tempo_real(int indice_envio){
         enviar_byte_serial(valor_map);
         enviar_byte_serial(temperatura_motor);
         enviar_byte_serial(grau_avanco);
+        enviar_byte_serial(qtd_loop*5);
       }
     }
     
@@ -854,7 +855,7 @@ void setup()
 
 void loop(){ 
     qtd_loop++;   
-    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);  
+     
     if(rpm_anterior < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
@@ -889,7 +890,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (falha > 1) && 
         (pms == 1) && 
-        (rpm >= 200)){
+        (rpm >= 50)){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
@@ -960,7 +961,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
             captura_dwell[i] = false;
             //ign_acionado[i] = false;
             digitalWrite(ignicao_pins[i], 0);
-            delay(5); //um pequeno atraso
+            //delay(5); //um pequeno atraso
         }
     }
   }
@@ -968,6 +969,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){
+  valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);   
   rpm_anterior = rpm;
   envia_dados_tempo_real(1);
   envia_dados_ponto_ignicao();
