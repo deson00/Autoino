@@ -810,7 +810,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     
     tempo_inicial_rpm = tempo_final_rpm;
     qtd_revolucoes++;
-    //tempo_cada_grau = tempo_total_volta_completa / 360;
+    tempo_cada_grau = tempo_total_volta_completa / 360;
     // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     posicao_atual_sensor = 0;
     qtd_leitura = 0;
@@ -828,7 +828,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
       captura_dwell[0] = false; 
     }
   }else{
-    tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+    //tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;
@@ -856,7 +856,7 @@ void setup()
 void loop(){ 
     qtd_loop++;   
      
-    if(rpm_anterior < rpm_partida){
+    if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
     }
@@ -864,7 +864,7 @@ void loop(){
       grau_avanco = grau_avanco_fixo;
       dwell_bobina = dwell_funcionamento;
     }
-    else if(rpm_anterior < 3000){
+    else if(rpm < 3000){
       int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
       int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
@@ -880,7 +880,7 @@ tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
  if(grau_pms < 180){
-  ajuste_pms =  180;
+  ajuste_pms =  0;
  }else{
   ajuste_pms =  0;
  }
