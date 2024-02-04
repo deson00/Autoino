@@ -109,6 +109,7 @@ bool status_dados_ponto_ignicao = false;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
 int ajuste_pms =  0;
+int busca_avanco_linear = false;
 int referencia_temperatura_clt1 = 20;
 int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;
@@ -814,9 +815,11 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     tempo_cada_grau = tempo_total_volta_completa / 360;
     // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     posicao_atual_sensor = 0;
-   if ((qtd_leitura != (qtd_dente - qtd_dente_faltante)) && (falha > 1)) {
+   if ((qtd_leitura != (qtd_dente - qtd_dente_faltante))) {
     qtd_perda_sincronia++;
-}
+    }else{
+      falha++;
+    }
     qtd_leitura = 0;
     falha++;// reservado para escapar rotação caso necessario no futuro
     pms = 1;// utilizado para garantir a sentelha apenas apos encontrar a falha    
@@ -866,7 +869,7 @@ void loop(){
       grau_avanco = grau_avanco_fixo;
       dwell_bobina = dwell_funcionamento;
     }
-    else if(rpm < 3000){
+    else if(rpm < 3000 && busca_avanco_linear == true){
       int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
       int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
@@ -913,7 +916,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (falha > 1) && 
         (pms == 1) && 
-        (rpm >= 50)){
+        (rpm >= 100)){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
