@@ -13,7 +13,6 @@ int ign2 = 5;
 int ign3 = 6;
 int ign4 = 7;
 #endif
-
 #ifdef Mega
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
@@ -24,7 +23,6 @@ int ign2 = 38;
 int ign3 = 52;
 int ign4 = 50;
 #endif
-
   int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
   int qtd_dente = 12; //60 
   int qtd_dente_faltante = 1; //2
@@ -60,8 +58,8 @@ volatile unsigned long tempo_cada_grau = 0;
 volatile unsigned long tempo_proxima_ignicao[8];
 volatile unsigned long tempo_atual = 0;
 volatile unsigned long tempo_atual_proxima_ignicao[8];
-volatile unsigned long tempo_inicio_dwell;
-volatile unsigned long tempo_final_dwell;
+//volatile unsigned long tempo_inicio_dwell;
+//volatile unsigned long tempo_final_dwell;
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 volatile unsigned long verifica_falha = 0;
 int inicia = 1;
@@ -69,7 +67,7 @@ volatile int pms = 0;
 volatile long falha = 0;
 int qtd_revolucoes = 0;
 int qtd_perda_sincronia = 0;
-volatile int cilindro = 0;
+//volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
 int qtd_loop = 0;
@@ -81,7 +79,7 @@ unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rp
 //volatile unsigned long tf;
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-int rpm_partida = 200;
+int rpm_partida = 400;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
@@ -115,13 +113,19 @@ int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 int temperatura_motor = 0;
 
-void enviar_byte_serial(int valor) {
-  // Verifica se o valor é um caractere
-  if (valor >= 0 && valor <= 255) {
-    // Se for um caractere, envia o byte diretamente
-    Serial.write((char)valor);
-  } else {
-    // Se não for um caractere, divide o valor em dois bytes
+void enviar_byte_serial(int valor, int tamanho) {
+  if (tamanho == 1) {
+    // Verifica se o valor é um caractere
+    if (valor >= 0 && valor <= 255) {
+      // Se for um caractere, envia o byte diretamente
+      Serial.write((char)valor);
+    } else {
+      // Se não for um caractere, envia apenas o byte menos significativo
+      char byteBaixo = valor & 0xFF;  // Os 8 bits menos significativos
+      Serial.write(byteBaixo);
+    }
+  } else if (tamanho == 2) {
+    // Divide o valor em dois bytes
     char byteBaixo = valor & 0xFF;        // Os 8 bits menos significativos
     char byteAlto = (valor >> 8) & 0xFF;  // Os 8 bits mais significativos
 
@@ -472,11 +476,12 @@ float temperatura_clt(){
 void envia_dados_tempo_real(int indice_envio){
     if (status_dados_tempo_real){
       if(indice_envio == 1){
-        enviar_byte_serial(rpm_anterior);
-        enviar_byte_serial(valor_map);
-        enviar_byte_serial(temperatura_motor);
-        enviar_byte_serial(grau_avanco);
-        enviar_byte_serial(qtd_loop*5);
+        enviar_byte_serial(rpm_anterior, 2);
+        enviar_byte_serial(valor_map, 1);
+        enviar_byte_serial(temperatura_motor, 1);
+        enviar_byte_serial(grau_avanco, 1);
+        enviar_byte_serial(qtd_loop*5, 2);
+        enviar_byte_serial(qtd_perda_sincronia, 1);
       }
     } 
 }
@@ -700,6 +705,9 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     posicao_atual_sensor = 0;
    if ((qtd_leitura != (qtd_dente - qtd_dente_faltante))) {
     qtd_perda_sincronia++;
+      if(qtd_perda_sincronia >=255){
+        qtd_perda_sincronia = 0;
+      }
     }else{
       falha++;
     }
@@ -708,7 +716,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     pms = 1;// utilizado para garantir a sentelha apenas apos encontrar a falha    
     if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
-    cilindro = 1;
+    //cilindro = 1;
     ign_acionado[0] = false;
     captura_dwell[0] = false; 
     }
@@ -762,11 +770,12 @@ void loop(){
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
- if(grau_pms < 180){
-  ajuste_pms =  180;
- }else{
-  ajuste_pms =  0;
- }
+if (grau_pms <= 180) {
+    if (grau_pms < 30 || rpm > 800) {
+        ajuste_pms = 180;
+    } 
+}
+
   for (int i = 0; i < qtd_cilindro/2; i++){
     tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
@@ -814,7 +823,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
             }else{
               digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
             }
-            cilindro++;      
+            //cilindro++;      
         }
     }
   }
