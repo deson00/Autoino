@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+//#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
 #ifdef Uno
 #define pino_sensor_roda_fonica 2
@@ -88,8 +88,8 @@ volatile unsigned long tempo_percorrido[8];
 volatile bool flag_interrupcao = false;
 // variaveis reverente a entrada de dados pela serial
 const int MAX_VALUES = 270; // tamanho máximo do vetor
-int values[MAX_VALUES];     // vetor para armazenar os valores recebidos
-int matrix[16][16];
+int values[270];     // vetor para armazenar os valores recebidos
+byte matrix[16][16];
 int vetor_map[16];
 int vetor_rpm[16];
 int index = 0;   // índice atual do vetor
