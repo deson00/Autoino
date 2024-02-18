@@ -1,33 +1,52 @@
 #include <Arduino.h>
 #include <EEPROM.h>
+//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
-
+#ifdef Uno
+#define pino_sensor_roda_fonica 2
+#define pino_sensor_fase 3
+#define pino_sensor_map A0
+#define pino_sensor_clt A2
+int ign1 = 4;
+int ign2 = 5;
+int ign3 = 6;
+int ign4 = 7;
+#endif
+#ifdef Mega
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
 #define pino_sensor_map A3
-
-  int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
-  int qtd_dente = 60;
-  int qtd_dente_faltante = 2;
-  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
-  int qtd_cilindro = 6 / local_rodafonica;
-  int grau_pms = 70;
-  int dwell_bobina = 4;
-
+#define pino_sensor_clt A1
 int ign1 = 40;
 int ign2 = 38;
 int ign3 = 52;
 int ign4 = 50;
+#endif
+  int tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
+  int qtd_dente = 12; //60 
+  int qtd_dente_faltante = 1; //2
+  int local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
+  int qtd_cilindro = 6 / local_rodafonica;
+  int grau_pms = 60;
+  int dwell_bobina = 4;
+  int dwell_partida = 5;
+  int dwell_funcionamento = 3;
 
 int tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
-volatile unsigned int grau_cada_dente = 360 / qtd_dente;
-volatile unsigned int grau_avanco = 0;
-volatile unsigned int grau_avanco_partida = 5;
-volatile unsigned int grau_entre_cada_cilindro = 360 / qtd_cilindro;
-volatile unsigned int posicao_atual_sensor = 0;
+int grau_cada_dente = 360 / qtd_dente;
+int grau_avanco = 0;
+int grau_avanco_partida = 1; // avanço definido apenas na partida
+int grau_entre_cada_cilindro = 360 / qtd_cilindro;
+int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
-volatile unsigned int qtd_leitura = 0;
+int qtd_leitura = 0;
+int referencia_leitura = 1;//map 1 e tps 2
+int modo_ignicao = 1; // 1 para centelha perdida e 2 para centelha unica  
+int avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
+int grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
+int tipo_sinal_bobina = 1 ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
 
 volatile unsigned long tempo_anterior = 0;
 volatile unsigned long tempo_dente_anterior[2] = {0,0};
@@ -39,79 +58,126 @@ volatile unsigned long tempo_cada_grau = 0;
 volatile unsigned long tempo_proxima_ignicao[8];
 volatile unsigned long tempo_atual = 0;
 volatile unsigned long tempo_atual_proxima_ignicao[8];
-volatile unsigned long tempo_inicio_dwell;
-volatile unsigned long tempo_final_dwell;
+//volatile unsigned long tempo_inicio_dwell;
+//volatile unsigned long tempo_final_dwell;
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 volatile unsigned long verifica_falha = 0;
 int inicia = 1;
-volatile int pms = 0;
 volatile long falha = 0;
-volatile int cilindro = 0;
+int qtd_revolucoes = 0;
+int qtd_perda_sincronia = 0;
+//volatile int cilindro = 0;
 volatile int cilindro_anterior = -1;
 int cilindro_ign = 0;
-int dente = 0;
-unsigned long intervalo_execucao = 1000; // intervalo de 1 segundo em milissegundos
+int qtd_loop = 0;
+unsigned long intervalo_execucao = 200; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
-volatile int pulsos;
-volatile unsigned long ti = 0;
-volatile unsigned long tf;
-volatile unsigned int rpm;
+unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
+unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
+//volatile unsigned long ti = 0;
+//volatile unsigned long tf;
+volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-const int ignicao_pins[] = {ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
+int rpm_partida = 400;
+const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 
 // Declare as variáveis para controlar o estado do pino de saída
-volatile int estado_pino_ignicao = LOW;  // variavel armazenha o estado do pino de ignição se esta ligado ou desligado
-volatile bool estado_anterior_pino_ignicao = LOW;
-volatile unsigned long tempo_inicio_pulso = 0;
-const unsigned long duracao_pulso = 4; // duração do pulso em milissegundos
-//volatile bool captura_dwell = false;
 volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
+volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
-volatile bool alternar_funcao = true;
+volatile bool flag_interrupcao = false;
 // variaveis reverente a entrada de dados pela serial
-const int MAX_VALUES = 500; // tamanho máximo do vetor
+const int MAX_VALUES = 270; // tamanho máximo do vetor
 int values[MAX_VALUES];     // vetor para armazenar os valores recebidos
 int matrix[16][16];
 int vetor_map[16];
 int vetor_rpm[16];
 int index = 0;   // índice atual do vetor
-char buffer[10]; // buffer temporário para armazenar caracteres recebidos
+int indice_envio = 0;   // índice atual do vetor de envio
+char buffer[6]; // buffer temporário para armazenar caracteres recebidos
 int tipo_vetor_map = 0;
 int tipo_vetor_rpm = 0;
 int tipo_vetor_matrix = 0;
 int tipo_vetor_configuracao_inicial = 0;
-bool status_dados_ponto_ignicao = false;
+int tipo_vetor_configuracao_faisca = 0;
+int tipo_vetor_configuracao_dwell = 0;
+int tipo_vetor_configuracao_clt = 0;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 10;
+int ajuste_pms =  0;
+int busca_avanco_linear = true;
+int referencia_temperatura_clt1 = 20;
+int referencia_resistencia_clt1 = 2500;
+int referencia_temperatura_clt2 = 100;
+int referencia_resistencia_clt2 = 187;
+int temperatura_motor = 0;
 
-void gravar_dados_eeprom_tabela_ignicao_map_rpm(){
+void enviar_byte_serial(int valor, int tamanho) {
+  if (tamanho == 1) {
+    // Verifica se o valor é um caractere
+    if (valor >= 0 && valor <= 255) {
+      // Se for um caractere, envia o byte diretamente
+      Serial.write((char)valor);
+    } else {
+      // Se não for um caractere, envia apenas o byte menos significativo
+      char byteBaixo = valor & 0xFF;  // Os 8 bits menos significativos
+      Serial.write(byteBaixo);
+    }
+  } else if (tamanho == 2) {
+    // Divide o valor em dois bytes
+    char byteBaixo = valor & 0xFF;        // Os 8 bits menos significativos
+    char byteAlto = (valor >> 8) & 0xFF;  // Os 8 bits mais significativos
+
+    // Envia os dois bytes pela porta serial
+    Serial.write(byteBaixo);
+    Serial.write(byteAlto);
+  }
+}
+
+int ler_valor_eeprom_2byte(int endereco) {
+    // Lê os dois bytes da EEPROM
+    byte byte_menos_significativo = EEPROM.read(endereco);
+    byte byte_mais_significativo = EEPROM.read(endereco + 1);
+
+    // Reconstrói o valor inteiro a partir dos bytes lidos
+    int valor = byte_mais_significativo << 8 | byte_menos_significativo;
+
+    return valor;
+}
+void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   Serial.println("Gravando dados");
   int highByte;
   int lowByte;
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
-  //a primeira posição de escrita será a posição 10 ou 11 
-  //(dependendo do valor do primeiro elemento do vetor_rpm) e a última posição de escrita será a posição 42.
-for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 16; i++) {
     highByte = vetor_rpm[i] >> 8; // Obtém o byte mais significativo
     lowByte = vetor_rpm[i] & 0xFF; // Obtém o byte menos significativo
-    EEPROM.write(i*2+10, highByte); // Armazena o byte mais significativo na posição i*2+10
-    EEPROM.write(i*2+11, lowByte); // Armazena o byte menos significativo na posição i*2+11
-}
- // Escrita da matrix na EEPROM
- //A primeira chamada à função "EEPROM.write()" escreve 1 byte no endereço 50 da memória EEPROM, e cada iteração subsequente do loop escreve mais 1 byte no endereço seguinte. Assim, ao final do loop, a última posição escrita será a posição 65 (ou seja, 50 + 16).
-//A segunda chamada à função "EEPROM.write()" escreve 1 byte no endereço 100 da memória EEPROM, e cada iteração subsequente do loop escreve mais 1 byte no endereço seguinte. Assim, ao final da execução do loop interno (j), a última posição escrita será a posição 255 (ou seja, 100 + 16*16 - 1).
-//Portanto, a última posição da memória EEPROM utilizada pelo loop será a posição 255.
-for (int i = 0; i < 16; i++) {
-  EEPROM.write(i+50, vetor_map[i]);// endereço de memória começa em 50
-  for (int j = 0; j < 16; j++) {
-    EEPROM.write(100 + i*16 + j, matrix[i][j]); // endereço de memória começa em 100 fim 255 para a matriz
+    EEPROM.write(i * 2 + 10, highByte); // Armazena o byte mais significativo na posição i*2+10
+    EEPROM.write(i * 2 + 11, lowByte); // Armazena o byte menos significativo na posição i*2+11
+  }
+  // Escrita da matrix na EEPROM
+  for (int i = 0; i < 16; i++) {
+    EEPROM.write(i + 50, vetor_map[i]); // Endereço de memória começa em 50
+    for (int j = 0; j < 16; j++) {
+      EEPROM.write(100 + i * 16 + j, matrix[i][j]); // Endereço de memória começa em 100, fim em 255 para a matriz
+    }
   }
 }
-for (int i = 0; i < 16; i++) {
+
+void verificar_dados_eeprom_tabela_ignicao_map_rpm() {
+  Serial.println("Verificando dados gravado da tabela");
+  // Verificar dados do vetor_rpm na EEPROM
+  for (int i = 0; i < 16; i++) {
     int storedValue;
-    int storedHighByte = EEPROM.read(i*2+10);
-    int storedLowByte = EEPROM.read(i*2+11);
+    int storedHighByte = EEPROM.read(i * 2 + 10);
+    int storedLowByte = EEPROM.read(i * 2 + 11);
     storedValue = (storedHighByte << 8) | storedLowByte;
+    Serial.print("Gravação na posição ");
+      Serial.print(i);
+      Serial.print(": valor lido da EEPROM = ");
+      Serial.print(storedValue);
+      Serial.print(", valor esperado = ");
+      Serial.println(vetor_rpm[i]);
     if (storedValue != vetor_rpm[i]) {
       Serial.print("Erro de gravação na posição ");
       Serial.print(i);
@@ -120,35 +186,34 @@ for (int i = 0; i < 16; i++) {
       Serial.print(", valor esperado = ");
       Serial.println(vetor_rpm[i]);
     }
-}
-
-for (int i = 0; i < 16; i++) {
-  int storedValue = EEPROM.read(i+50);
-  if (storedValue != vetor_map[i]) {
-    Serial.print("Erro de gravação na posição ");
-    Serial.print(i);
-    Serial.print(" do vetor_map: valor lido da EEPROM = ");
-    Serial.print(storedValue);
-    Serial.print(", valor esperado = ");
-    Serial.println(vetor_map[i]);
   }
-  for (int j = 0; j < 16; j++) {
-    storedValue = EEPROM.read(100 + i*16 + j);
-    if (storedValue != matrix[i][j]) {
+
+  // Verificar dados do vetor_map e da matrix na EEPROM
+  for (int i = 0; i < 16; i++) {
+    int storedValue = EEPROM.read(i + 50);
+    if (storedValue != vetor_map[i]) {
       Serial.print("Erro de gravação na posição ");
       Serial.print(i);
-      Serial.print(",");
-      Serial.print(j);
-      Serial.print(" da matriz: valor lido da EEPROM = ");
+      Serial.print(" do vetor_map: valor lido da EEPROM = ");
       Serial.print(storedValue);
       Serial.print(", valor esperado = ");
-      Serial.println(matrix[i][j]);
+      Serial.println(vetor_map[i]);
+    }
+    for (int j = 0; j < 16; j++) {
+      storedValue = EEPROM.read(100 + i * 16 + j);
+      if (storedValue != matrix[i][j]) {
+        Serial.print("Erro de gravação na posição ");
+        Serial.print(i);
+        Serial.print(",");
+        Serial.print(j);
+        Serial.print(" da matriz: valor lido da EEPROM = ");
+        Serial.print(storedValue);
+        Serial.print(", valor esperado = ");
+        Serial.println(matrix[i][j]);
+      }
     }
   }
 }
-Serial.println("Gravação finalizada");
-}
-
 void gravar_dados_eeprom_configuracao_inicial() {
     int16_t grau_pms_16bit = (int16_t)grau_pms + 360; // Adiciona um offset de 360 para garantir que o valor seja sempre positivo
     if (grau_pms_16bit < 0) { // Verifica se o valor é negativo
@@ -165,6 +230,31 @@ void gravar_dados_eeprom_configuracao_inicial() {
     EEPROM.write(5*2+360, qtd_cilindro);
 }
 
+void gravar_dados_eeprom_configuracao_faisca() {
+    EEPROM.write(1*2+380, referencia_leitura);
+    EEPROM.write(2*2+380, modo_ignicao);
+    EEPROM.write(3*2+380, grau_avanco_partida);
+    EEPROM.write(4*2+380, avanco_fixo);
+    EEPROM.write(5*2+380, grau_avanco_fixo);
+    EEPROM.write(6*2+380, tipo_sinal_bobina); 
+}
+
+void gravar_dados_eeprom_configuracao_dwell() {
+    EEPROM.write(1*2+400, dwell_partida);
+    EEPROM.write(2*2+400, dwell_funcionamento); 
+}
+
+void gravar_dados_eeprom_configuracao_clt() {
+    // Gravar os valores divididos em bytes
+    EEPROM.write(410, referencia_temperatura_clt1 & 0xFF);        // Byte menos significativo
+    //EEPROM.write(411, (referencia_temperatura_clt1 >> 8) & 0xFF);  // Byte mais significativo
+    EEPROM.write(412, referencia_resistencia_clt1 & 0xFF);
+    EEPROM.write(413, (referencia_resistencia_clt1 >> 8) & 0xFF);
+    EEPROM.write(414, referencia_temperatura_clt2 & 0xFF);
+    //EEPROM.write(415, (referencia_temperatura_clt2 >> 8) & 0xFF);
+    EEPROM.write(416, referencia_resistencia_clt2 & 0xFF);
+    EEPROM.write(417, (referencia_resistencia_clt2 >> 8) & 0xFF);
+}
 
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
@@ -218,6 +308,27 @@ lowByte = EEPROM.read(4*2+360+1); // Lê o byte menos significativo
 grau_pms = (highByte << 8) | lowByte; 
 grau_pms = grau_pms - 360; //volta os dados para valor original 
 qtd_cilindro = EEPROM.read(5*2+360);
+grau_entre_cada_cilindro = 360 / qtd_cilindro;
+grau_cada_dente = 360 / qtd_dente;
+
+//leitura dos dados de configurações de faisca 
+referencia_leitura = EEPROM.read(1*2+380); 
+modo_ignicao = EEPROM.read(2*2+380);
+grau_avanco_partida = EEPROM.read(3*2+380);
+avanco_fixo = EEPROM.read(4*2+380);
+grau_avanco_fixo = EEPROM.read(5*2+380);
+tipo_sinal_bobina = EEPROM.read(6*2+380);
+
+//leitura dos dados de configurações de dwell 
+dwell_partida = EEPROM.read(1*2+400); 
+dwell_funcionamento = EEPROM.read(2*2+400);
+
+//leitura dos dados de calibração de ctl
+referencia_temperatura_clt1 = EEPROM.read(410);
+referencia_resistencia_clt1 = ler_valor_eeprom_2byte(412);
+referencia_temperatura_clt2 = EEPROM.read(414);
+referencia_resistencia_clt2 = ler_valor_eeprom_2byte(416); 
+
 Serial.print("a,");
       // vetor map
       for (int  i = 0; i < 16; i++)
@@ -265,8 +376,43 @@ Serial.print("a,");
       Serial.print(qtd_cilindro * local_rodafonica);
       Serial.print(",");
       Serial.print(";");
-}
 
+      // dados configuração faisca
+      Serial.print("j,");
+      Serial.print(referencia_leitura);
+      Serial.print(",");
+      Serial.print(modo_ignicao);
+      Serial.print(",");
+      Serial.print(grau_avanco_partida);
+      Serial.print(",");
+      Serial.print(avanco_fixo);
+      Serial.print(",");
+      Serial.print(grau_avanco_fixo);
+      Serial.print(",");
+      Serial.print(tipo_sinal_bobina);
+      Serial.print(",");
+      Serial.print(";");
+
+      // dados configuração dwell
+      Serial.print("k,");
+      Serial.print(dwell_partida);
+      Serial.print(",");
+      Serial.print(dwell_funcionamento);
+      Serial.print(",");
+      Serial.print(";");
+
+      // dados configuração calibrate temperature sensor ctl
+      Serial.print("l,");//letra L minusculo
+      Serial.print(referencia_temperatura_clt1);
+      Serial.print(",");
+      Serial.print(referencia_resistencia_clt1);
+      Serial.print(",");
+      Serial.print(referencia_temperatura_clt2);
+      Serial.print(",");
+      Serial.print(referencia_resistencia_clt2);
+      Serial.print(",");
+      Serial.print(";");
+}
 int procura_indice(int value, int *arr, int size)
 {
   int index = 0;
@@ -285,43 +431,57 @@ int procura_indice(int value, int *arr, int size)
   }
   return index;
 }
-void envia_dados_ponto_ignicao(){
-    while(status_dados_ponto_ignicao)
-    {
-    // procura valor do rpm mais proximo e map para achar o ponto na matriz
-      Serial.print(",");
-      Serial.print("d,");
-      Serial.print(procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16));
-      Serial.print(",");
-      Serial.print(procura_indice(rpm, vetor_rpm, 16));
-      Serial.print(",");
-      Serial.print(rpm);
-      Serial.print(",");
-      Serial.print(matrix[procura_indice(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]), vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)]);
-      //Serial.print(",; ");
-      delay(100);
-      
-    }
-    
+int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo, int grau_maximo) {
+  // Cálculo da proporção
+  float proporcao = float(rpm_atual - rpm_minimo) / float(rpm_maximo - rpm_minimo);
+  // Mapeamento linear
+  int grau = proporcao * (grau_maximo - grau_minimo) + grau_minimo; 
+  return grau;
 }
-void envia_dados_tempo_real(){
-    while (status_dados_tempo_real)
-    {
-      Serial.print(",");
-      Serial.print(1);
-      Serial.print(",");
-      Serial.print(rpm);
-      Serial.print(",");
-      Serial.print(map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]));
-      Serial.print(",");
-      Serial.print(80);
-      Serial.print(",");
-      Serial.print(grau_avanco);
-      //Serial.print(",");
-      //Serial.print(";");
-      delay(100);
-    }
-    
+float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
+  float T1 = ntcTemperature1 + 273.15;   // converte a temperatura em Celsius para Kelvin
+  float T2 = ntcTemperature2 + 273.15;
+  float beta = log(ntcResistance2/ntcResistance1) / ((1/T2) - (1/T1));   // aplica a equação do coeficiente beta
+  return beta;
+}
+
+float calculateTemperature(float ntcResistance, float ntcBeta, float ntcReferenceResistance, float ntcReferenceTemperature) {
+  float steinhart;
+  steinhart = log(ntcResistance/ntcReferenceResistance) / ntcBeta;     // parte da equação de Steinhart-Hart
+  steinhart += 1.0 / (ntcReferenceTemperature + 273.15);                    // adiciona a temperatura de referência em Kelvin
+  steinhart = 1.0 / steinhart;                                             // inverte a equação
+  steinhart -= 273.15;                                                     // converte para Celsius
+  return steinhart;
+}
+
+float temperatura_clt(){
+  int sensor_clt = analogRead(pino_sensor_clt);  // Lê o valor analógico
+  float voltage_clt = sensor_clt * (5.0 / 1023.0);     // Converte o valor para tensão (0 a 5V)
+  //float resistencia = 2000.0 * (5.0 / voltage_clt - 1.0);  // Resistência usando um resistor conhecido em ohms
+  float resistencia_total = 2400.0;  // Substitua pelo valor real do seu uso
+  float resistencia = resistencia_total * sensor_clt / 1023.0;
+  //rpm = resistencia;
+  float beta = calculateBeta(referencia_resistencia_clt1, referencia_temperatura_clt1, referencia_resistencia_clt2, referencia_temperatura_clt2);  
+  //return calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
+  int resultado_temperatura = calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
+
+  if (resultado_temperatura > 250 || resultado_temperatura < 0) {
+      return 250;
+  } else {
+      return resultado_temperatura;
+  }
+}
+void envia_dados_tempo_real(int indice_envio){
+    if (status_dados_tempo_real){
+      if(indice_envio == 1){
+        enviar_byte_serial(rpm_anterior, 2);
+        enviar_byte_serial(valor_map, 1);
+        enviar_byte_serial(temperatura_motor, 1);
+        enviar_byte_serial(grau_avanco, 1);
+        enviar_byte_serial(qtd_loop*5, 2);
+        enviar_byte_serial(qtd_perda_sincronia, 1);
+      }
+    } 
 }
 void protege_ignicao(){
   if(rpm_anterior < 20){
@@ -331,8 +491,6 @@ void protege_ignicao(){
     digitalWrite(ignicao_pins[3],0);
   }
 }
-
- 
 void leitura_entrada_dados_serial()
 {
   if (Serial.available() > 0)
@@ -344,20 +502,15 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'b')//entrada de dados do vetor rpm
     {
-      tipo_vetor_rpm = 1;
+      tipo_vetor_rpm = 1;//b,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000; exmplo
     }
     if (data == 'c')//entrada de dados do da matrix em vetor
     {
       tipo_vetor_matrix = 1;
     }
-    if (data == 'd')// retorna ponto de igniçao 
+    if (data == 'd')// livre para reutilizar 
     {
-     if(status_dados_ponto_ignicao){
-      status_dados_ponto_ignicao = false;
-     }else{
-      status_dados_ponto_ignicao = true;
-      envia_dados_ponto_ignicao();
-     }
+      //função aqui
     }
     if (data == 'e')//retorna dados da tabela caso e
     { 
@@ -367,7 +520,8 @@ void leitura_entrada_dados_serial()
      if (data == 'f'){//grava dados na eeprom
       // Escrita dos valores na EEPROM
       gravar_dados_eeprom_tabela_ignicao_map_rpm();
-      gravar_dados_eeprom_configuracao_inicial();
+      verificar_dados_eeprom_tabela_ignicao_map_rpm();
+      //gravar_dados_eeprom_configuracao_inicial();
       
     }
     if (data == 'g'){//grava configuração inicial
@@ -379,13 +533,21 @@ void leitura_entrada_dados_serial()
       ler_dados_eeprom();
       //delay(2000);
     }
-    if (data == 'i') {// retorna ponto de igniçao
+    if (data == 'i') {
      if(status_dados_tempo_real){
       status_dados_tempo_real = false;
      }else{
       status_dados_tempo_real = true;
-      envia_dados_tempo_real();
      }
+    }
+    if (data == 'j') {// configuração da faisca
+      tipo_vetor_configuracao_faisca = 1;
+    }
+    if (data == 'k') {// configuração da faisca
+      tipo_vetor_configuracao_dwell = 1;
+    }
+    if (data == 'l') {// configuração sensor temperatura clt
+      tipo_vetor_configuracao_clt = 1;
     }
 
     if (data == ';')
@@ -430,14 +592,42 @@ void leitura_entrada_dados_serial()
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
           qtd_cilindro = values[5] / local_rodafonica;
-          
+          grau_entre_cada_cilindro = 360 / qtd_cilindro;
+          gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
+      }
+      if (tipo_vetor_configuracao_faisca == 1){
+          referencia_leitura = values[0];//map 1 e tps 2
+          modo_ignicao = values[1]; // 1 para centelha perdida e 2 para centelha unica
+          grau_avanco_partida = values[2]; // avanço definido apenas na partida 
+          avanco_fixo = values[3]; // avanço fixo 0 desligado e 1 ligado
+          grau_avanco_fixo = values[4]; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
+          tipo_sinal_bobina = values[5] ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
+          gravar_dados_eeprom_configuracao_faisca();
+          tipo_vetor_configuracao_faisca = 0;
+      }
+      if (tipo_vetor_configuracao_dwell == 1){
+          dwell_partida = values[0];
+          dwell_funcionamento = values[1];
+          gravar_dados_eeprom_configuracao_dwell();
+          tipo_vetor_configuracao_dwell = 0;
+      }
+      if (tipo_vetor_configuracao_clt == 1){
+          referencia_temperatura_clt1 = values[0];
+          referencia_resistencia_clt1 = values[1];
+          referencia_temperatura_clt2 = values[2];
+          referencia_resistencia_clt2 = values[3];
+          gravar_dados_eeprom_configuracao_clt();
+          tipo_vetor_configuracao_clt = 0;
       }
 
       index = 0; // reinicia índice do vetor
     }
     else if (isdigit(data))
-    {                                // valor do vetor
+    {                                
+      // Valor do vetor
+      //Serial.print("Caractere recebido: ");
+      //Serial.println(data);
       buffer[strlen(buffer)] = data; // adiciona o caractere recebido no buffer temporário
       if (strlen(buffer) >= sizeof(buffer) - 1)
       {                                    // verifica se o buffer está cheio
@@ -445,9 +635,13 @@ void leitura_entrada_dados_serial()
       }
     }
     else if (data == ',' && strlen(buffer) > 0)
-    {                                 // final do número
+    {                                 
+      //Serial.print("Número recebido como string: ");
+      //Serial.println(buffer);
       buffer[strlen(buffer)] = '\0';  // adiciona um terminador de string para converter o buffer em uma string válida
-      values[index++] = atoi(buffer); // adiciona ao vetor
+      //values[index++] = atoi(buffer); // adiciona ao vetor
+      //Substituído por strtol
+      values[index++] = strtol(buffer, NULL, 10);
       if (index >= MAX_VALUES)
       {
         index = 0; // reinicia índice do vetor se estiver cheio
@@ -456,246 +650,89 @@ void leitura_entrada_dados_serial()
     }
   }
 }
-/*
-void inicializar_valores() {
-     // seta os valores no vetor_map
-      vetor_map[0] = 100;
-      vetor_map[1] = 96;
-      vetor_map[2] = 88;
-      vetor_map[3] = 80;
-      vetor_map[4] = 74;
-      vetor_map[5] = 66;
-      vetor_map[6] = 56;
-      vetor_map[7] = 50;
-      vetor_map[8] = 46;
-      vetor_map[9] = 40;
-      vetor_map[10] = 36;
-      vetor_map[11] = 30;
-      vetor_map[12] = 26;
-      vetor_map[13] = 20;
-      vetor_map[14] = 16;
-      vetor_map[15] = 10;
-
-      // seta os valores no vetor_rpm
-      vetor_rpm[0] = 510;
-      vetor_rpm[1] = 700;
-      vetor_rpm[2] = 1200;
-      vetor_rpm[3] = 1700;
-      vetor_rpm[4] = 2200;
-      vetor_rpm[5] = 2700;
-      vetor_rpm[6] = 3200;
-      vetor_rpm[7] = 3700;
-      vetor_rpm[8] = 4200;
-      vetor_rpm[9] = 4700;
-      vetor_rpm[10] = 5200;
-      vetor_rpm[11] = 5700;
-      vetor_rpm[12] = 6200;
-      vetor_rpm[13] = 6700;
-      vetor_rpm[14] = 7200;
-      vetor_rpm[15] = 7700;
-
-    int matrix_padrao[16][16] = {
-      {17,18,19,20,21,24,25,27,28,29,30,31,32,32,33,34},
-      {17,19,19,20,21,24,25,27,28,29,30,31,32,32,33,34},
-      {17,18,19,20,21,24,25,27,28,29,30,31,32,32,33,34},
-      {17,20,21,20,21,24,25,27,28,28,30,31,31,31,32,33},
-      {17,22,22,20,21,24,25,26,28,28,30,31,31,31,32,33},
-      {17,20,20,20,21,24,25,26,27,28,29,30,30,30,31,32},
-      {17,20,20,20,21,23,23,24,25,26,27,28,29,29,30,31},
-      {17,20,20,20,21,22,22,23,24,25,26,27,28,28,29,30},
-      {18,18,18,18,21,21,21,21,21,21,21,20,19,20,20,20},
-      {18,18,18,18,20,20,20,20,19,19,19,18,18,18,18,18},
-      {18,18,18,18,18,18,18,18,18,18,18,18,18,18,18,18},
-      {17,17,17,16,16,16,16,16,18,18,18,18,17,17,17,17},
-      {16,16,16,15,15,15,15,15,18,18,18,18,16,16,16,16},
-      {15,15,15,14,14,14,14,14,18,18,18,16,13,13,13,13},
-      {12,12,12,11,11,11,11,11,16,16,16,14,11,11,11,11},
-      {11,11,11,9,9,9,9,9,15,15,15,13,10,10,10,17}
-    };
-    // atualização dos valores da matriz
-    for(int i = 0; i < 16; i++) {
-      for(int j = 0; j < 16; j++) {
-        matrix[i][j] = matrix_padrao[i][j];
-      }
-    }
-  
-}
-*/
 
 void leitor_sensor_roda_fonica()
 {
   noInterrupts();
   qtd_leitura++;
-  pulsos++;
-  tf = micros();
-  long delta = tf - ti;
-  rpm = (60) / (float(delta) / 1000000 * 60);
-  ti = tf;
-  // calculo de mediana
-  /*if(n % 2 == 0){
-    md = n/2;
-    mediana = (v[md] + v[md-1])/2;
-  }
-  else{
-    md = n/2;
-    mediana = v[md];
-  })*/
-
   tempo_atual = micros() ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
-  verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
+  //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
+  verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
 
-  if (inicia)
-  {
+  if (inicia){
     tempo_anterior = tempo_atual;
     tempo_dente_anterior[0] = tempo_anterior;
     inicia = 0;
   }
-
-  if (leitura == 0)
-  {
+  if (leitura == 0){
     leitura = 1;
     tempo_dente_anterior[0] = (tempo_atual - tempo_anterior);
   }
-  else
-  {
+  else{
     leitura = 0;
     tempo_dente_anterior[1] = (tempo_atual - tempo_anterior);
   }
-
-  // Serial.print("|");
-  if (verifica_falha < intervalo_tempo_entre_dente)
+  //Serial.print("|");
+  //Serial.print(qtd_leitura); 
+if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4))))
   {
-    if (qtd_voltas == 1)
-    {
+    if (qtd_voltas == 1){
       tempo_final_volta_completa = tempo_atual;
       tempo_total_volta_completa = (tempo_final_volta_completa - tempo_inicio_volta_completa);
       qtd_voltas = 0;
     }
-    if (qtd_voltas == 0)
-    {
+    if (qtd_voltas == 0){
       tempo_inicio_volta_completa = tempo_atual;
       qtd_voltas = 1;
     }
-
-    // Serial.println("");
-    // Serial.print("__");
-    tempo_cada_grau = tempo_total_volta_completa / 360;
-
-    posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
-    qtd_leitura = qtd_dente_faltante;
-    falha++;
-    pms = 1;
-    
-    if(rpm_anterior < 500){
-      grau_avanco = grau_avanco_partida;
+    //Serial.print("__");
+    //Serial.println("");
+    //Serial.print(posicao_atual_sensor); 
+    tempo_final_rpm = micros();
+    long delta = tempo_final_rpm - tempo_inicial_rpm;
+    if(local_rodafonica == 1){
+      rpm = (60) / (float(delta) / 1000000) * 2;
     }else{
-      grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
+      rpm = (60) / (float(delta) / 1000000);
+    } 
+    tempo_inicial_rpm = tempo_final_rpm;
+    qtd_revolucoes++;
+    tempo_cada_grau = tempo_total_volta_completa / 360;
+    // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
+    posicao_atual_sensor = 0;
+   if ((qtd_leitura != (qtd_dente - qtd_dente_faltante))) {
+    qtd_perda_sincronia++;
+      if(qtd_perda_sincronia >=255){
+        qtd_perda_sincronia = 0;
+      }
+    }else{
+      falha++;
     }
-    
-    cilindro = 2;
+    qtd_leitura = 0;
+    falha++;// reservado para escapar rotação caso necessario no futuro   
+    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
-      //tempo_proxima_ignicao[0] = tempo_atual + (grau_pms * tempo_cada_grau);
-      tempo_proxima_ignicao[0] = (grau_pms - grau_avanco + grau_entre_cada_cilindro) * tempo_cada_grau;
-      //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
-      //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
-
+    //cilindro = 1;
+    ign_acionado[0] = false;
+    captura_dwell[0] = false; 
+    }
+    if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+      tempo_atual_proxima_ignicao[0] = tempo_atual;
+      ign_acionado[0] = false;
+      captura_dwell[0] = false; 
+    }
+  }else{
+    //tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+    //enviar_byte_serial(posicao_atual_sensor, 1);
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
-
-//IGN1
-if ((captura_dwell[0] == false) && (tempo_proxima_ignicao[2] != 0) && (cilindro_ign == 4) && (tempo_atual - tempo_atual_proxima_ignicao[2] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[2]) && (falha > 3) && (pms == 1) && (rpm >= 100))
-{
-  tempo_proxima_ignicao[2] = 0;
-  cilindro_ign = 0 ;
-  cilindro = 2;
-  //Serial.print(cilindro_ign);
-  //Serial.print(" x ");
-  //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
-    
-    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
-    //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
-    captura_dwell[0] = true;
-    tempo_percorrido[0] = tempo_atual;
-    digitalWrite(ignicao_pins[0],1);
-    
-  }
-
-  if((tempo_atual - tempo_percorrido[0]) >= 4000){
-    captura_dwell[0] = false;
-    digitalWrite(ignicao_pins[0],0);
-    
-  }
-
-//IGN2
-
-if ((captura_dwell[1] == false) && (tempo_proxima_ignicao[0]) && (cilindro == 2) && (tempo_atual - tempo_atual_proxima_ignicao[0] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[0]) && (falha > 3) && (pms == 1) && (rpm >= 100))
-{
-  tempo_proxima_ignicao[0] = 0;
-    cilindro++;
-    cilindro_ign = 3;
-  tempo_atual_proxima_ignicao[1] = tempo_atual_proxima_ignicao[0];
-  //tempo_proxima_ignicao[0] = (grau_pms + grau_entre_cada_cilindro) * tempo_cada_grau;
-  tempo_proxima_ignicao[1] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
-  //tempo_proxima_ignicao[2] = (grau_pms + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
-
-  //Serial.print(cilindro_ign);
-  //Serial.print(" x ");
-  //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
-    
-    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
-    //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
-    captura_dwell[1] = true;
-    tempo_percorrido[1] = tempo_atual;
-    digitalWrite(ignicao_pins[1],1);
-
-  }
-
-  if((tempo_atual - tempo_percorrido[1]) >= 4000){
-    captura_dwell[1] = false;
-    digitalWrite(ignicao_pins[1],0);
-  }
- //IGN3
-if ((captura_dwell[2] == false) && (tempo_proxima_ignicao[1] != 0) && (cilindro_ign == 3) && (tempo_atual - tempo_atual_proxima_ignicao[1] + (dwell_bobina * 1000) >= tempo_proxima_ignicao[1]) && (falha > 3) && (pms == 1) && (rpm >= 100))
-{
-  tempo_proxima_ignicao[1] = 0;
-    cilindro++;
-    cilindro_ign = 4;
-  tempo_atual_proxima_ignicao[2] = tempo_atual_proxima_ignicao[1];
-  //tempo_proxima_ignicao[0] = (grau_pms + grau_entre_cada_cilindro) * tempo_cada_grau;
-  //tempo_proxima_ignicao[1] = (grau_pms + (grau_entre_cada_cilindro * 2)) * tempo_cada_grau;
-  tempo_proxima_ignicao[2] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * 3)) * tempo_cada_grau;  
-
-  //Serial.print(cilindro_ign);
-  //Serial.print(" x ");
-  //Serial.println(tempo_proxima_ignicao[cilindro_ign]);
-    
-    //grau_avanco = matrix[procura_indice(100, vetor_map, 16)][procura_indice(rpm_anterior, vetor_rpm, 16)];
-    //tempo_proxima_ignicao = tempo_atual + (tempo_cada_grau * grau_entre_cada_cilindro) + ((grau_pms * cilindro) * tempo_cada_grau);
-    captura_dwell[2] = true;
-    tempo_percorrido[2] = tempo_atual;
-    digitalWrite(ignicao_pins[2],1);
-
-  }
-
-  if((tempo_atual - tempo_percorrido[2]) >= 4000){
-    captura_dwell[2] = false;
-    digitalWrite(ignicao_pins[2],0);
-  } 
-
   tempo_anterior = tempo_atual;
   interrupts();
 }
-
-void setup()
-{
-   // Chama a função para inicializar os valores da tabela de ponto grava e le caso nao use a interface 
-  //inicializar_valores();
-  //delay(1000);
-  //aqui le os dados da eeprom que forem salvo anteriormente
-  ler_dados_eeprom();
-  delay(1000);
-  
+void setup(){
+  ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
+  delay(1000);  
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
   pinMode(ign3, OUTPUT);
@@ -705,36 +742,138 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
 }
+void loop(){ 
+    qtd_loop++;   
+    if(rpm < rpm_partida){
+      grau_avanco = grau_avanco_partida;
+      dwell_bobina = dwell_partida;
+    }
+    else if(avanco_fixo){
+      grau_avanco = grau_avanco_fixo;
+      dwell_bobina = dwell_funcionamento;
+    }
+    else if(rpm < 3000 && busca_avanco_linear == true){
+      int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
+      int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
+      int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
+      grau_avanco = grau_linear;
+      dwell_bobina = dwell_funcionamento;
+    }
+    else{
+      grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      dwell_bobina = dwell_funcionamento;
+    }
+    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);
+tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
-void loop()
-{ 
-  valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[15], vetor_map[0]);   
-  leitura_entrada_dados_serial();
-//   // verifica se já passou o intervalo de tempo
-  if (millis() - ultima_execucao >= intervalo_execucao)
-  {
-  //gravar_dados_eeprom_configuracao_inicial();
-  //gravar_dados_eeprom_tabela_ignicao_map_rpm();
-   rpm_anterior = rpm;
-   //envia_dados_ponto_ignicao(valor_map, rpm_anterior);
-  // envia_dados_tempo_real();
-   protege_ignicao();
+if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+if (grau_pms <= 180) {
+    if (grau_pms < 60 || rpm > 3000) {
+        ajuste_pms = 180;
+    }else{
+      ajuste_pms = 0;
+    } 
+}
 
-  //  Serial.print("Maior valor no vetor map:");
-  //  Serial.println(vetor_map[0]);
-  //  Serial.print("Menor valor no vetor map:");
-  //  Serial.println(vetor_map[15]);
-  //  Serial.print("Leitura no pino:");
-  //  Serial.println(analogRead(pino_sensor_map));
-  //  Serial.print("Valor convertido:");
-  //  Serial.println(valor_map);
-  //  Serial.print("indice do vetor:");
-  //  Serial.println(procura_indice(valor_map, vetor_map, 16));
-  //  Serial.print("valor do vetor:");
-  //  Serial.println(vetor_map[procura_indice(valor_map, vetor_map, 16)]);
-      
-  // atualiza o tempo da última execução
+  for (int i = 0; i < qtd_cilindro/2; i++){
+    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
+        (falha > 1)){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+    }
+  }
+  for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
+  tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
+        (falha > 1)){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+    }
+  }
+  for (int i = 0; i < qtd_cilindro; i++) {
+    if (captura_dwell[i] == true) {
+        if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
+            int verifica_posicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+            if(((verifica_posicao >= posicao_atual_sensor - grau_cada_dente) && (rpm < 3000))){          
+              captura_dwell[i] = false;
+              if (i < qtd_cilindro/2) {
+                digitalWrite(ignicao_pins[i], 0);
+              }else{
+                digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
+              }
+            }else{
+              captura_dwell[i] = false;
+              if (i < qtd_cilindro/2) {
+                digitalWrite(ignicao_pins[i], 0);
+              }else{
+                digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
+              }
+            }        
+        }
+    }
+  }
+}
+
+if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+  if (grau_pms <= 180) {
+    if (grau_pms < 60 || rpm > 3000) {
+        ajuste_pms = 180;
+    }else{
+      ajuste_pms = 0;
+    } 
+}
+   for (int i = 0; i < qtd_cilindro; i++){
+    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
+    // IGN
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000ul >= tempo_proxima_ignicao[i]))
+    {
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i], 1);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;        
+    }
+        }
+
+    for (int i = 0; i < qtd_cilindro; i++) {
+    if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
+        if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
+            captura_dwell[i] = false;
+            //ign_acionado[i] = false;
+            digitalWrite(ignicao_pins[i], 0);
+            //delay(5); //um pequeno atraso
+        }
+    }
+  }
+}
+  leitura_entrada_dados_serial(); 
+  // verifica se já passou o intervalo de tempo
+  if (millis() - ultima_execucao >= intervalo_execucao){     
+  rpm_anterior = rpm;
+  envia_dados_tempo_real(1);
+  temperatura_motor = temperatura_clt();
+  protege_ignicao();
+  //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
+  // Serial.println(qtd_perda_sincronia); 
+   // atualiza o tempo da última execução
    ultima_execucao = millis();
-
+   qtd_loop = 0;
   }
 }
