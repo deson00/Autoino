@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-//#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
 #ifdef Uno
 #define pino_sensor_roda_fonica 2
@@ -456,7 +456,7 @@ void envia_dados_tempo_real(int indice_envio){
     if (status_dados_tempo_real){
       if(indice_envio == 1){
         enviar_byte_serial(rpm_anterior, 2);
-        enviar_byte_serial(valor_map, 1);
+        enviar_byte_serial(valor_map, 2);
         enviar_byte_serial(temperatura_motor, 1);
         enviar_byte_serial(grau_avanco, 1);
         enviar_byte_serial(qtd_loop*5, 2);
@@ -488,9 +488,8 @@ void leitura_entrada_dados_serial()
     if (data == 'd'){// livre para reutilizar
       //função aqui
     }
-    if (data == 'e'){//retorna dados da tabela caso e
-      // Leitura dos valores da EEPROM
-      ler_dados_eeprom();
+    if (data == 'e'){//livre para reutilizar
+      //função aqui
     }
      if (data == 'f'){//grava dados na eeprom
       // Escrita dos valores na EEPROM
