@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+//#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
 #ifdef Uno
 #define pino_sensor_roda_fonica 2
@@ -83,7 +83,8 @@ volatile bool flag_interrupcao = false;
 // variaveis reverente a entrada de dados pela serial
 const int maximo_valores_recebido = 270; // tamanho máximo de dados recebido do vetor ou matriz
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
-byte matrix[16][16];
+byte matriz_avanco[16][16];
+byte matriz_ve[16][16];
 int vetor_map[16];
 int vetor_rpm[16];
 int index = 0;   // índice atual do vetor
@@ -151,7 +152,7 @@ void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   for (int i = 0; i < 16; i++) {
     EEPROM.write(i + 50, vetor_map[i]); // Endereço de memória começa em 50
     for (int j = 0; j < 16; j++) {
-      EEPROM.write(100 + i * 16 + j, matrix[i][j]); // Endereço de memória começa em 100, fim em 255 para a matriz
+      EEPROM.write(100 + i * 16 + j, matriz_avanco[i][j]); // Endereço de memória começa em 100, fim em 255 para a matriz
     }
   }
 }
@@ -193,7 +194,7 @@ void verificar_dados_eeprom_tabela_ignicao_map_rpm() {
     }
     for (int j = 0; j < 16; j++) {
       storedValue = EEPROM.read(100 + i * 16 + j);
-      if (storedValue != matrix[i][j]) {
+      if (storedValue != matriz_avanco[i][j]) {
         Serial.print("Erro de gravação na posição ");
         Serial.print(i);
         Serial.print(",");
@@ -201,7 +202,7 @@ void verificar_dados_eeprom_tabela_ignicao_map_rpm() {
         Serial.print(" da matriz: valor lido da EEPROM = ");
         Serial.print(storedValue);
         Serial.print(", valor esperado = ");
-        Serial.println(matrix[i][j]);
+        Serial.println(matriz_avanco[i][j]);
       }
     }
   }
@@ -261,7 +262,7 @@ for (int i = 0; i < 16; i++) {
 for (int i = 0; i < 16; i++) {
   vetor_map[i] = EEPROM.read(i+50);
   for (int j = 0; j < 16; j++) {
-    matrix[i][j] = EEPROM.read(100 + i*16 + j);
+    matriz_avanco[i][j] = EEPROM.read(100 + i*16 + j);
   }
 }
 for (int i = 0; i < 16; i++) {
@@ -276,7 +277,7 @@ for (int i = 0; i < 16; i++) {
   }
   for (int j = 0; j < 16; j++) {
     storedValue = EEPROM.read(100 + i*16 + j);
-    if (storedValue != matrix[i][j]) {
+    if (storedValue != matriz_avanco[i][j]) {
       Serial.print("Erro de gravação na posição ");
       Serial.print(i);
       Serial.print(",");
@@ -284,7 +285,7 @@ for (int i = 0; i < 16; i++) {
       Serial.print(" da matriz: valor lido da EEPROM = ");
       Serial.print(storedValue);
       Serial.print(", valor esperado = ");
-      Serial.println(matrix[i][j]);
+      Serial.println(matriz_avanco[i][j]);
     }
   }
 }
@@ -339,7 +340,7 @@ Serial.print("a,");
         int k = 0;
         for (int i = 0; i < 16; i++){
           for (int j = 0; j < 16; j++){
-            Serial.print(matrix[i][j]);
+            Serial.print(matriz_avanco[i][j]);
             Serial.print(",");
             k++;
           }
@@ -540,7 +541,7 @@ void leitura_entrada_dados_serial()
         int k = 0;
         for (int i = 0; i < 16; i++){
           for (int j = 0; j < 16; j++){
-            matrix[i][j] = values[k];
+            matriz_avanco[i][j] = values[k];
             k++;
           }
         }
@@ -705,15 +706,15 @@ void loop(){
       dwell_bobina = dwell_funcionamento;
     }
     else if(rpm < 3000 && busca_avanco_linear == true){
-      int grau_minimo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      int grau_minimo = matriz_avanco[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
-      int grau_maximo = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
+      int grau_maximo = matriz_avanco[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
       dwell_bobina = dwell_funcionamento;
     }
     else{
-      grau_avanco = matrix[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      grau_avanco = matriz_avanco[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
       dwell_bobina = dwell_funcionamento;
     }
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);
