@@ -7,7 +7,11 @@
 #define pino_sensor_roda_fonica 2
 #define pino_sensor_fase 3
 #define pino_sensor_map A0
+#define pino_sensor_tps A1
 #define pino_sensor_clt A2
+#define pino_sensor_iat A3
+#define pino_sensor_o2  A4
+#define pino_sensor_brv A5
 byte ign1 = 4;
 byte ign2 = 5;
 byte ign3 = 6;
@@ -16,8 +20,9 @@ byte ign4 = 7;
 #ifdef Mega
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
-#define pino_sensor_map A3
 #define pino_sensor_clt A1
+#define pino_sensor_tps A2
+#define pino_sensor_map A3
 byte ign1 = 40;
 byte ign2 = 38;
 byte ign3 = 52;
@@ -85,8 +90,10 @@ const int maximo_valores_recebido = 270; // tamanho máximo de dados recebido do
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
 byte matriz_avanco[16][16];
 byte matriz_ve[16][16];
-int vetor_map[16];
+int vetor_map_tps[16];
 int vetor_rpm[16];
+byte vetor_avanco_temperatura[5];
+byte vetor_temperatura[5];
 int index = 0;   // índice atual do vetor
 int indice_envio = 0;   // índice atual do vetor de envio
 char buffer[6]; // buffer temporário para armazenar caracteres recebidos
@@ -98,7 +105,9 @@ int tipo_vetor_configuracao_faisca = 0;
 int tipo_vetor_configuracao_dwell = 0;
 int tipo_vetor_configuracao_clt = 0;
 bool status_dados_tempo_real = false;
-volatile int valor_map = 10;
+volatile int valor_map = 0;
+volatile int valor_tps = 0;
+int valor_referencia_busca_avanco = 0;
 int ajuste_pms =  0;
 int busca_avanco_linear = true;
 int referencia_temperatura_clt1 = 20;
@@ -150,7 +159,7 @@ void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   }
   // Escrita da matrix na EEPROM
   for (int i = 0; i < 16; i++) {
-    EEPROM.write(i + 50, vetor_map[i]); // Endereço de memória começa em 50
+    EEPROM.write(i + 50, vetor_map_tps[i]); // Endereço de memória começa em 50
     for (int j = 0; j < 16; j++) {
       EEPROM.write(100 + i * 16 + j, matriz_avanco[i][j]); // Endereço de memória começa em 100, fim em 255 para a matriz
     }
@@ -184,13 +193,13 @@ void verificar_dados_eeprom_tabela_ignicao_map_rpm() {
   // Verificar dados do vetor_map e da matrix na EEPROM
   for (int i = 0; i < 16; i++) {
     int storedValue = EEPROM.read(i + 50);
-    if (storedValue != vetor_map[i]) {
+    if (storedValue != vetor_map_tps[i]) {
       Serial.print("Erro de gravação na posição ");
       Serial.print(i);
       Serial.print(" do vetor_map: valor lido da EEPROM = ");
       Serial.print(storedValue);
       Serial.print(", valor esperado = ");
-      Serial.println(vetor_map[i]);
+      Serial.println(vetor_map_tps[i]);
     }
     for (int j = 0; j < 16; j++) {
       storedValue = EEPROM.read(100 + i * 16 + j);
@@ -260,20 +269,20 @@ for (int i = 0; i < 16; i++) {
 }
 // Leitura map e matrix ponto da EEPROM
 for (int i = 0; i < 16; i++) {
-  vetor_map[i] = EEPROM.read(i+50);
+  vetor_map_tps[i] = EEPROM.read(i+50);
   for (int j = 0; j < 16; j++) {
     matriz_avanco[i][j] = EEPROM.read(100 + i*16 + j);
   }
 }
 for (int i = 0; i < 16; i++) {
   int storedValue = EEPROM.read(i+50);
-  if (storedValue != vetor_map[i]) {
+  if (storedValue != vetor_map_tps[i]) {
     Serial.print("Erro de gravação na posição ");
     Serial.print(i);
     Serial.print(" do vetor_map: valor lido da EEPROM = ");
     Serial.print(storedValue);
     Serial.print(", valor esperado = ");
-    Serial.println(vetor_map[i]);
+    Serial.println(vetor_map_tps[i]);
   }
   for (int j = 0; j < 16; j++) {
     storedValue = EEPROM.read(100 + i*16 + j);
@@ -323,7 +332,7 @@ referencia_resistencia_clt2 = ler_valor_eeprom_2byte(416);
 Serial.print("a,");
       // vetor map
       for (int  i = 0; i < 16; i++){
-        Serial.print(vetor_map[i]);
+        Serial.print(vetor_map_tps[i]);
         Serial.print(",");
       }
       Serial.print(";");
@@ -526,7 +535,7 @@ void leitura_entrada_dados_serial()
     if (data == ';'){ // final do vetor
       if (tipo_vetor_map){
         for (int i = 0; i < 16; i++){
-          vetor_map[i] = values[i];
+          vetor_map_tps[i] = values[i];
         }
         tipo_vetor_map = 0;
       }
@@ -696,7 +705,12 @@ void setup(){
   Serial.begin(9600);
 }
 void loop(){ 
-    qtd_loop++;   
+    qtd_loop++;
+    if(referencia_leitura == 1){
+      valor_referencia_busca_avanco = map(analogRead(pino_sensor_map), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);   
+    }else{
+      valor_referencia_busca_avanco = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
+    }
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
@@ -706,18 +720,17 @@ void loop(){
       dwell_bobina = dwell_funcionamento;
     }
     else if(rpm < 3000 && busca_avanco_linear == true){
-      int grau_minimo = matriz_avanco[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      int grau_minimo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
-      int grau_maximo = matriz_avanco[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
+      int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
       dwell_bobina = dwell_funcionamento;
     }
     else{
-      grau_avanco = matriz_avanco[procura_indice(valor_map, vetor_map, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       dwell_bobina = dwell_funcionamento;
     }
-    valor_map = map(analogRead(pino_sensor_map), 0, 1023, vetor_map[0], vetor_map[15]);
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
 
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
