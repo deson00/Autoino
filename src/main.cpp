@@ -16,6 +16,10 @@ byte ign1 = 4;
 byte ign2 = 5;
 byte ign3 = 6;
 byte ign4 = 7;
+byte inj1 = 8;
+byte inj2 = 9;
+byte inj3 = 12;
+byte inj4 = 13;
 #endif
 #ifdef Mega
 #define pino_sensor_roda_fonica 19
@@ -27,6 +31,10 @@ byte ign1 = 40;
 byte ign2 = 38;
 byte ign3 = 52;
 byte ign4 = 50;
+byte inj1 = 8;
+byte inj2 = 9;
+byte inj3 = 10;
+byte inj4 = 11;
 #endif
 byte tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
 byte qtd_dente = 12; //60 
@@ -47,7 +55,7 @@ byte grau_entre_cada_cilindro = 360 / qtd_cilindro;
 byte posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 byte qtd_leitura = 0;
-byte referencia_leitura = 1;//map 1 e tps 2
+byte referencia_leitura_ignicao = 1;//map 1 e tps 2
 byte modo_ignicao = 1; // 1 para centelha perdida e 2 para centelha unica  
 byte avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
 byte grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
@@ -60,8 +68,10 @@ volatile unsigned long tempo_final_volta_completa = 0;
 volatile unsigned long tempo_total_volta_completa = 0;
 volatile unsigned long tempo_cada_grau = 0;
 volatile unsigned long tempo_proxima_ignicao[8];
+volatile unsigned long tempo_proxima_injecao[8];
 volatile unsigned long tempo_atual = 0;
 volatile unsigned long tempo_atual_proxima_ignicao[8];
+volatile unsigned long tempo_atual_proxima_injecao[8];
 //volatile unsigned long tempo_inicio_dwell;
 //volatile unsigned long tempo_final_dwell;
 volatile unsigned long intervalo_tempo_entre_dente = 0;
@@ -79,11 +89,14 @@ volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
 int rpm_partida = 400;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
-
+const int injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
 // Declare as variáveis para controlar o estado do pino de saída
 volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
 volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
+volatile bool captura_req_fuel[8] = {false, false, false, false, false, false, false, false};
+volatile bool inj_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
+volatile unsigned long tempo_percorrido_inj[8];
 volatile bool flag_interrupcao = false;
 // variaveis reverente a entrada de dados pela serial
 const int maximo_valores_recebido = 270; // tamanho máximo de dados recebido do vetor ou matriz
@@ -115,6 +128,13 @@ int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 byte temperatura_motor = 0;
+    // Dados de exemplo conhecido
+    float REQ_FUEL = 10;
+    float MAP = 40;
+    float VE = 74;
+    float GammaE = 97;
+    float InjOpenTime = 1.3;
+
 
 void enviar_byte_serial(int valor, int tamanho) {
   if (tamanho == 1) {
@@ -233,7 +253,7 @@ void gravar_dados_eeprom_configuracao_inicial() {
 }
 
 void gravar_dados_eeprom_configuracao_faisca() {
-    EEPROM.write(1*2+380, referencia_leitura);
+    EEPROM.write(1*2+380, referencia_leitura_ignicao);
     EEPROM.write(2*2+380, modo_ignicao);
     EEPROM.write(3*2+380, grau_avanco_partida);
     EEPROM.write(4*2+380, avanco_fixo);
@@ -312,7 +332,7 @@ grau_entre_cada_cilindro = 360 / qtd_cilindro;
 grau_cada_dente = 360 / qtd_dente;
 
 //leitura dos dados de configurações de faisca 
-referencia_leitura = EEPROM.read(1*2+380); 
+referencia_leitura_ignicao = EEPROM.read(1*2+380); 
 modo_ignicao = EEPROM.read(2*2+380);
 grau_avanco_partida = EEPROM.read(3*2+380);
 avanco_fixo = EEPROM.read(4*2+380);
@@ -373,7 +393,7 @@ Serial.print("a,");
 
       // dados configuração faisca
       Serial.print("j,");
-      Serial.print(referencia_leitura);
+      Serial.print(referencia_leitura_ignicao);
       Serial.print(",");
       Serial.print(modo_ignicao);
       Serial.print(",");
@@ -482,6 +502,23 @@ void protege_ignicao(){
     digitalWrite(ignicao_pins[3],0);
   }
 }
+// Função para calcular a largura do pulso de injeção
+float calcularLarguraPulso(float REQ_FUEL, float MAP, float VE, float GammaE, float InjOpenTime) {
+    // Constantes
+    const float REQ_FUEL_CONSTANT = 100; // Supondo que REQ_FUEL está em percentagem
+
+    // Calcular fator de enriquecimento (E)
+    const float Warmup = 0; // Defina aqui o valor de enriquecimento do aquecimento
+    const float O2_ClosedLoop = 0; // Defina aqui o valor de enriquecimento do O2 em Malha Fechada
+    const float AirCorr = 0; // Defina aqui o valor de correção do ar
+    const float BaroCorr = 0; // Defina aqui o valor de correção do barômetro
+
+    const float gamma_Enrich = (Warmup / REQ_FUEL_CONSTANT) * (O2_ClosedLoop / REQ_FUEL_CONSTANT) *
+                               (AirCorr / REQ_FUEL_CONSTANT) * (BaroCorr / REQ_FUEL_CONSTANT);
+    // Calcular a largura do pulso (PW)
+    const float PW = REQ_FUEL * MAP / REQ_FUEL_CONSTANT * VE / REQ_FUEL_CONSTANT * GammaE / REQ_FUEL_CONSTANT + InjOpenTime;
+    return PW;
+}
 void leitura_entrada_dados_serial()
 {
   if (Serial.available() > 0){
@@ -568,7 +605,7 @@ void leitura_entrada_dados_serial()
           tipo_vetor_configuracao_inicial = 0;
       }
       if (tipo_vetor_configuracao_faisca == 1){
-          referencia_leitura = values[0];//map 1 e tps 2
+          referencia_leitura_ignicao = values[0];//map 1 e tps 2
           modo_ignicao = values[1]; // 1 para centelha perdida e 2 para centelha unica
           grau_avanco_partida = values[2]; // avanço definido apenas na partida 
           avanco_fixo = values[3]; // avanço fixo 0 desligado e 1 ligado
@@ -675,14 +712,19 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     revolucoes_sincronizada++;// reservado para escapar rotação caso necessario no futuro   
     if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
     tempo_atual_proxima_ignicao[0] = tempo_atual;
-    //cilindro = 1;
     ign_acionado[0] = false;
     captura_dwell[0] = false; 
+    tempo_atual_proxima_injecao[0] = tempo_atual;
+    inj_acionado[0] = false;
+    captura_req_fuel[0] = false; 
     }
     if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
       tempo_atual_proxima_ignicao[0] = tempo_atual;
       ign_acionado[0] = false;
-      captura_dwell[0] = false; 
+      captura_dwell[0] = false;
+      tempo_atual_proxima_injecao[0] = tempo_atual;
+      inj_acionado[0] = false;
+      captura_req_fuel[0] = false;  
     }
   }else{
     //tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
@@ -699,6 +741,10 @@ void setup(){
   pinMode(ign2, OUTPUT);
   pinMode(ign3, OUTPUT);
   pinMode(ign4, OUTPUT);
+  pinMode(inj1, OUTPUT);
+  pinMode(inj2, OUTPUT);
+  pinMode(inj3, OUTPUT);
+  pinMode(inj4, OUTPUT);
   pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
   pinMode(pino_sensor_map, INPUT);
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
@@ -706,11 +752,14 @@ void setup(){
 }
 void loop(){ 
     qtd_loop++;
-    if(referencia_leitura == 1){
+    if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = map(analogRead(pino_sensor_map), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);   
     }else{
       valor_referencia_busca_avanco = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
     }
+    // Chama a função para calcular a largura do pulso
+    float resultado = calcularLarguraPulso(REQ_FUEL, MAP, VE, GammaE, InjOpenTime);
+    
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
@@ -755,9 +804,23 @@ if (grau_pms <= 180) {
         ign_acionado[i+1] = false;
         captura_dwell[i+1] = false;
     }
+    tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i]) && 
+        (revolucoes_sincronizada >= 1)){
+        captura_req_fuel[i] = true;
+        tempo_percorrido_inj[i] = tempo_atual;
+        digitalWrite(injecao_pins[i], 1);
+        tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
+        inj_acionado[i] = true;
+        inj_acionado[i+1] = false;
+        captura_req_fuel[i+1] = false;
+        // Serial.println("injetando");
+        // Serial.println(i);
+    }
   }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
-  tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (revolucoes_sincronizada >= 1)){
@@ -789,6 +852,16 @@ if (grau_pms <= 180) {
                 digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
               }
             }        
+        }
+    }
+    if (captura_req_fuel[i] == true) {
+        if ((tempo_atual - tempo_percorrido_inj[i]) >= (4 * 1000ul)) {
+              captura_req_fuel[i] = false;
+              if (i < qtd_cilindro/2) {
+                digitalWrite(injecao_pins[i], 0);
+              }else{
+                digitalWrite(injecao_pins[i - qtd_cilindro/2], 0);
+              }       
         }
     }
   }
