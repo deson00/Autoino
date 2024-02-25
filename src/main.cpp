@@ -56,6 +56,7 @@ byte posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 byte qtd_leitura = 0;
 byte referencia_leitura_ignicao = 1;//map 1 e tps 2
+byte referencia_leitura_injecao = 1;//map 1 e tps 2
 byte modo_ignicao = 1; // 1 para centelha perdida e 2 para centelha unica  
 byte avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
 byte grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
@@ -87,7 +88,7 @@ unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-int rpm_partida = 400;
+unsigned int rpm_partida = 400;
 const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 const int injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
 // Declare as variáveis para controlar o estado do pino de saída
@@ -121,6 +122,7 @@ bool status_dados_tempo_real = false;
 volatile int valor_map = 0;
 volatile int valor_tps = 0;
 int valor_referencia_busca_avanco = 0;
+int valor_referencia_busca_tempo_injecao = 0;
 int ajuste_pms =  0;
 int busca_avanco_linear = true;
 int referencia_temperatura_clt1 = 20;
@@ -128,9 +130,10 @@ int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 byte temperatura_motor = 0;
+int grau_fechamento_injetor = 5; //este grau tem referencia 360 - 355
     // Dados de exemplo conhecido
     float REQ_FUEL = 10;
-    float MAP = 40;
+    //float MAP = 40;
     float VE = 74;
     float GammaE = 97;
     float InjOpenTime = 1.3;
@@ -757,8 +760,13 @@ void loop(){
     }else{
       valor_referencia_busca_avanco = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
     }
+    if(referencia_leitura_injecao == 1){
+      valor_referencia_busca_tempo_injecao = map(analogRead(pino_sensor_map), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);   
+    }else{
+      valor_referencia_busca_tempo_injecao = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
+    }
     // Chama a função para calcular a largura do pulso
-    float resultado = calcularLarguraPulso(REQ_FUEL, MAP, VE, GammaE, InjOpenTime);
+    unsigned long tempo_injecao = calcularLarguraPulso(REQ_FUEL, valor_referencia_busca_tempo_injecao, VE, GammaE, InjOpenTime) * 1000ul;
     
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
@@ -803,10 +811,11 @@ if (grau_pms <= 180) {
         ign_acionado[i] = true;
         ign_acionado[i+1] = false;
         captura_dwell[i+1] = false;
+        //colocar posteriormente as buscas linear e fixa aqui
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i]) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
         (revolucoes_sincronizada >= 1)){
         captura_req_fuel[i] = true;
         tempo_percorrido_inj[i] = tempo_atual;
@@ -815,8 +824,6 @@ if (grau_pms <= 180) {
         inj_acionado[i] = true;
         inj_acionado[i+1] = false;
         captura_req_fuel[i+1] = false;
-        // Serial.println("injetando");
-        // Serial.println(i);
     }
   }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
@@ -831,6 +838,18 @@ if (grau_pms <= 180) {
         ign_acionado[i] = true;
         ign_acionado[i+1] = false;
         captura_dwell[i+1] = false;
+    }
+    tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (revolucoes_sincronizada >= 1)){
+        captura_req_fuel[i] = true;
+        tempo_percorrido_inj[i] = tempo_atual;
+        digitalWrite(injecao_pins[i - qtd_cilindro/2], 1);
+        tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
+        inj_acionado[i] = true;
+        inj_acionado[i+1] = false;
+        captura_req_fuel[i+1] = false;
     }
   }
   for (int i = 0; i < qtd_cilindro; i++) {
@@ -855,7 +874,7 @@ if (grau_pms <= 180) {
         }
     }
     if (captura_req_fuel[i] == true) {
-        if ((tempo_atual - tempo_percorrido_inj[i]) >= (4 * 1000ul)) {
+        if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
               captura_req_fuel[i] = false;
               if (i < qtd_cilindro/2) {
                 digitalWrite(injecao_pins[i], 0);
@@ -869,15 +888,13 @@ if (grau_pms <= 180) {
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
   if (grau_pms <= 180) {
-    if (grau_pms < 60 || rpm > 3000) {
         ajuste_pms = 180;
     }else{
       ajuste_pms = 0;
     } 
-}
+
    for (int i = 0; i < qtd_cilindro; i++){
     tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
-    // IGN
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000ul >= tempo_proxima_ignicao[i]) && 
         (revolucoes_sincronizada >= 1)){
@@ -889,15 +906,41 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         ign_acionado[i+1] = false;
         captura_dwell[i+1] = false;        
     }
-        }
+    tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (revolucoes_sincronizada >= 1)){
+        captura_req_fuel[i] = true;
+        tempo_percorrido_inj[i] = tempo_atual;
+        digitalWrite(injecao_pins[i], 1);
+        tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
+        inj_acionado[i] = true;
+        inj_acionado[i+1] = false;
+        captura_req_fuel[i+1] = false;
+    }
+  }
 
     for (int i = 0; i < qtd_cilindro; i++) {
     if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
+          int verifica_posicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+            if(((verifica_posicao >= posicao_atual_sensor - grau_cada_dente) && (rpm < 3000))){ 
             captura_dwell[i] = false;
             //ign_acionado[i] = false;
             digitalWrite(ignicao_pins[i], 0);
             //delay(5); //um pequeno atraso
+            }else{
+              captura_dwell[i] = false;
+            //ign_acionado[i] = false;
+            digitalWrite(ignicao_pins[i], 0);
+            //delay(5); //um pequeno atraso
+            }
+        }
+    }
+    if (captura_req_fuel[i] == true) {
+        if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
+              captura_req_fuel[i] = false;
+                digitalWrite(injecao_pins[i], 0);      
         }
     }
   }
