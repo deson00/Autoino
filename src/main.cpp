@@ -106,14 +106,19 @@ byte matriz_avanco[16][16];
 byte matriz_ve[16][16];
 int vetor_map_tps[16];
 int vetor_rpm[16];
+int vetor_map_tps_ve[16];
+int vetor_rpm_ve[16];
 byte vetor_avanco_temperatura[5];
 byte vetor_temperatura[5];
 int index = 0;   // índice atual do vetor
 int indice_envio = 0;   // índice atual do vetor de envio
 char buffer[6]; // buffer temporário para armazenar caracteres recebidos
-int tipo_vetor_map = 0;
-int tipo_vetor_rpm = 0;
-int tipo_vetor_matrix = 0;
+int tipo_vetor_map_tps_avanco = 0;
+int tipo_vetor_rpm_avanco = 0;
+int tipo_vetor_matriz_avanco = 0;
+int tipo_vetor_map_tps_ve = 0;
+int tipo_vetor_rpm_ve = 0;
+int tipo_vetor_matriz_ve = 0;
 int tipo_vetor_configuracao_inicial = 0;
 int tipo_vetor_configuracao_faisca = 0;
 int tipo_vetor_configuracao_dwell = 0;
@@ -170,7 +175,6 @@ int ler_valor_eeprom_2byte(int endereco) {
     return valor;
 }
 void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
-  Serial.println("Gravando dados");
   int highByte;
   int lowByte;
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
@@ -180,7 +184,7 @@ void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
     EEPROM.write(i * 2 + 10, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(i * 2 + 11, lowByte); // Armazena o byte menos significativo na posição i*2+11
   }
-  // Escrita da matrix na EEPROM
+  // Escrita da matriz na EEPROM
   for (int i = 0; i < 16; i++) {
     EEPROM.write(i + 50, vetor_map_tps[i]); // Endereço de memória começa em 50
     for (int j = 0; j < 16; j++) {
@@ -189,56 +193,6 @@ void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   }
 }
 
-void verificar_dados_eeprom_tabela_ignicao_map_rpm() {
-  Serial.println("Verificando dados gravado da tabela");
-  // Verificar dados do vetor_rpm na EEPROM
-  for (int i = 0; i < 16; i++) {
-    int storedValue;
-    int storedHighByte = EEPROM.read(i * 2 + 10);
-    int storedLowByte = EEPROM.read(i * 2 + 11);
-    storedValue = (storedHighByte << 8) | storedLowByte;
-    Serial.print("Gravação na posição ");
-      Serial.print(i);
-      Serial.print(": valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_rpm[i]);
-    if (storedValue != vetor_rpm[i]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(": valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_rpm[i]);
-    }
-  }
-
-  // Verificar dados do vetor_map e da matrix na EEPROM
-  for (int i = 0; i < 16; i++) {
-    int storedValue = EEPROM.read(i + 50);
-    if (storedValue != vetor_map_tps[i]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(" do vetor_map: valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_map_tps[i]);
-    }
-    for (int j = 0; j < 16; j++) {
-      storedValue = EEPROM.read(100 + i * 16 + j);
-      if (storedValue != matriz_avanco[i][j]) {
-        Serial.print("Erro de gravação na posição ");
-        Serial.print(i);
-        Serial.print(",");
-        Serial.print(j);
-        Serial.print(" da matriz: valor lido da EEPROM = ");
-        Serial.print(storedValue);
-        Serial.print(", valor esperado = ");
-        Serial.println(matriz_avanco[i][j]);
-      }
-    }
-  }
-}
 void gravar_dados_eeprom_configuracao_inicial() {
     int16_t grau_pms_16bit = (int16_t)grau_pms + 360; // Adiciona um offset de 360 para garantir que o valor seja sempre positivo
     if (grau_pms_16bit < 0) { // Verifica se o valor é negativo
@@ -281,6 +235,34 @@ void gravar_dados_eeprom_configuracao_clt() {
     EEPROM.write(417, (referencia_resistencia_clt2 >> 8) & 0xFF);
 }
 
+void gravar_dados_eeprom_tabela_ve_map_rpm() {
+  int highByte;
+  int lowByte;
+  int endereco = 418; // Inicializa o endereço de memória
+
+  // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
+  for (int i = 0; i < 16; i++) {
+    highByte = vetor_rpm_ve[i] >> 8; // Obtém o byte mais significativo
+    lowByte = vetor_rpm_ve[i] & 0xFF; // Obtém o byte menos significativo
+    EEPROM.write(endereco, highByte); // Armazena o byte mais significativo no endereço atual
+    EEPROM.write(endereco + 1, lowByte); // Armazena o byte menos significativo no próximo endereço
+    endereco += 2; // Avança para o próximo par de endereços
+  }
+
+  // Escrita da matriz na EEPROM
+  endereco = 450; // Define o novo endereço de memória para a matriz
+
+  for (int i = 0; i < 16; i++) {
+    EEPROM.write(endereco, vetor_map_tps_ve[i]); // Armazena o valor do vetor na posição atual
+    endereco++; // Avança para o próximo endereço
+
+    for (int j = 0; j < 16; j++) {
+      EEPROM.write(endereco, matriz_ve[i][j]); // Armazena o valor da matriz na posição atual
+      endereco++; // Avança para o próximo endereço
+    }
+  }
+}
+
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
   int highByte;
@@ -297,30 +279,22 @@ for (int i = 0; i < 16; i++) {
     matriz_avanco[i][j] = EEPROM.read(100 + i*16 + j);
   }
 }
-for (int i = 0; i < 16; i++) {
-  int storedValue = EEPROM.read(i+50);
-  if (storedValue != vetor_map_tps[i]) {
-    Serial.print("Erro de gravação na posição ");
-    Serial.print(i);
-    Serial.print(" do vetor_map: valor lido da EEPROM = ");
-    Serial.print(storedValue);
-    Serial.print(", valor esperado = ");
-    Serial.println(vetor_map_tps[i]);
+
+  int endereco = 418; // Inicializa o endereço de memória
+  // Leitura do vetor_map_tps_ve
+  for (int i = 0; i < 16; i++) {
+    vetor_map_tps_ve[i] = EEPROM.read(endereco); // Lê o valor do vetor na posição atual
+    endereco++; // Avança para o próximo endereço
   }
-  for (int j = 0; j < 16; j++) {
-    storedValue = EEPROM.read(100 + i*16 + j);
-    if (storedValue != matriz_avanco[i][j]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(",");
-      Serial.print(j);
-      Serial.print(" da matriz: valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(matriz_avanco[i][j]);
+  // Leitura da matriz_ve
+  endereco = 450; // Define o novo endereço de memória para a matriz
+  for (int i = 0; i < 16; i++) {
+    for (int j = 0; j < 16; j++) {
+      matriz_ve[i][j] = EEPROM.read(endereco); // Lê o valor da matriz na posição atual
+      endereco++; // Avança para o próximo endereço
     }
   }
-}
+
 //leitura dos dados de configurações iniciais
 tipo_ignicao = EEPROM.read(0*2+360); 
 qtd_dente = EEPROM.read(1*2+360);
@@ -353,7 +327,7 @@ referencia_temperatura_clt2 = EEPROM.read(414);
 referencia_resistencia_clt2 = ler_valor_eeprom_2byte(416); 
 
 Serial.print("a,");
-      // vetor map
+      // vetor map ou tps
       for (int  i = 0; i < 16; i++){
         Serial.print(vetor_map_tps[i]);
         Serial.print(",");
@@ -366,7 +340,6 @@ Serial.print("a,");
         Serial.print(",");
       }
       Serial.print(";");
-      //matrix ponto 
       // transforma matriz em vetor
       Serial.print("c,");
         int k = 0;
@@ -378,6 +351,7 @@ Serial.print("a,");
           }
         }
         Serial.print(";");
+      
       // dados configuração inicial
       Serial.print("g,");
       Serial.print(tipo_ignicao);
@@ -429,6 +403,34 @@ Serial.print("a,");
       Serial.print(referencia_resistencia_clt2);
       Serial.print(",");
       Serial.print(";");
+
+      //---------ve-------------//
+      Serial.print("d,");
+      // vetor map ou tps da ve
+      for (int  i = 0; i < 16; i++){
+        Serial.print(vetor_map_tps_ve[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+      Serial.print("e,");
+      // vetor rpm da tabela ve
+      for (int  i = 0; i < 16; i++){
+        Serial.print(vetor_rpm_ve[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+      // transforma matriz em vetor
+      Serial.print("f,");
+        k = 0;
+        for (int i = 0; i < 16; i++){
+          for (int j = 0; j < 16; j++){
+            Serial.print(matriz_ve[i][j]);
+            Serial.print(",");
+            k++;
+          }
+        }
+        Serial.print(";");
+      //---------ve------------//  
 }
 int procura_indice(int value, int *arr, int size){
   int index = 0;
@@ -526,25 +528,26 @@ void leitura_entrada_dados_serial()
 {
   if (Serial.available() > 0){
     char data = Serial.read();
-    if (data == 'a'){//entrada de dados do vetor map
-      tipo_vetor_map = 1;
+    if (data == 'a'){//entrada de dados do vetor map ou tps
+      tipo_vetor_map_tps_avanco = 1;
     }
     if (data == 'b'){//entrada de dados do vetor rpm
-      tipo_vetor_rpm = 1;//b,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000; exmplo
+      tipo_vetor_rpm_avanco = 1;//b,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000; exmplo
     }
     if (data == 'c'){//entrada de dados do da matriz em vetor
-      tipo_vetor_matrix = 1;
+      tipo_vetor_matriz_avanco = 1;
     }
-    if (data == 'd'){// livre para reutilizar
-      //função aqui
+    if (data == 'd'){// entrada vetor map ou tps para a tabela ve
+      tipo_vetor_map_tps_ve = 1;
     }
-    if (data == 'e'){//livre para reutilizar
-      //função aqui
+    if (data == 'e'){//entrada vetor rpm para a tabela ve
+      tipo_vetor_rpm_ve = 1;
     }
-     if (data == 'f'){//grava dados na eeprom
+    if (data == 'f'){//entrada da matriz de valores para a tabela ve
+      tipo_vetor_matriz_ve = 1;  
       // Escrita dos valores na EEPROM
-      gravar_dados_eeprom_tabela_ignicao_map_rpm();
-      verificar_dados_eeprom_tabela_ignicao_map_rpm();
+      //gravar_dados_eeprom_tabela_ignicao_map_rpm();
+      //verificar_dados_eeprom_tabela_ignicao_map_rpm();
       //gravar_dados_eeprom_configuracao_inicial();
     }
     if (data == 'g'){//grava configuração inicial
@@ -573,19 +576,19 @@ void leitura_entrada_dados_serial()
     }
 
     if (data == ';'){ // final do vetor
-      if (tipo_vetor_map){
+      if (tipo_vetor_map_tps_avanco){
         for (int i = 0; i < 16; i++){
           vetor_map_tps[i] = values[i];
         }
-        tipo_vetor_map = 0;
+        tipo_vetor_map_tps_avanco = 0;
       }
-      if (tipo_vetor_rpm){
+      if (tipo_vetor_rpm_avanco){
         for (int i = 0; i < 16; i++){
           vetor_rpm[i] = values[i];
         }
-        tipo_vetor_rpm = 0;
+        tipo_vetor_rpm_avanco = 0;
       }
-      if (tipo_vetor_matrix){
+      if (tipo_vetor_matriz_avanco){
         // transforma o vetor em matriz
         int k = 0;
         for (int i = 0; i < 16; i++){
@@ -594,8 +597,33 @@ void leitura_entrada_dados_serial()
             k++;
           }
         }
-        tipo_vetor_matrix = 0;
+        tipo_vetor_matriz_avanco = 0;
       }
+      //------ve------//
+      if (tipo_vetor_map_tps_ve){
+        for (int i = 0; i < 16; i++){
+          vetor_map_tps_ve[i] = values[i];
+        }
+        tipo_vetor_map_tps_ve = 0;
+      }
+      if (tipo_vetor_rpm_ve){
+        for (int i = 0; i < 16; i++){
+          vetor_rpm_ve[i] = values[i];
+        }
+        tipo_vetor_rpm_ve = 0;
+      }
+      if (tipo_vetor_matriz_ve){
+        // transforma o vetor em matriz
+        int k = 0;
+        for (int i = 0; i < 16; i++){
+          for (int j = 0; j < 16; j++){
+            matriz_ve[i][j] = values[k];
+            k++;
+          }
+        }
+        tipo_vetor_matriz_ve = 0;
+      }
+      //------ve-----//
       if (tipo_vetor_configuracao_inicial == 1){
           tipo_ignicao = values[0];
           qtd_dente = values[1];
