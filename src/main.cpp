@@ -262,6 +262,32 @@ void gravar_dados_eeprom_tabela_ve_map_rpm() {
     }
   }
 }
+void ler_dados_eeprom_tabela_ve_map_rpm() {
+  int highByte;
+  int lowByte;
+  int endereco =  418; // Inicializa o endereço de memória para vetor_rpm_ve
+
+  // Leitura do vetor_rpm de valores de  2 bytes na EEPROM
+  for (int i =  0; i <  16; i++) {
+    highByte = EEPROM.read(endereco); // Lê o byte mais significativo
+    lowByte = EEPROM.read(endereco +  1); // Lê o byte menos significativo
+    vetor_rpm_ve[i] = (highByte <<  8) | lowByte; // Combina os bytes para formar o valor inteiro
+    endereco +=  2; // Avança para o próximo par de endereços
+  }
+
+  // Leitura da matriz na EEPROM
+  endereco =  450; // Define o novo endereço de memória para a matriz
+
+  for (int i =  0; i <  16; i++) {
+    vetor_map_tps_ve[i] = EEPROM.read(endereco); // Lê o valor do vetor na posição atual
+    endereco++; // Avança para o próximo endereço
+
+    for (int j =  0; j <  16; j++) {
+      matriz_ve[i][j] = EEPROM.read(endereco); // Lê o valor da matriz na posição atual
+      endereco++; // Avança para o próximo endereço
+    }
+  }
+}
 
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
@@ -280,20 +306,7 @@ for (int i = 0; i < 16; i++) {
   }
 }
 
-  int endereco = 418; // Inicializa o endereço de memória
-  // Leitura do vetor_map_tps_ve
-  for (int i = 0; i < 16; i++) {
-    vetor_map_tps_ve[i] = EEPROM.read(endereco); // Lê o valor do vetor na posição atual
-    endereco++; // Avança para o próximo endereço
-  }
-  // Leitura da matriz_ve
-  endereco = 450; // Define o novo endereço de memória para a matriz
-  for (int i = 0; i < 16; i++) {
-    for (int j = 0; j < 16; j++) {
-      matriz_ve[i][j] = EEPROM.read(endereco); // Lê o valor da matriz na posição atual
-      endereco++; // Avança para o próximo endereço
-    }
-  }
+ler_dados_eeprom_tabela_ve_map_rpm();
 
 //leitura dos dados de configurações iniciais
 tipo_ignicao = EEPROM.read(0*2+360); 
@@ -547,6 +560,7 @@ void leitura_entrada_dados_serial()
       tipo_vetor_matriz_ve = 1;  
       // Escrita dos valores na EEPROM
       //gravar_dados_eeprom_tabela_ignicao_map_rpm();
+      //gravar_dados_eeprom_tabela_ve_map_rpm();
       //verificar_dados_eeprom_tabela_ignicao_map_rpm();
       //gravar_dados_eeprom_configuracao_inicial();
     }
@@ -597,6 +611,7 @@ void leitura_entrada_dados_serial()
             k++;
           }
         }
+        gravar_dados_eeprom_tabela_ignicao_map_rpm();
         tipo_vetor_matriz_avanco = 0;
       }
       //------ve------//
@@ -621,6 +636,7 @@ void leitura_entrada_dados_serial()
             k++;
           }
         }
+        gravar_dados_eeprom_tabela_ve_map_rpm();
         tipo_vetor_matriz_ve = 0;
       }
       //------ve-----//
