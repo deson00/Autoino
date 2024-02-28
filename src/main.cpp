@@ -125,6 +125,8 @@ int tipo_vetor_configuracao_dwell = 0;
 int tipo_vetor_configuracao_clt = 0;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 0;
+int valor_map_minimo = 0;
+int valor_map_maximo = 100;
 volatile int valor_tps = 0;
 int valor_referencia_busca_avanco = 0;
 int valor_referencia_busca_tempo_injecao = 0;
@@ -809,6 +811,8 @@ void loop(){
     }else{
       valor_referencia_busca_tempo_injecao = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
     }
+    VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
+
     // Chama a função para calcular a largura do pulso
     unsigned long tempo_injecao = calcularLarguraPulso(REQ_FUEL, valor_referencia_busca_tempo_injecao, VE, GammaE, InjOpenTime) * 1000ul;
     
@@ -993,6 +997,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm;
+  valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
   protege_ignicao();
