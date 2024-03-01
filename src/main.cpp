@@ -125,9 +125,11 @@ int tipo_vetor_configuracao_dwell = 0;
 int tipo_vetor_configuracao_clt = 0;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 0;
-int valor_map_minimo = 0;
+int valor_map_minimo = 10;
 int valor_map_maximo = 100;
 volatile int valor_tps = 0;
+int valor_tps_minimo = 0;
+int valor_tps_maximo = 100;
 int valor_referencia_busca_avanco = 0;
 int valor_referencia_busca_tempo_injecao = 0;
 int ajuste_pms =  0;
@@ -138,13 +140,24 @@ int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 byte temperatura_motor = 0;
 int grau_fechamento_injetor = 5; //este grau tem referencia 360 - 355
-    // Dados de exemplo conhecido
-    float REQ_FUEL = 10;
-    //float MAP = 40;
-    float VE = 74;
-    float GammaE = 97;
-    float InjOpenTime = 1.3;
-
+int motor = 250;//polegadas cubicas
+int numero_cilindro_injecao = 4;
+int numero_injetor = 4;
+int numero_esguicho = 4;
+int tamanho_injetor = 32;// lbs/hora por injetor
+int tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
+int tipo_combustivel = 1; // 1 - Gasolina, 2 - Propano, 3 - Metanol, 4 - Etanol, 5 - Diesel
+int tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
+int modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
+int emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
+int limite_injetor = 90; // 90% valor em porcentagem
+int tempo_abertura_injetor = 1;// Dead time, tempo que o injetor leva para abrir
+int acrescimo_injecao_partida = 0;// valor de acrecimo da ve na partida em porcentagem 
+int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
+float REQ_FUEL = 10;
+int VE = 0;
+float GammaE = 97;
+float InjOpenTime = 1.3;
 
 void enviar_byte_serial(int valor, int tamanho) {
   if (tamanho == 1) {
@@ -511,6 +524,7 @@ void envia_dados_tempo_real(int indice_envio){
         enviar_byte_serial(grau_avanco, 1);
         enviar_byte_serial(qtd_loop*5, 2);
         enviar_byte_serial(qtd_perda_sincronia, 1);
+        enviar_byte_serial(VE, 1);
       }
     } 
 }
@@ -783,6 +797,16 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
   tempo_anterior = tempo_atual;
   interrupts();
 }
+
+// int freeMemory() {
+//   int size = 1024; // Tamanho inicial da alocação
+//   byte *buf;
+  
+//   while ((buf = (byte *) malloc(--size)) == NULL); // Aloca até que falhe
+  
+//   free(buf); // Libera a memória alocada
+//   return size;
+// }
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
   delay(1000);  
@@ -802,19 +826,18 @@ void setup(){
 void loop(){ 
     qtd_loop++;
     if(referencia_leitura_ignicao == 1){
-      valor_referencia_busca_avanco = map(analogRead(pino_sensor_map), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);   
+      valor_referencia_busca_avanco = valor_map;   
     }else{
-      valor_referencia_busca_avanco = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
+      valor_referencia_busca_avanco = valor_tps;
     }
     if(referencia_leitura_injecao == 1){
-      valor_referencia_busca_tempo_injecao = map(analogRead(pino_sensor_map), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);   
+      valor_referencia_busca_tempo_injecao = valor_map;   
     }else{
-      valor_referencia_busca_tempo_injecao = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
+      valor_referencia_busca_tempo_injecao = valor_tps;
     }
-    VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
-
+    VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
     // Chama a função para calcular a largura do pulso
-    unsigned long tempo_injecao = calcularLarguraPulso(REQ_FUEL, valor_referencia_busca_tempo_injecao, VE, GammaE, InjOpenTime) * 1000ul;
+    unsigned long tempo_injecao = calcularLarguraPulso(REQ_FUEL, valor_map, VE, GammaE, InjOpenTime) * 1000ul;
     
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
@@ -998,11 +1021,13 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm;
   valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
+  valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
+    
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
   protege_ignicao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
-  // Serial.println(qtd_perda_sincronia); 
+  //Serial.println(freeMemory()); 
    // atualiza o tempo da última execução
    ultima_execucao = millis();
    qtd_loop = 0;
