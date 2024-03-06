@@ -147,7 +147,7 @@ int numero_injetor = 4;
 int numero_esguicho = 4;
 int tamanho_injetor = 32;// lbs/hora por injetor
 int tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
-int tipo_combustivel = 1; // 1 - Gasolina, 2 - Propano, 3 - Metanol, 4 - Etanol, 5 - Diesel
+int tipo_combustivel = 14700; // 14700 - Gasolina
 int tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 int modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
 int emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
@@ -295,7 +295,8 @@ void gravar_dados_eeprom_configuracao_injecao(){
     EEPROM.write(endereco++, tamanho_injetor & 0xFF);
     EEPROM.write(endereco++, (tamanho_injetor >> 8) & 0xFF);
     EEPROM.write(endereco++, tipo_acionamento_injetor);
-    EEPROM.write(endereco++, tipo_combustivel);
+    EEPROM.write(endereco++, tipo_combustivel & 0xFF);
+    EEPROM.write(endereco++, (tipo_combustivel >> 8) & 0xFF);
     EEPROM.write(endereco++, REQ_FUEL & 0xFF);
     EEPROM.write(endereco++, (REQ_FUEL >> 8) & 0xFF);
     EEPROM.write(endereco++, (dreq_fuel & 0xFF));
@@ -327,7 +328,10 @@ void ler_dados_eeprom_configuracao_injecao(){
   tamanho_injetor = lowByte | (highByte << 8);
   
   tipo_acionamento_injetor = EEPROM.read(endereco++);
-  tipo_combustivel = EEPROM.read(endereco++);
+  // Para tipo combustivel, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  tipo_combustivel = lowByte | (highByte << 8);
   
   // Para REQ_FUEL, combinamos os bytes lidos
   lowByte = EEPROM.read(endereco++);
@@ -551,6 +555,7 @@ Serial.print(",");
 Serial.print(REQ_FUEL);
 Serial.print(",");
 Serial.print(dreq_fuel);
+Serial.print(",");
 Serial.print(";");
 }
 int procura_indice(int value, int *arr, int size){
