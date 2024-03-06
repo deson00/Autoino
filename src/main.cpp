@@ -113,16 +113,17 @@ byte vetor_temperatura[5];
 int index = 0;   // índice atual do vetor
 int indice_envio = 0;   // índice atual do vetor de envio
 char buffer[6]; // buffer temporário para armazenar caracteres recebidos
-int tipo_vetor_map_tps_avanco = 0;
-int tipo_vetor_rpm_avanco = 0;
-int tipo_vetor_matriz_avanco = 0;
-int tipo_vetor_map_tps_ve = 0;
-int tipo_vetor_rpm_ve = 0;
-int tipo_vetor_matriz_ve = 0;
-int tipo_vetor_configuracao_inicial = 0;
-int tipo_vetor_configuracao_faisca = 0;
-int tipo_vetor_configuracao_dwell = 0;
-int tipo_vetor_configuracao_clt = 0;
+byte tipo_vetor_map_tps_avanco = 0;
+byte tipo_vetor_rpm_avanco = 0;
+byte tipo_vetor_matriz_avanco = 0;
+byte tipo_vetor_map_tps_ve = 0;
+byte tipo_vetor_rpm_ve = 0;
+byte tipo_vetor_matriz_ve = 0;
+byte tipo_vetor_configuracao_inicial = 0;
+byte tipo_vetor_configuracao_faisca = 0;
+byte tipo_vetor_configuracao_dwell = 0;
+byte tipo_vetor_configuracao_clt = 0;
+byte tipo_vetor_configuracao_injecao = 0;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 0;
 int valor_map_minimo = 10;
@@ -140,7 +141,7 @@ int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 byte temperatura_motor = 0;
 int grau_fechamento_injetor = 5; //este grau tem referencia 360 - 355
-int motor = 250;//polegadas cubicas
+int deslocamento_motor = 250;//polegadas cubicas
 int numero_cilindro_injecao = 4;
 int numero_injetor = 4;
 int numero_esguicho = 4;
@@ -154,11 +155,12 @@ int limite_injetor = 90; // 90% valor em porcentagem
 int tempo_abertura_injetor = 1;// Dead time, tempo que o injetor leva para abrir
 int acrescimo_injecao_partida = 0;// valor de acrecimo da ve na partida em porcentagem 
 int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
-float REQ_FUEL = 10;
+int REQ_FUEL = 10;
+int dreq_fuel = 10;
 int VE = 0;
 float GammaE = 97;
 float InjOpenTime = 1.3;
-
+unsigned long tempo_injecao = 0;
 void enviar_byte_serial(int valor, int tamanho) {
   if (tamanho == 1) {
     // Verifica se o valor é um caractere
@@ -277,6 +279,68 @@ void gravar_dados_eeprom_tabela_ve_map_rpm() {
     }
   }
 }
+
+void gravar_dados_eeprom_configuracao_injecao(){
+  int endereco =  722; // Inicializa o endereço de memória
+    // Gravar os valores divididos em bytes
+    EEPROM.write(endereco++, referencia_leitura_injecao); 
+    EEPROM.write(endereco++, tipo_motor);
+    EEPROM.write(endereco++, modo_injecao);
+    EEPROM.write(endereco++, emparelhar_injetor);
+    EEPROM.write(endereco++, deslocamento_motor & 0xFF);
+    EEPROM.write(endereco++, (deslocamento_motor >> 8) & 0xFF);
+    EEPROM.write(endereco++, numero_cilindro_injecao);
+    EEPROM.write(endereco++, numero_injetor);
+    EEPROM.write(endereco++, numero_esguicho);
+    EEPROM.write(endereco++, tamanho_injetor & 0xFF);
+    EEPROM.write(endereco++, (tamanho_injetor >> 8) & 0xFF);
+    EEPROM.write(endereco++, tipo_acionamento_injetor);
+    EEPROM.write(endereco++, tipo_combustivel);
+    EEPROM.write(endereco++, REQ_FUEL & 0xFF);
+    EEPROM.write(endereco++, (REQ_FUEL >> 8) & 0xFF);
+    EEPROM.write(endereco++, (dreq_fuel & 0xFF));
+    EEPROM.write(endereco++, (dreq_fuel >> 8) & 0xFF);
+    
+}
+
+void ler_dados_eeprom_configuracao_injecao(){
+  int endereco = 722; // Inicializa o endereço de memória
+
+  // Ler os valores divididos em bytes
+  referencia_leitura_injecao = EEPROM.read(endereco++);
+  tipo_motor = EEPROM.read(endereco++);
+  modo_injecao = EEPROM.read(endereco++);
+  emparelhar_injetor = EEPROM.read(endereco++);
+  
+  // Para deslocamento_motor, combinamos os bytes lidos
+  byte lowByte = EEPROM.read(endereco++);
+  byte highByte = EEPROM.read(endereco++);
+  deslocamento_motor = lowByte | (highByte << 8);
+  
+  numero_cilindro_injecao = EEPROM.read(endereco++);
+  numero_injetor = EEPROM.read(endereco++);
+  numero_esguicho = EEPROM.read(endereco++);
+  
+  // Para tamanho_injetor, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  tamanho_injetor = lowByte | (highByte << 8);
+  
+  tipo_acionamento_injetor = EEPROM.read(endereco++);
+  tipo_combustivel = EEPROM.read(endereco++);
+  
+  // Para REQ_FUEL, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  REQ_FUEL = lowByte | (highByte << 8);
+  
+  // Para dreq_fuel, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  dreq_fuel = lowByte | (highByte << 8);
+}
+
+
 void ler_dados_eeprom_tabela_ve_map_rpm() {
   int highByte;
   int lowByte;
@@ -322,6 +386,7 @@ for (int i = 0; i < 16; i++) {
 }
 
 ler_dados_eeprom_tabela_ve_map_rpm();
+ler_dados_eeprom_configuracao_injecao();
 
 //leitura dos dados de configurações iniciais
 tipo_ignicao = EEPROM.read(0*2+360); 
@@ -459,6 +524,34 @@ Serial.print("a,");
         }
         Serial.print(";");
       //---------ve------------//  
+      // dados configuração injeção 
+Serial.print("m,");
+Serial.print(referencia_leitura_injecao);
+Serial.print(",");
+Serial.print(tipo_motor);
+Serial.print(",");
+Serial.print(modo_injecao);
+Serial.print(",");
+Serial.print(emparelhar_injetor);
+Serial.print(",");
+Serial.print(deslocamento_motor);
+Serial.print(",");
+Serial.print(numero_cilindro_injecao);
+Serial.print(",");
+Serial.print(numero_injetor);
+Serial.print(",");
+Serial.print(numero_esguicho);
+Serial.print(",");
+Serial.print(tamanho_injetor);
+Serial.print(",");
+Serial.print(tipo_acionamento_injetor);
+Serial.print(",");
+Serial.print(tipo_combustivel);
+Serial.print(",");
+Serial.print(REQ_FUEL);
+Serial.print(",");
+Serial.print(dreq_fuel);
+Serial.print(";");
 }
 int procura_indice(int value, int *arr, int size){
   int index = 0;
@@ -525,6 +618,8 @@ void envia_dados_tempo_real(int indice_envio){
         enviar_byte_serial(qtd_loop*5, 2);
         enviar_byte_serial(qtd_perda_sincronia, 1);
         enviar_byte_serial(VE, 1);
+        enviar_byte_serial(tempo_injecao, 2);
+
       }
     } 
 }
@@ -604,6 +699,9 @@ void leitura_entrada_dados_serial()
     if (data == 'l') {// configuração sensor temperatura clt
       tipo_vetor_configuracao_clt = 1;
     }
+    if (data == 'm') {// configuração sensor temperatura clt
+      tipo_vetor_configuracao_injecao = 1;
+    }
 
     if (data == ';'){ // final do vetor
       if (tipo_vetor_map_tps_avanco){
@@ -630,7 +728,6 @@ void leitura_entrada_dados_serial()
         gravar_dados_eeprom_tabela_ignicao_map_rpm();
         tipo_vetor_matriz_avanco = 0;
       }
-      //------ve------//
       if (tipo_vetor_map_tps_ve){
         for (int i = 0; i < 16; i++){
           vetor_map_tps_ve[i] = values[i];
@@ -655,7 +752,6 @@ void leitura_entrada_dados_serial()
         gravar_dados_eeprom_tabela_ve_map_rpm();
         tipo_vetor_matriz_ve = 0;
       }
-      //------ve-----//
       if (tipo_vetor_configuracao_inicial == 1){
           tipo_ignicao = values[0];
           qtd_dente = values[1];
@@ -690,6 +786,23 @@ void leitura_entrada_dados_serial()
           referencia_resistencia_clt2 = values[3];
           gravar_dados_eeprom_configuracao_clt();
           tipo_vetor_configuracao_clt = 0;
+      }
+      if (tipo_vetor_configuracao_injecao == 1){
+          referencia_leitura_injecao = values[0];//1 map 2 tps
+          tipo_motor = values[1];//4 para motor 4 tempo e 2 para 2 tempo
+          modo_injecao = values[2]; // 1 pareado 2 semi e 3 sequencial
+          emparelhar_injetor = values[3];// 1 para 1234 para emparelhado 2 para 1423 semi ou sequencial e 3 para 1342 para semi ou sequencial
+          deslocamento_motor = values[4];// tamanho do motor em polegadas 
+          numero_cilindro_injecao = values[5];
+          numero_injetor = values[6];
+          numero_esguicho = values[7];
+          tamanho_injetor = values[8];
+          tipo_acionamento_injetor = values[9];
+          tipo_combustivel = values[10];
+          REQ_FUEL = values[11];
+          dreq_fuel = values[12];
+          gravar_dados_eeprom_configuracao_injecao();
+          tipo_vetor_configuracao_injecao = 0;
       }
 
       index = 0; // reinicia índice do vetor
@@ -837,7 +950,7 @@ void loop(){
     }
     VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
     // Chama a função para calcular a largura do pulso
-    unsigned long tempo_injecao = calcularLarguraPulso(REQ_FUEL, valor_map, VE, GammaE, InjOpenTime) * 1000ul;
+    tempo_injecao = calcularLarguraPulso(REQ_FUEL/1000, valor_map, VE, GammaE, InjOpenTime) * 1000ul;
     
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
