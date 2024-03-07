@@ -624,6 +624,7 @@ void envia_dados_tempo_real(int indice_envio){
         enviar_byte_serial(qtd_perda_sincronia, 1);
         enviar_byte_serial(VE, 1);
         enviar_byte_serial(tempo_injecao, 2);
+        enviar_byte_serial(valor_tps, 1);
 
       }
     } 
