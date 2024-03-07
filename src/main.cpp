@@ -106,21 +106,31 @@ byte matriz_avanco[16][16];
 byte matriz_ve[16][16];
 int vetor_map_tps[16];
 int vetor_rpm[16];
+int vetor_map_tps_ve[16];
+int vetor_rpm_ve[16];
 byte vetor_avanco_temperatura[5];
 byte vetor_temperatura[5];
 int index = 0;   // índice atual do vetor
 int indice_envio = 0;   // índice atual do vetor de envio
 char buffer[6]; // buffer temporário para armazenar caracteres recebidos
-int tipo_vetor_map = 0;
-int tipo_vetor_rpm = 0;
-int tipo_vetor_matrix = 0;
-int tipo_vetor_configuracao_inicial = 0;
-int tipo_vetor_configuracao_faisca = 0;
-int tipo_vetor_configuracao_dwell = 0;
-int tipo_vetor_configuracao_clt = 0;
+byte tipo_vetor_map_tps_avanco = 0;
+byte tipo_vetor_rpm_avanco = 0;
+byte tipo_vetor_matriz_avanco = 0;
+byte tipo_vetor_map_tps_ve = 0;
+byte tipo_vetor_rpm_ve = 0;
+byte tipo_vetor_matriz_ve = 0;
+byte tipo_vetor_configuracao_inicial = 0;
+byte tipo_vetor_configuracao_faisca = 0;
+byte tipo_vetor_configuracao_dwell = 0;
+byte tipo_vetor_configuracao_clt = 0;
+byte tipo_vetor_configuracao_injecao = 0;
 bool status_dados_tempo_real = false;
 volatile int valor_map = 0;
+int valor_map_minimo = 10;
+int valor_map_maximo = 100;
 volatile int valor_tps = 0;
+int valor_tps_minimo = 0;
+int valor_tps_maximo = 100;
 int valor_referencia_busca_avanco = 0;
 int valor_referencia_busca_tempo_injecao = 0;
 int ajuste_pms =  0;
@@ -131,14 +141,26 @@ int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 byte temperatura_motor = 0;
 int grau_fechamento_injetor = 5; //este grau tem referencia 360 - 355
-    // Dados de exemplo conhecido
-    float REQ_FUEL = 10;
-    //float MAP = 40;
-    float VE = 74;
-    float GammaE = 97;
-    float InjOpenTime = 1.3;
-
-
+int deslocamento_motor = 250;//polegadas cubicas
+int numero_cilindro_injecao = 4;
+int numero_injetor = 4;
+int numero_esguicho = 4;
+int tamanho_injetor = 32;// lbs/hora por injetor
+int tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
+int tipo_combustivel = 14700; // 14700 - Gasolina
+int tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
+int modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
+int emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
+int limite_injetor = 90; // 90% valor em porcentagem
+int tempo_abertura_injetor = 1;// Dead time, tempo que o injetor leva para abrir
+int acrescimo_injecao_partida = 0;// valor de acrecimo da ve na partida em porcentagem 
+int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
+int REQ_FUEL = 10;
+int dreq_fuel = 10;
+int VE = 0;
+float GammaE = 97;
+float InjOpenTime = 1.3;
+unsigned long tempo_injecao = 0;
 void enviar_byte_serial(int valor, int tamanho) {
   if (tamanho == 1) {
     // Verifica se o valor é um caractere
@@ -170,7 +192,6 @@ int ler_valor_eeprom_2byte(int endereco) {
     return valor;
 }
 void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
-  Serial.println("Gravando dados");
   int highByte;
   int lowByte;
   // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
@@ -180,7 +201,7 @@ void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
     EEPROM.write(i * 2 + 10, highByte); // Armazena o byte mais significativo na posição i*2+10
     EEPROM.write(i * 2 + 11, lowByte); // Armazena o byte menos significativo na posição i*2+11
   }
-  // Escrita da matrix na EEPROM
+  // Escrita da matriz na EEPROM
   for (int i = 0; i < 16; i++) {
     EEPROM.write(i + 50, vetor_map_tps[i]); // Endereço de memória começa em 50
     for (int j = 0; j < 16; j++) {
@@ -189,56 +210,6 @@ void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
   }
 }
 
-void verificar_dados_eeprom_tabela_ignicao_map_rpm() {
-  Serial.println("Verificando dados gravado da tabela");
-  // Verificar dados do vetor_rpm na EEPROM
-  for (int i = 0; i < 16; i++) {
-    int storedValue;
-    int storedHighByte = EEPROM.read(i * 2 + 10);
-    int storedLowByte = EEPROM.read(i * 2 + 11);
-    storedValue = (storedHighByte << 8) | storedLowByte;
-    Serial.print("Gravação na posição ");
-      Serial.print(i);
-      Serial.print(": valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_rpm[i]);
-    if (storedValue != vetor_rpm[i]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(": valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_rpm[i]);
-    }
-  }
-
-  // Verificar dados do vetor_map e da matrix na EEPROM
-  for (int i = 0; i < 16; i++) {
-    int storedValue = EEPROM.read(i + 50);
-    if (storedValue != vetor_map_tps[i]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(" do vetor_map: valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(vetor_map_tps[i]);
-    }
-    for (int j = 0; j < 16; j++) {
-      storedValue = EEPROM.read(100 + i * 16 + j);
-      if (storedValue != matriz_avanco[i][j]) {
-        Serial.print("Erro de gravação na posição ");
-        Serial.print(i);
-        Serial.print(",");
-        Serial.print(j);
-        Serial.print(" da matriz: valor lido da EEPROM = ");
-        Serial.print(storedValue);
-        Serial.print(", valor esperado = ");
-        Serial.println(matriz_avanco[i][j]);
-      }
-    }
-  }
-}
 void gravar_dados_eeprom_configuracao_inicial() {
     int16_t grau_pms_16bit = (int16_t)grau_pms + 360; // Adiciona um offset de 360 para garantir que o valor seja sempre positivo
     if (grau_pms_16bit < 0) { // Verifica se o valor é negativo
@@ -281,6 +252,126 @@ void gravar_dados_eeprom_configuracao_clt() {
     EEPROM.write(417, (referencia_resistencia_clt2 >> 8) & 0xFF);
 }
 
+void gravar_dados_eeprom_tabela_ve_map_rpm() {
+  int highByte;
+  int lowByte;
+  int endereco = 418; // Inicializa o endereço de memória
+
+  // Escrita do vetor_rpm para valores de 2 bytes na EEPROM
+  for (int i = 0; i < 16; i++) {
+    highByte = vetor_rpm_ve[i] >> 8; // Obtém o byte mais significativo
+    lowByte = vetor_rpm_ve[i] & 0xFF; // Obtém o byte menos significativo
+    EEPROM.write(endereco, highByte); // Armazena o byte mais significativo no endereço atual
+    EEPROM.write(endereco + 1, lowByte); // Armazena o byte menos significativo no próximo endereço
+    endereco += 2; // Avança para o próximo par de endereços
+  }
+
+  // Escrita da matriz na EEPROM
+  endereco = 450; // Define o novo endereço de memória para a matriz
+
+  for (int i = 0; i < 16; i++) {
+    EEPROM.write(endereco, vetor_map_tps_ve[i]); // Armazena o valor do vetor na posição atual
+    endereco++; // Avança para o próximo endereço
+
+    for (int j = 0; j < 16; j++) {
+      EEPROM.write(endereco, matriz_ve[i][j]); // Armazena o valor da matriz na posição atual
+      endereco++; // Avança para o próximo endereço
+    }
+  }
+}
+
+void gravar_dados_eeprom_configuracao_injecao(){
+  int endereco =  722; // Inicializa o endereço de memória
+    // Gravar os valores divididos em bytes
+    EEPROM.write(endereco++, referencia_leitura_injecao); 
+    EEPROM.write(endereco++, tipo_motor);
+    EEPROM.write(endereco++, modo_injecao);
+    EEPROM.write(endereco++, emparelhar_injetor);
+    EEPROM.write(endereco++, deslocamento_motor & 0xFF);
+    EEPROM.write(endereco++, (deslocamento_motor >> 8) & 0xFF);
+    EEPROM.write(endereco++, numero_cilindro_injecao);
+    EEPROM.write(endereco++, numero_injetor);
+    EEPROM.write(endereco++, numero_esguicho);
+    EEPROM.write(endereco++, tamanho_injetor & 0xFF);
+    EEPROM.write(endereco++, (tamanho_injetor >> 8) & 0xFF);
+    EEPROM.write(endereco++, tipo_acionamento_injetor);
+    EEPROM.write(endereco++, tipo_combustivel & 0xFF);
+    EEPROM.write(endereco++, (tipo_combustivel >> 8) & 0xFF);
+    EEPROM.write(endereco++, REQ_FUEL & 0xFF);
+    EEPROM.write(endereco++, (REQ_FUEL >> 8) & 0xFF);
+    EEPROM.write(endereco++, (dreq_fuel & 0xFF));
+    EEPROM.write(endereco++, (dreq_fuel >> 8) & 0xFF);
+    
+}
+
+void ler_dados_eeprom_configuracao_injecao(){
+  int endereco = 722; // Inicializa o endereço de memória
+
+  // Ler os valores divididos em bytes
+  referencia_leitura_injecao = EEPROM.read(endereco++);
+  tipo_motor = EEPROM.read(endereco++);
+  modo_injecao = EEPROM.read(endereco++);
+  emparelhar_injetor = EEPROM.read(endereco++);
+  
+  // Para deslocamento_motor, combinamos os bytes lidos
+  byte lowByte = EEPROM.read(endereco++);
+  byte highByte = EEPROM.read(endereco++);
+  deslocamento_motor = lowByte | (highByte << 8);
+  
+  numero_cilindro_injecao = EEPROM.read(endereco++);
+  numero_injetor = EEPROM.read(endereco++);
+  numero_esguicho = EEPROM.read(endereco++);
+  
+  // Para tamanho_injetor, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  tamanho_injetor = lowByte | (highByte << 8);
+  
+  tipo_acionamento_injetor = EEPROM.read(endereco++);
+  // Para tipo combustivel, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  tipo_combustivel = lowByte | (highByte << 8);
+  
+  // Para REQ_FUEL, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  REQ_FUEL = lowByte | (highByte << 8);
+  
+  // Para dreq_fuel, combinamos os bytes lidos
+  lowByte = EEPROM.read(endereco++);
+  highByte = EEPROM.read(endereco++);
+  dreq_fuel = lowByte | (highByte << 8);
+}
+
+
+void ler_dados_eeprom_tabela_ve_map_rpm() {
+  int highByte;
+  int lowByte;
+  int endereco =  418; // Inicializa o endereço de memória para vetor_rpm_ve
+
+  // Leitura do vetor_rpm de valores de  2 bytes na EEPROM
+  for (int i =  0; i <  16; i++) {
+    highByte = EEPROM.read(endereco); // Lê o byte mais significativo
+    lowByte = EEPROM.read(endereco +  1); // Lê o byte menos significativo
+    vetor_rpm_ve[i] = (highByte <<  8) | lowByte; // Combina os bytes para formar o valor inteiro
+    endereco +=  2; // Avança para o próximo par de endereços
+  }
+
+  // Leitura da matriz na EEPROM
+  endereco =  450; // Define o novo endereço de memória para a matriz
+
+  for (int i =  0; i <  16; i++) {
+    vetor_map_tps_ve[i] = EEPROM.read(endereco); // Lê o valor do vetor na posição atual
+    endereco++; // Avança para o próximo endereço
+
+    for (int j =  0; j <  16; j++) {
+      matriz_ve[i][j] = EEPROM.read(endereco); // Lê o valor da matriz na posição atual
+      endereco++; // Avança para o próximo endereço
+    }
+  }
+}
+
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
   int highByte;
@@ -297,30 +388,10 @@ for (int i = 0; i < 16; i++) {
     matriz_avanco[i][j] = EEPROM.read(100 + i*16 + j);
   }
 }
-for (int i = 0; i < 16; i++) {
-  int storedValue = EEPROM.read(i+50);
-  if (storedValue != vetor_map_tps[i]) {
-    Serial.print("Erro de gravação na posição ");
-    Serial.print(i);
-    Serial.print(" do vetor_map: valor lido da EEPROM = ");
-    Serial.print(storedValue);
-    Serial.print(", valor esperado = ");
-    Serial.println(vetor_map_tps[i]);
-  }
-  for (int j = 0; j < 16; j++) {
-    storedValue = EEPROM.read(100 + i*16 + j);
-    if (storedValue != matriz_avanco[i][j]) {
-      Serial.print("Erro de gravação na posição ");
-      Serial.print(i);
-      Serial.print(",");
-      Serial.print(j);
-      Serial.print(" da matriz: valor lido da EEPROM = ");
-      Serial.print(storedValue);
-      Serial.print(", valor esperado = ");
-      Serial.println(matriz_avanco[i][j]);
-    }
-  }
-}
+
+ler_dados_eeprom_tabela_ve_map_rpm();
+ler_dados_eeprom_configuracao_injecao();
+
 //leitura dos dados de configurações iniciais
 tipo_ignicao = EEPROM.read(0*2+360); 
 qtd_dente = EEPROM.read(1*2+360);
@@ -353,7 +424,7 @@ referencia_temperatura_clt2 = EEPROM.read(414);
 referencia_resistencia_clt2 = ler_valor_eeprom_2byte(416); 
 
 Serial.print("a,");
-      // vetor map
+      // vetor map ou tps
       for (int  i = 0; i < 16; i++){
         Serial.print(vetor_map_tps[i]);
         Serial.print(",");
@@ -366,7 +437,6 @@ Serial.print("a,");
         Serial.print(",");
       }
       Serial.print(";");
-      //matrix ponto 
       // transforma matriz em vetor
       Serial.print("c,");
         int k = 0;
@@ -378,6 +448,7 @@ Serial.print("a,");
           }
         }
         Serial.print(";");
+      
       // dados configuração inicial
       Serial.print("g,");
       Serial.print(tipo_ignicao);
@@ -429,6 +500,63 @@ Serial.print("a,");
       Serial.print(referencia_resistencia_clt2);
       Serial.print(",");
       Serial.print(";");
+
+      //---------ve-------------//
+      Serial.print("d,");
+      // vetor map ou tps da ve
+      for (int  i = 0; i < 16; i++){
+        Serial.print(vetor_map_tps_ve[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+      Serial.print("e,");
+      // vetor rpm da tabela ve
+      for (int  i = 0; i < 16; i++){
+        Serial.print(vetor_rpm_ve[i]);
+        Serial.print(",");
+      }
+      Serial.print(";");
+      // transforma matriz em vetor
+      Serial.print("f,");
+        k = 0;
+        for (int i = 0; i < 16; i++){
+          for (int j = 0; j < 16; j++){
+            Serial.print(matriz_ve[i][j]);
+            Serial.print(",");
+            k++;
+          }
+        }
+        Serial.print(";");
+      //---------ve------------//  
+      // dados configuração injeção 
+Serial.print("m,");
+Serial.print(referencia_leitura_injecao);
+Serial.print(",");
+Serial.print(tipo_motor);
+Serial.print(",");
+Serial.print(modo_injecao);
+Serial.print(",");
+Serial.print(emparelhar_injetor);
+Serial.print(",");
+Serial.print(deslocamento_motor);
+Serial.print(",");
+Serial.print(numero_cilindro_injecao);
+Serial.print(",");
+Serial.print(numero_injetor);
+Serial.print(",");
+Serial.print(numero_esguicho);
+Serial.print(",");
+Serial.print(tamanho_injetor);
+Serial.print(",");
+Serial.print(tipo_acionamento_injetor);
+Serial.print(",");
+Serial.print(tipo_combustivel);
+Serial.print(",");
+Serial.print(REQ_FUEL);
+Serial.print(",");
+Serial.print(dreq_fuel);
+Serial.print(",");
+Serial.print(";");
 }
 int procura_indice(int value, int *arr, int size){
   int index = 0;
@@ -494,6 +622,9 @@ void envia_dados_tempo_real(int indice_envio){
         enviar_byte_serial(grau_avanco, 1);
         enviar_byte_serial(qtd_loop*5, 2);
         enviar_byte_serial(qtd_perda_sincronia, 1);
+        enviar_byte_serial(VE, 1);
+        enviar_byte_serial(tempo_injecao, 2);
+
       }
     } 
 }
@@ -526,25 +657,27 @@ void leitura_entrada_dados_serial()
 {
   if (Serial.available() > 0){
     char data = Serial.read();
-    if (data == 'a'){//entrada de dados do vetor map
-      tipo_vetor_map = 1;
+    if (data == 'a'){//entrada de dados do vetor map ou tps
+      tipo_vetor_map_tps_avanco = 1;
     }
     if (data == 'b'){//entrada de dados do vetor rpm
-      tipo_vetor_rpm = 1;//b,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000; exmplo
+      tipo_vetor_rpm_avanco = 1;//b,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000; exmplo
     }
     if (data == 'c'){//entrada de dados do da matriz em vetor
-      tipo_vetor_matrix = 1;
+      tipo_vetor_matriz_avanco = 1;
     }
-    if (data == 'd'){// livre para reutilizar
-      //função aqui
+    if (data == 'd'){// entrada vetor map ou tps para a tabela ve
+      tipo_vetor_map_tps_ve = 1;
     }
-    if (data == 'e'){//livre para reutilizar
-      //função aqui
+    if (data == 'e'){//entrada vetor rpm para a tabela ve
+      tipo_vetor_rpm_ve = 1;
     }
-     if (data == 'f'){//grava dados na eeprom
+    if (data == 'f'){//entrada da matriz de valores para a tabela ve
+      tipo_vetor_matriz_ve = 1;  
       // Escrita dos valores na EEPROM
-      gravar_dados_eeprom_tabela_ignicao_map_rpm();
-      verificar_dados_eeprom_tabela_ignicao_map_rpm();
+      //gravar_dados_eeprom_tabela_ignicao_map_rpm();
+      //gravar_dados_eeprom_tabela_ve_map_rpm();
+      //verificar_dados_eeprom_tabela_ignicao_map_rpm();
       //gravar_dados_eeprom_configuracao_inicial();
     }
     if (data == 'g'){//grava configuração inicial
@@ -571,21 +704,24 @@ void leitura_entrada_dados_serial()
     if (data == 'l') {// configuração sensor temperatura clt
       tipo_vetor_configuracao_clt = 1;
     }
+    if (data == 'm') {// configuração sensor temperatura clt
+      tipo_vetor_configuracao_injecao = 1;
+    }
 
     if (data == ';'){ // final do vetor
-      if (tipo_vetor_map){
+      if (tipo_vetor_map_tps_avanco){
         for (int i = 0; i < 16; i++){
           vetor_map_tps[i] = values[i];
         }
-        tipo_vetor_map = 0;
+        tipo_vetor_map_tps_avanco = 0;
       }
-      if (tipo_vetor_rpm){
+      if (tipo_vetor_rpm_avanco){
         for (int i = 0; i < 16; i++){
           vetor_rpm[i] = values[i];
         }
-        tipo_vetor_rpm = 0;
+        tipo_vetor_rpm_avanco = 0;
       }
-      if (tipo_vetor_matrix){
+      if (tipo_vetor_matriz_avanco){
         // transforma o vetor em matriz
         int k = 0;
         for (int i = 0; i < 16; i++){
@@ -594,7 +730,32 @@ void leitura_entrada_dados_serial()
             k++;
           }
         }
-        tipo_vetor_matrix = 0;
+        gravar_dados_eeprom_tabela_ignicao_map_rpm();
+        tipo_vetor_matriz_avanco = 0;
+      }
+      if (tipo_vetor_map_tps_ve){
+        for (int i = 0; i < 16; i++){
+          vetor_map_tps_ve[i] = values[i];
+        }
+        tipo_vetor_map_tps_ve = 0;
+      }
+      if (tipo_vetor_rpm_ve){
+        for (int i = 0; i < 16; i++){
+          vetor_rpm_ve[i] = values[i];
+        }
+        tipo_vetor_rpm_ve = 0;
+      }
+      if (tipo_vetor_matriz_ve){
+        // transforma o vetor em matriz
+        int k = 0;
+        for (int i = 0; i < 16; i++){
+          for (int j = 0; j < 16; j++){
+            matriz_ve[i][j] = values[k];
+            k++;
+          }
+        }
+        gravar_dados_eeprom_tabela_ve_map_rpm();
+        tipo_vetor_matriz_ve = 0;
       }
       if (tipo_vetor_configuracao_inicial == 1){
           tipo_ignicao = values[0];
@@ -630,6 +791,23 @@ void leitura_entrada_dados_serial()
           referencia_resistencia_clt2 = values[3];
           gravar_dados_eeprom_configuracao_clt();
           tipo_vetor_configuracao_clt = 0;
+      }
+      if (tipo_vetor_configuracao_injecao == 1){
+          referencia_leitura_injecao = values[0];//1 map 2 tps
+          tipo_motor = values[1];//4 para motor 4 tempo e 2 para 2 tempo
+          modo_injecao = values[2]; // 1 pareado 2 semi e 3 sequencial
+          emparelhar_injetor = values[3];// 1 para 1234 para emparelhado 2 para 1423 semi ou sequencial e 3 para 1342 para semi ou sequencial
+          deslocamento_motor = values[4];// tamanho do motor em polegadas 
+          numero_cilindro_injecao = values[5];
+          numero_injetor = values[6];
+          numero_esguicho = values[7];
+          tamanho_injetor = values[8];
+          tipo_acionamento_injetor = values[9];
+          tipo_combustivel = values[10];
+          REQ_FUEL = values[11];
+          dreq_fuel = values[12];
+          gravar_dados_eeprom_configuracao_injecao();
+          tipo_vetor_configuracao_injecao = 0;
       }
 
       index = 0; // reinicia índice do vetor
@@ -737,6 +915,16 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
   tempo_anterior = tempo_atual;
   interrupts();
 }
+
+// int freeMemory() {
+//   int size = 1024; // Tamanho inicial da alocação
+//   byte *buf;
+  
+//   while ((buf = (byte *) malloc(--size)) == NULL); // Aloca até que falhe
+  
+//   free(buf); // Libera a memória alocada
+//   return size;
+// }
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
   delay(1000);  
@@ -756,17 +944,18 @@ void setup(){
 void loop(){ 
     qtd_loop++;
     if(referencia_leitura_ignicao == 1){
-      valor_referencia_busca_avanco = map(analogRead(pino_sensor_map), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);   
+      valor_referencia_busca_avanco = valor_map;   
     }else{
-      valor_referencia_busca_avanco = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
+      valor_referencia_busca_avanco = valor_tps;
     }
     if(referencia_leitura_injecao == 1){
-      valor_referencia_busca_tempo_injecao = map(analogRead(pino_sensor_map), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);   
+      valor_referencia_busca_tempo_injecao = valor_map;   
     }else{
-      valor_referencia_busca_tempo_injecao = map(analogRead(pino_sensor_tps), 0, 1023, vetor_map_tps[0], vetor_map_tps[15]);
+      valor_referencia_busca_tempo_injecao = valor_tps;
     }
+    VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
     // Chama a função para calcular a largura do pulso
-    unsigned long tempo_injecao = calcularLarguraPulso(REQ_FUEL, valor_referencia_busca_tempo_injecao, VE, GammaE, InjOpenTime) * 1000ul;
+    tempo_injecao = calcularLarguraPulso(REQ_FUEL/1000, valor_map, VE, GammaE, InjOpenTime) * 1000ul;
     
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
@@ -949,11 +1138,14 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm;
+  valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
+  valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
+    
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
   protege_ignicao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
-  // Serial.println(qtd_perda_sincronia); 
+  //Serial.println(freeMemory()); 
    // atualiza o tempo da última execução
    ultima_execucao = millis();
    qtd_loop = 0;
