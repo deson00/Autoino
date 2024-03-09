@@ -146,12 +146,12 @@ int numero_cilindro_injecao = 4;
 int numero_injetor = 4;
 int numero_esguicho = 4;
 int tamanho_injetor = 32;// lbs/hora por injetor
-int tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
+byte tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
 int tipo_combustivel = 14700; // 14700 - Gasolina
-int tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
-int modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
-int emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
-int limite_injetor = 90; // 90% valor em porcentagem
+byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
+byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
+byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
+byte limite_injetor = 90; // 90% valor em porcentagem
 int tempo_abertura_injetor = 1;// Dead time, tempo que o injetor leva para abrir
 int acrescimo_injecao_partida = 0;// valor de acrecimo da ve na partida em porcentagem 
 int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
@@ -1100,13 +1100,26 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
         (revolucoes_sincronizada >= 1)){
-        captura_req_fuel[i] = true;
-        tempo_percorrido_inj[i] = tempo_atual;
-        digitalWrite(injecao_pins[i], 1);
-        tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
-        inj_acionado[i] = true;
-        inj_acionado[i+1] = false;
-        captura_req_fuel[i+1] = false;
+        if(tipo_acionamento_injetor == 1){
+          for (int j = 0; j < qtd_cilindro; j++){
+          digitalWrite(injecao_pins[j], 1);
+          }
+          captura_req_fuel[i] = true;
+          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
+          inj_acionado[i] = true;
+          inj_acionado[i+1] = false;
+          captura_req_fuel[i+1] = false;
+        }else{
+          captura_req_fuel[i] = true;
+          tempo_percorrido_inj[i] = tempo_atual;
+          digitalWrite(injecao_pins[i], 1);
+          tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
+          inj_acionado[i] = true;
+          inj_acionado[i+1] = false;
+          captura_req_fuel[i+1] = false;
+        }  
+        
     }
   }
 
@@ -1129,8 +1142,14 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
     if (captura_req_fuel[i] == true) {
         if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
-              captura_req_fuel[i] = false;
-                digitalWrite(injecao_pins[i], 0);      
+          if(tipo_acionamento_injetor == 1){
+            for (int j = 0; j < qtd_cilindro; j++){
+              digitalWrite(injecao_pins[j], 0);
+            }
+          }
+          captura_req_fuel[i] = false;
+          digitalWrite(injecao_pins[i], 0);
+                    
         }
     }
   }
