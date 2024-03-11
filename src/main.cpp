@@ -99,6 +99,7 @@ volatile bool inj_acionado[8] = {false, false, false, false, false, false, false
 volatile unsigned long tempo_percorrido[8];
 volatile unsigned long tempo_percorrido_inj[8];
 volatile bool flag_interrupcao = false;
+unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
 const int maximo_valores_recebido = 270; // tamanho máximo de dados recebido do vetor ou matriz
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
@@ -125,10 +126,13 @@ byte tipo_vetor_configuracao_dwell = 0;
 byte tipo_vetor_configuracao_clt = 0;
 byte tipo_vetor_configuracao_injecao = 0;
 bool status_dados_tempo_real = false;
-volatile int valor_map = 0;
-int valor_map_minimo = 10;
+int leituras_map[10]={0};
+int leituras_tps[10]={0};
+int contador_leitura = 0;
+int valor_map = 0;
+int valor_map_minimo = 0;
 int valor_map_maximo = 100;
-volatile int valor_tps = 0;
+int valor_tps = 0;
 int valor_tps_minimo = 0;
 int valor_tps_maximo = 100;
 int valor_referencia_busca_avanco = 0;
@@ -616,7 +620,8 @@ float temperatura_clt(){
 void envia_dados_tempo_real(int indice_envio){
     if (status_dados_tempo_real){
       if(indice_envio == 1){
-        enviar_byte_serial(rpm_anterior, 2);
+        //enviar_byte_serial(tempo_decorrido_codigo, 2);
+        enviar_byte_serial(rpm_anterior, 2); 
         enviar_byte_serial(valor_map, 2);
         enviar_byte_serial(temperatura_motor, 1);
         enviar_byte_serial(grau_avanco, 1);
@@ -917,6 +922,20 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
   interrupts();
 }
 
+//util destinado a funçoes de uso geral 
+void sort(int arr[], int n) {
+ for (int i = 0; i < n-1; i++) {
+    for (int j = 0; j < n-i-1; j++) {
+      if (arr[j] > arr[j+1]) {
+        // Troca arr[j] e arr[j+1]
+        int temp = arr[j];
+        arr[j] = arr[j+1];
+        arr[j+1] = temp;
+      }
+    }
+ }
+}
+
 // int freeMemory() {
 //   int size = 1024; // Tamanho inicial da alocação
 //   byte *buf;
@@ -944,6 +963,22 @@ void setup(){
 }
 void loop(){ 
     qtd_loop++;
+    if(contador_leitura >=10){
+      tempo_inicial_codigo = micros(); // Registra o tempo inicial
+      // Ordena as leituras e encontra a mediana
+      sort(leituras_map, contador_leitura);
+      sort(leituras_tps, contador_leitura);
+      // Mapeia os valores médios para o intervalo desejado
+      valor_map = map(leituras_map[contador_leitura / 2], 0, 1023, valor_map_minimo, valor_map_maximo);
+      valor_tps = map(leituras_tps[contador_leitura / 2], 0, 1023, valor_tps_minimo, valor_tps_maximo);
+      contador_leitura = 0;
+      // valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
+      // valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
+      tempo_final_codigo = micros(); // Registra o tempo final
+      tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+    }
+    leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
+    leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
     }else{
@@ -957,7 +992,7 @@ void loop(){
     VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
     // Chama a função para calcular a largura do pulso
     tempo_injecao = calcularLarguraPulso(REQ_FUEL/1000, valor_map, VE, GammaE, InjOpenTime) * 1000ul;
-    
+        
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
@@ -991,6 +1026,7 @@ if (grau_pms <= 180) {
 
   for (int i = 0; i < qtd_cilindro/2; i++){
     tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_atual = micros();
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (revolucoes_sincronizada >= 1)){
@@ -1018,6 +1054,7 @@ if (grau_pms <= 180) {
   }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
     tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_atual = micros() ;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (revolucoes_sincronizada >= 1)){
@@ -1043,6 +1080,7 @@ if (grau_pms <= 180) {
     }
   }
   for (int i = 0; i < qtd_cilindro; i++) {
+    tempo_atual = micros() ;
     if (captura_dwell[i] == true) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
             int verifica_posicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
@@ -1084,6 +1122,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     } 
 
    for (int i = 0; i < qtd_cilindro; i++){
+    tempo_atual = micros();
     tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000ul >= tempo_proxima_ignicao[i]) && 
@@ -1124,6 +1163,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   }
 
     for (int i = 0; i < qtd_cilindro; i++) {
+      tempo_atual = micros();
     if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
           int verifica_posicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
@@ -1157,10 +1197,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
-  rpm_anterior = rpm;
-  valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-  valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
-    
+  rpm_anterior = rpm; 
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
   protege_ignicao();
