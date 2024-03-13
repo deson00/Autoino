@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-//#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
 #ifdef Uno
 #define pino_sensor_roda_fonica 2
@@ -52,7 +52,7 @@ byte grau_cada_dente = 360 / qtd_dente;
 byte grau_avanco = 0;
 byte grau_avanco_partida = 1; // avanço definido apenas na partida
 byte grau_entre_cada_cilindro = 360 / qtd_cilindro;
-byte posicao_atual_sensor = 0;
+int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 byte qtd_leitura = 0;
 byte referencia_leitura_ignicao = 1;//map 1 e tps 2
@@ -82,7 +82,8 @@ volatile long revolucoes_sincronizada = 0;
 int qtd_revolucoes = 0;
 byte qtd_perda_sincronia = 0;
 int qtd_loop = 0;
-unsigned long intervalo_execucao = 200; // intervalo em milissegundos
+int verifica_posicao_sensor = 0;
+unsigned long intervalo_execucao = 1000; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
@@ -127,7 +128,7 @@ byte tipo_vetor_configuracao_clt = 0;
 byte tipo_vetor_configuracao_injecao = 0;
 bool status_dados_tempo_real = false;
 int leituras_map[10]={0};
-int leituras_tps[10]={0};
+//int leituras_tps[10]={0};
 int contador_leitura = 0;
 int valor_map = 0;
 int valor_map_minimo = 0;
@@ -620,7 +621,8 @@ float temperatura_clt(){
 void envia_dados_tempo_real(int indice_envio){
     if (status_dados_tempo_real){
       if(indice_envio == 1){
-        //enviar_byte_serial(tempo_decorrido_codigo, 2);
+        //enviar_byte_serial(verifica_posicao_sensor, 2);
+        //enviar_byte_serial(posicao_atual_sensor, 2);
         enviar_byte_serial(rpm_anterior, 2); 
         enviar_byte_serial(valor_map, 2);
         enviar_byte_serial(temperatura_motor, 1);
@@ -963,22 +965,22 @@ void setup(){
 }
 void loop(){ 
     qtd_loop++;
+    //tempo_inicial_codigo = micros(); // Registra o tempo inicial
+    //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if(contador_leitura >=10){
-      tempo_inicial_codigo = micros(); // Registra o tempo inicial
       // Ordena as leituras e encontra a mediana
       sort(leituras_map, contador_leitura);
-      sort(leituras_tps, contador_leitura);
+      //sort(leituras_tps, contador_leitura);
       // Mapeia os valores médios para o intervalo desejado
       valor_map = map(leituras_map[contador_leitura / 2], 0, 1023, valor_map_minimo, valor_map_maximo);
-      valor_tps = map(leituras_tps[contador_leitura / 2], 0, 1023, valor_tps_minimo, valor_tps_maximo);
+      //valor_tps = map(leituras_tps[contador_leitura / 2], 0, 1023, valor_tps_minimo, valor_tps_maximo);
       contador_leitura = 0;
-      // valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-      // valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
       tempo_final_codigo = micros(); // Registra o tempo final
-      tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     }
+    //valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
+    valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
     leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
-    leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
+    //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
     }else{
@@ -992,7 +994,7 @@ void loop(){
     VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
     // Chama a função para calcular a largura do pulso
     tempo_injecao = calcularLarguraPulso(REQ_FUEL/1000, valor_map, VE, GammaE, InjOpenTime) * 1000ul;
-        
+      
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida;
@@ -1001,7 +1003,7 @@ void loop(){
       grau_avanco = grau_avanco_fixo;
       dwell_bobina = dwell_funcionamento;
     }
-    else if(rpm < 3000 && busca_avanco_linear == true){
+    else if(rpm < 10000 && busca_avanco_linear == true){
       int grau_minimo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
       int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
@@ -1013,16 +1015,17 @@ void loop(){
       grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       dwell_bobina = dwell_funcionamento;
     }
+  
 tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
-
+  
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-if (grau_pms <= 180) {
+  if (grau_pms <= 180) {
     if (grau_pms < 60 || rpm > 3000) {
         ajuste_pms = 180;
     }else{
       ajuste_pms = 0;
     } 
-}
+  }
 
   for (int i = 0; i < qtd_cilindro/2; i++){
     tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
@@ -1083,8 +1086,8 @@ if (grau_pms <= 180) {
     tempo_atual = micros() ;
     if (captura_dwell[i] == true) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
-            int verifica_posicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
-            if(((verifica_posicao >= posicao_atual_sensor - grau_cada_dente) && (rpm < 3000))){          
+            verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+            if(posicao_atual_sensor >= verifica_posicao_sensor){     
               captura_dwell[i] = false;
               if (i < qtd_cilindro/2) {
                 digitalWrite(ignicao_pins[i], 0);
@@ -1122,10 +1125,10 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     } 
 
    for (int i = 0; i < qtd_cilindro; i++){
-    tempo_atual = micros();
     tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
+    tempo_atual = micros();
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina * 1000ul >= tempo_proxima_ignicao[i]) && 
+        (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) && 
         (revolucoes_sincronizada >= 1)){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
@@ -1161,23 +1164,21 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         
     }
   }
-
     for (int i = 0; i < qtd_cilindro; i++) {
       tempo_atual = micros();
-    if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
+      if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
+            verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+            if(posicao_atual_sensor >= verifica_posicao_sensor){
+              captura_dwell[i] = false;
+              //ign_acionado[i] = false;
+              digitalWrite(ignicao_pins[i], 0);
+              //delay(5); //um pequeno atraso
+            }
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
-          int verifica_posicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
-            if(((verifica_posicao >= posicao_atual_sensor - grau_cada_dente) && (rpm < 3000))){ 
             captura_dwell[i] = false;
             //ign_acionado[i] = false;
             digitalWrite(ignicao_pins[i], 0);
             //delay(5); //um pequeno atraso
-            }else{
-              captura_dwell[i] = false;
-            //ign_acionado[i] = false;
-            digitalWrite(ignicao_pins[i], 0);
-            //delay(5); //um pequeno atraso
-            }
         }
     }
     if (captura_req_fuel[i] == true) {
@@ -1193,7 +1194,9 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         }
     }
   }
+
 }
+
   leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
