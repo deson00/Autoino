@@ -3,6 +3,7 @@
 #include <definicoes_hardware.h>
 #include <variaveis_global.h>
 #include <ler_dados_eeprom.h>
+#include <ler_dados_memoria.h>
 #include <grava_dados_eeprom.h>
 #include <leitura_entrada_dados_serial.h>
 #include <envia_dados_tempo_real.h>

@@ -25,7 +25,8 @@ void leitura_entrada_dados_serial()
       tipo_vetor_configuracao_inicial = 1;
     }
      if (data == 'h'){//retorna dados da ecu
-        ler_dados_eeprom();
+        //ler_dados_eeprom();
+        ler_dados_memoria();
     }
     if (data == 'i') {
      if(status_dados_tempo_real){
