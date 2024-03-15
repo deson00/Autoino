@@ -1,5 +1,5 @@
-#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-//#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
+#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
 
 #ifdef Uno
 #define pino_sensor_roda_fonica 2
@@ -25,6 +25,9 @@ byte inj4 = 13;
 #define pino_sensor_clt A1
 #define pino_sensor_tps A2
 #define pino_sensor_map A3
+#define pino_sensor_iat A0
+#define pino_sensor_o2  A8
+#define pino_sensor_brv A4
 byte ign1 = 40;
 byte ign2 = 38;
 byte ign3 = 52;
