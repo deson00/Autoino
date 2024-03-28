@@ -128,3 +128,5 @@ int VE = 0;
 float GammaE = 97;
 float InjOpenTime = 1.3;
 unsigned long tempo_injecao = 0;
+bool limite_suave = 0;
+bool limite_rigido = 0;

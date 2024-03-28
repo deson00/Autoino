@@ -289,6 +289,12 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm; 
+  if(rpm_anterior > 5000){
+    limite_suave = 1;
+    protege_ignicao();
+  }else{
+    limite_suave = 0;
+  }
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
   protege_ignicao();
