@@ -1,7 +1,7 @@
-//#define Uno   //Descomente essa linha caso utilizar um Arduino UNO ou Nano
-#define Mega  //Descomente essa linha caso utilizar um Arduino Mega
+#define Autoino   //Descomente essa linha caso utilizar autoino em um Arduino Mega, UNO ou Nano etc
+//#define Speeduino  //Descomente essa linha caso utilizar Autoino em uma Speeduino
 
-#ifdef Uno
+#ifdef Autoino
 #define pino_sensor_roda_fonica 2
 #define pino_sensor_fase 3
 #define pino_sensor_map A0
@@ -19,7 +19,7 @@ byte inj2 = 9;
 byte inj3 = 12;
 byte inj4 = 13;
 #endif
-#ifdef Mega
+#ifdef Speeduino
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
 #define pino_sensor_clt A1

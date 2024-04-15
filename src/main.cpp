@@ -289,9 +289,16 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm; 
+  if(rpm_anterior > 5000){
+    limite_suave = 1;
+    protege_limite_ignicao();
+    protege_ignicao_injecao();
+  }else{
+    limite_suave = 0;
+  }
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
-  protege_ignicao();
+  protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 
    // atualiza o tempo da última execução
