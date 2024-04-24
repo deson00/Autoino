@@ -11,23 +11,7 @@
 #include <sensores.h>
 #include <protecao.h>
 #include <decoder.h>
-// Função para calcular a largura do pulso de injeção
-float calcularLarguraPulso(float REQ_FUEL, float MAP, float VE, float GammaE, float InjOpenTime) {
-    // Constantes
-    const float REQ_FUEL_CONSTANT = 100; // Supondo que REQ_FUEL está em percentagem
-
-    // Calcular fator de enriquecimento (E)
-    const float Warmup = 0; // Defina aqui o valor de enriquecimento do aquecimento
-    const float O2_ClosedLoop = 0; // Defina aqui o valor de enriquecimento do O2 em Malha Fechada
-    const float AirCorr = 0; // Defina aqui o valor de correção do ar
-    const float BaroCorr = 0; // Defina aqui o valor de correção do barômetro
-
-    const float gamma_Enrich = (Warmup / REQ_FUEL_CONSTANT) * (O2_ClosedLoop / REQ_FUEL_CONSTANT) *
-                               (AirCorr / REQ_FUEL_CONSTANT) * (BaroCorr / REQ_FUEL_CONSTANT);
-    // Calcular a largura do pulso (PW)
-    const float PW = REQ_FUEL * MAP / REQ_FUEL_CONSTANT * VE / REQ_FUEL_CONSTANT * GammaE / REQ_FUEL_CONSTANT + InjOpenTime;
-    return PW;
-}
+#include <injecao.h>
 
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
@@ -80,9 +64,7 @@ void loop(){
     }else{
       valor_referencia_busca_tempo_injecao = valor_tps;
     }
-    VE = matriz_ve[procura_indice(valor_referencia_busca_avanco, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
-    // Chama a função para calcular a largura do pulso
-    tempo_injecao = calcularLarguraPulso(REQ_FUEL/1000, valor_map, VE, GammaE, InjOpenTime) * 1000ul;
+    
       
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
@@ -199,7 +181,9 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
                 digitalWrite(injecao_pins[i], 0);
               }else{
                 digitalWrite(injecao_pins[i - qtd_cilindro/2], 0);
-              }       
+              } 
+              VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+              tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;      
         }
     }
   }
@@ -227,6 +211,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         captura_dwell[i+1] = false;        
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_atual = micros();
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
         (revolucoes_sincronizada >= 1)){
@@ -235,14 +220,14 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
           digitalWrite(injecao_pins[j], 1);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           digitalWrite(injecao_pins[i], 1);
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
@@ -255,13 +240,14 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     for (int i = 0; i < qtd_cilindro; i++) {
       tempo_atual = micros();
       if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
-            verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
-            if(posicao_atual_sensor >= verifica_posicao_sensor){
-              captura_dwell[i] = false;
-              //ign_acionado[i] = false;
-              digitalWrite(ignicao_pins[i], 0);
-              //delay(5); //um pequeno atraso
-            }
+            // verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+            // if(posicao_atual_sensor >= verifica_posicao_sensor){
+            //   captura_dwell[i] = false;
+            //   //ign_acionado[i] = false;
+            //   digitalWrite(ignicao_pins[i], 0);
+            //   //delay(5); //um pequeno atraso
+            // }
+       tempo_atual = micros();     
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
             captura_dwell[i] = false;
             //ign_acionado[i] = false;
@@ -270,6 +256,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         }
     }
     if (captura_req_fuel[i] == true) {
+      tempo_atual = micros();
         if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
           if(tipo_acionamento_injetor == 1){
             for (int j = 0; j < qtd_cilindro; j++){
@@ -278,7 +265,9 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
           }
           captura_req_fuel[i] = false;
           digitalWrite(injecao_pins[i], 0);
-                    
+          VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+          //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
+          tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;         
         }
     }
   }
@@ -289,7 +278,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm; 
-  if(rpm_anterior > 5000){
+  if(rpm_anterior > 10000){
     limite_suave = 1;
     protege_limite_ignicao();
     protege_ignicao_injecao();

@@ -68,6 +68,7 @@ const int maximo_valores_recebido = 270; // tamanho máximo de dados recebido do
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
 byte matriz_avanco[16][16];
 byte matriz_ve[16][16];
+byte matriz_lambda[16][16];
 int vetor_map_tps[16];
 int vetor_rpm[16];
 int vetor_map_tps_ve[16];
@@ -122,11 +123,11 @@ byte limite_injetor = 90; // 90% valor em porcentagem
 int tempo_abertura_injetor = 1;// Dead time, tempo que o injetor leva para abrir
 int acrescimo_injecao_partida = 0;// valor de acrecimo da ve na partida em porcentagem 
 int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
-int REQ_FUEL = 10;
-int dreq_fuel = 10;
+int REQ_FUEL = 10000; //em ms
+int dreq_fuel = 10000;//em ms
 int VE = 0;
-float GammaE = 97;
-float InjOpenTime = 1.3;
+int GammaE = 100;
+int InjOpenTime = 1300; // em ms
 unsigned long tempo_injecao = 0;
 bool limite_suave = 0;
 bool limite_rigido = 0;
