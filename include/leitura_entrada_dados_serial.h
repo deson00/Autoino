@@ -47,6 +47,9 @@ void leitura_entrada_dados_serial()
     if (data == 'm') {// configuração sensor temperatura clt
       tipo_vetor_configuracao_injecao = 1;
     }
+    if (data == 'n') {// configuração proteção
+      tipo_vetor_protecao = 1;
+    }
     if (data == ';'){ // final do vetor
       if (tipo_vetor_map_tps_avanco){
         for (int i = 0; i < 16; i++){
@@ -147,6 +150,17 @@ void leitura_entrada_dados_serial()
           dreq_fuel = values[12];
           gravar_dados_eeprom_configuracao_injecao();
           tipo_vetor_configuracao_injecao = 0;
+      }
+      if (tipo_vetor_protecao == 1){
+          tipo_protecao = values[0];//0 desligado, 1 apenas igniçao, 2 apenas injeção e 3 ignição e injeção
+          rpm_pre_corte = values[1];
+          avanco_corte = values[2]; 
+          tempo_corte = values[3]; 
+          rpm_maximo_corte = values[4];
+          numero_base_corte = values[5];
+          qtd_corte = values[6];
+          gravar_dados_eeprom_configuracao_protecao();
+          tipo_vetor_protecao = 0;
       }
       index = 0; // reinicia índice do vetor
     }

@@ -78,6 +78,21 @@ void ler_dados_eeprom_configuracao_injecao(){
   dreq_fuel = lowByte | (highByte << 8);
 }
 
+
+void ler_dados_eeprom_configuracao_protecao(){
+  int endereco =  750; // Inicializa o endereço de memória
+  // Ler os valores e atribuir às variáveis correspondentes
+  tipo_protecao = EEPROM.read(endereco++);
+  rpm_pre_corte = EEPROM.read(endereco++);
+  rpm_pre_corte |= EEPROM.read(endereco++) << 8;
+  avanco_corte = EEPROM.read(endereco++);
+  tempo_corte = EEPROM.read(endereco++);
+  rpm_maximo_corte = EEPROM.read(endereco++);
+  rpm_maximo_corte |= EEPROM.read(endereco++) << 8;
+  numero_base_corte = EEPROM.read(endereco++);
+  qtd_corte = EEPROM.read(endereco++);
+}
+
 void ler_dados_eeprom(){
   // Leitura dos valores RPM da EEPROM
   int highByte;
@@ -97,6 +112,7 @@ for (int i = 0; i < 16; i++) {
 
 ler_dados_eeprom_tabela_ve_map_rpm();
 ler_dados_eeprom_configuracao_injecao();
+ler_dados_eeprom_configuracao_protecao();
 
 //leitura dos dados de configurações iniciais
 tipo_ignicao = EEPROM.read(0*2+360); 
@@ -130,3 +146,4 @@ referencia_temperatura_clt2 = EEPROM.read(414);
 referencia_resistencia_clt2 = ler_valor_eeprom_2byte(416); 
 
 }
+

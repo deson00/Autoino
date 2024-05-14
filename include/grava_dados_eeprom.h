@@ -110,3 +110,17 @@ void gravar_dados_eeprom_configuracao_injecao(){
     EEPROM.write(endereco++, (dreq_fuel >> 8) & 0xFF);
     
 }
+
+void gravar_dados_eeprom_configuracao_protecao(){
+  int endereco =  750; // Inicializa o endereço de memória
+    // Gravar os valores divididos em bytes
+    EEPROM.write(endereco++, tipo_protecao); 
+    EEPROM.write(endereco++, rpm_pre_corte & 0xFF);
+    EEPROM.write(endereco++, (rpm_pre_corte >> 8) & 0xFF);
+    EEPROM.write(endereco++, avanco_corte);
+    EEPROM.write(endereco++, tempo_corte);
+    EEPROM.write(endereco++, rpm_maximo_corte & 0xFF);
+    EEPROM.write(endereco++, (rpm_maximo_corte >> 8) & 0xFF);
+    EEPROM.write(endereco++, numero_base_corte);
+    EEPROM.write(endereco++, qtd_corte);
+}
