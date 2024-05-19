@@ -138,3 +138,7 @@ int rpm_maximo_corte = 6500;
 int numero_base_corte = 10;
 int qtd_corte = 3;
 int status_corte = 0;
+int tps_anterior = 0;   // Variável para armazenar o valor anterior do sensor de TPS
+const int intervalo_tempo_aceleracao = 500; // Intervalo de tempo para calcular a taxa de mudança do TPS (em milissegundos)
+unsigned long tempo_aterior_aceleracao = 0;  // Variável para armazenar o tempo anterior de leitura do sensor
+float tps_dot_porcentagem = 0;
