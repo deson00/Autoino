@@ -163,6 +163,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     tempo_atual = micros() ;
     if (captura_dwell[i] == true) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
+            //verificar o tempo gasto nesta tarefa abaixo
             verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
             if(posicao_atual_sensor >= verifica_posicao_sensor){     
               captura_dwell[i] = false;
@@ -182,13 +183,17 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         }
     }
     if (captura_req_fuel[i] == true) {
+        tempo_atual = micros() ;
         if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
               captura_req_fuel[i] = false;
               if (i < qtd_cilindro/2) {
                 digitalWrite(injecao_pins[i], 0);
               }else{
                 digitalWrite(injecao_pins[i - qtd_cilindro/2], 0);
-              } 
+              }              
+        }
+    }
+  }
               tempo_atual = micros() ;
               // Calcula a taxa de mudança do TPS (TPSDot)
               if (tempo_atual - tempo_aterior_aceleracao >= intervalo_tempo_aceleracao) {
@@ -202,10 +207,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
               //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime; 
               int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
               int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
-              tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;             
-        }
-    }
-  }
+              tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
@@ -283,7 +285,10 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
             }
           }
           captura_req_fuel[i] = false;
-          digitalWrite(injecao_pins[i], 0);
+          digitalWrite(injecao_pins[i], 0);     
+        }
+    }
+  }
           tempo_atual = micros() ;
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_aterior_aceleracao >= intervalo_tempo_aceleracao) {
@@ -299,10 +304,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
-          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;         
-        }
-    }
-  }
+          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;    
 
 }
 
