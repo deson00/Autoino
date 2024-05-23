@@ -95,7 +95,7 @@ void loop(){
       status_corte = 0;
     }
   
-tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
+//tempo_atual = micros() ;//salva sempre o tempo atual para verificaçoes
   
 if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
   if (grau_pms <= 180) {
@@ -190,24 +190,27 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
                 digitalWrite(injecao_pins[i], 0);
               }else{
                 digitalWrite(injecao_pins[i - qtd_cilindro/2], 0);
-              }              
+              }
         }
     }
+    if(i == qtd_cilindro - 1){
+      tempo_atual = micros() ;
+      // Calcula a taxa de mudança do TPS (TPSDot)
+      if (tempo_atual - tempo_aterior_aceleracao >= intervalo_tempo_aceleracao) {
+      // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+      tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
+      // Atualiza o valor anterior do TPS e o tempo de leitura
+      tps_anterior = valor_tps;
+      tempo_aterior_aceleracao = tempo_atual;
+      }
+      VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+      //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime; 
+      int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
+      int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
+      tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;              
+      }
   }
-              tempo_atual = micros() ;
-              // Calcula a taxa de mudança do TPS (TPSDot)
-              if (tempo_atual - tempo_aterior_aceleracao >= intervalo_tempo_aceleracao) {
-              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-              tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
-              // Atualiza o valor anterior do TPS e o tempo de leitura
-              tps_anterior = valor_tps;
-              tempo_aterior_aceleracao = tempo_atual;
-              }
-              VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
-              //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime; 
-              int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
-              int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
-              tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;
+             
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
@@ -288,23 +291,39 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
           digitalWrite(injecao_pins[i], 0);     
         }
     }
+     if(i == qtd_cilindro - 1){
+      tempo_atual = micros() ;
+      // Calcula a taxa de mudança do TPS (TPSDot)
+      if (tempo_atual - tempo_aterior_aceleracao >= intervalo_tempo_aceleracao) {
+      // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+      tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
+      // Atualiza o valor anterior do TPS e o tempo de leitura
+      tps_anterior = valor_tps;
+      tempo_aterior_aceleracao = tempo_atual;
+      }
+      VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+      //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime; 
+      int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
+      int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
+      tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;              
+      }
   }
-          tempo_atual = micros() ;
-          // Calcula a taxa de mudança do TPS (TPSDot)
-          if (tempo_atual - tempo_aterior_aceleracao >= intervalo_tempo_aceleracao) {
-            // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-            tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
-            // Atualiza o valor anterior do TPS e o tempo de leitura
-            tps_anterior = valor_tps;
-            tempo_aterior_aceleracao = tempo_atual;
-          }
-          VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
-          //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
-          //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
-          // Calcula o tempo de injeção ajustado
-          int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
-          int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
-          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;    
+          // tempo_atual = micros() ;
+          // // Calcula a taxa de mudança do TPS (TPSDot)
+          // if (tempo_atual - tempo_aterior_aceleracao >= intervalo_tempo_aceleracao) {
+          //   // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+          //   tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
+          //   // Atualiza o valor anterior do TPS e o tempo de leitura
+          //   tps_anterior = valor_tps;
+          //   tempo_aterior_aceleracao = tempo_atual;
+          // }
+          // VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+          // //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
+          // //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
+          // // Calcula o tempo de injeção ajustado
+          // int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
+          // int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
+          // tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;    
 
 }
 
