@@ -4,6 +4,7 @@ void leitor_sensor_roda_fonica()
   noInterrupts();
   qtd_leitura++;
   tempo_atual = micros() ;
+  //tempo_inicial_codigo = micros(); // Registra o tempo inicial
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
   //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
   verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
@@ -59,7 +60,8 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     }
     qtd_leitura = 0;
     revolucoes_sincronizada++;// reservado para escapar rotação caso necessario no futuro   
-    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){  
+    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){
+    digitalWrite(ignicao_pins[0], 0);    
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     ign_acionado[0] = false;
     captura_dwell[0] = false; 
@@ -68,6 +70,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     captura_req_fuel[0] = false; 
     }
     if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+    digitalWrite(ignicao_pins[0], 0);
       tempo_atual_proxima_ignicao[0] = tempo_atual;
       ign_acionado[0] = false;
       captura_dwell[0] = false;
@@ -81,5 +84,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;
+  //tempo_final_codigo = micros(); // Registra o tempo final
+  //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
   interrupts();
 }
