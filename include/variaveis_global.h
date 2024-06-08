@@ -68,6 +68,7 @@ const int maximo_valores_recebido = 270; // tamanho máximo de dados recebido do
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
 byte matriz_avanco[16][16];
 byte matriz_ve[16][16];
+byte matriz_lambda[16][16];
 int vetor_map_tps[16];
 int vetor_rpm[16];
 int vetor_map_tps_ve[16];
@@ -88,6 +89,7 @@ byte tipo_vetor_configuracao_faisca = 0;
 byte tipo_vetor_configuracao_dwell = 0;
 byte tipo_vetor_configuracao_clt = 0;
 byte tipo_vetor_configuracao_injecao = 0;
+byte tipo_vetor_protecao = 0;
 bool status_dados_tempo_real = false;
 //int leituras_map[10]={0};
 //int leituras_tps[10]={0};
@@ -110,7 +112,7 @@ byte temperatura_motor = 0;
 int grau_fechamento_injetor = 5; //este grau tem referencia 360 - 355
 int deslocamento_motor = 250;//polegadas cubicas
 int numero_cilindro_injecao = 4;
-int numero_injetor = 4;
+int numero_injetor = 4;//qtd de injetores total
 int numero_esguicho = 4;
 int tamanho_injetor = 32;// lbs/hora por injetor
 byte tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
@@ -122,11 +124,21 @@ byte limite_injetor = 90; // 90% valor em porcentagem
 int tempo_abertura_injetor = 1;// Dead time, tempo que o injetor leva para abrir
 int acrescimo_injecao_partida = 0;// valor de acrecimo da ve na partida em porcentagem 
 int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
-int REQ_FUEL = 10;
-int dreq_fuel = 10;
+int REQ_FUEL = 10000; //em ms
+int dreq_fuel = 10000;//em ms
 int VE = 0;
-float GammaE = 97;
-float InjOpenTime = 1.3;
+int GammaE = 100;
+int InjOpenTime = 1300; // em ms
 unsigned long tempo_injecao = 0;
-bool limite_suave = 0;
-bool limite_rigido = 0;
+int tipo_protecao = 1; // 0 desligado, 1 apenas ignição, 2 apenas injeção e 3 ignição e injeção
+int rpm_pre_corte = 6000;
+int avanco_corte = 20; //graus
+int tempo_corte = 2;//em segundos 
+int rpm_maximo_corte = 6500;
+int numero_base_corte = 10;
+int qtd_corte = 3;
+int status_corte = 0;
+int tps_anterior = 0;   // Variável para armazenar o valor anterior do sensor de TPS
+const int intervalo_tempo_aceleracao = 500; // Intervalo de tempo para calcular a taxa de mudança do TPS (em milissegundos)
+unsigned long tempo_anterior_aceleracao = 0;  // Variável para armazenar o tempo anterior de leitura do sensor
+float tps_dot_porcentagem = 0;

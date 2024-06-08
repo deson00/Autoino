@@ -133,4 +133,21 @@ Serial.print(",");
 Serial.print(dreq_fuel);
 Serial.print(",");
 Serial.print(";");
+// dados configuração proteção e limites 
+Serial.print("n,");
+Serial.print(tipo_protecao);
+Serial.print(",");
+Serial.print(rpm_pre_corte);
+Serial.print(",");
+Serial.print(avanco_corte);
+Serial.print(",");
+Serial.print(tempo_corte);
+Serial.print(",");
+Serial.print(rpm_maximo_corte);
+Serial.print(",");
+Serial.print(numero_base_corte);
+Serial.print(",");
+Serial.print(qtd_corte);
+Serial.print(",");
+Serial.print(";");
 }
