@@ -79,8 +79,10 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
       captura_req_fuel[0] = false;  
     }
   }else{
-    //tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
-    //enviar_byte_serial(posicao_atual_sensor, 1);
+    if(rpm < rpm_partida){
+    tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+    }
+    //enviar_byte_serial(tempo_cada_grau / 1000, 1);
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;

@@ -79,7 +79,7 @@ void loop(){
       status_corte = 1;
       dwell_bobina = dwell_funcionamento;
     }
-    else if(rpm < 10000 && busca_avanco_linear == true){
+    else if(rpm < 7000 && busca_avanco_linear == true){
       int grau_minimo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
       int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
@@ -108,12 +108,13 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   }
 
   for (int i = 0; i < qtd_cilindro/2; i++){
-    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     tempo_atual = micros();
     tempo_final_codigo = micros(); // Registra o tempo final
     tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) + tempo_decorrido_codigo >= tempo_proxima_ignicao[i]) && revolucoes_sincronizada >= 1 && status_corte == 0){
+        (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) + tempo_decorrido_codigo >= tempo_proxima_ignicao[i]) && 
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 100){
         captura_dwell[i] = true;
         tempo_percorrido[i] = micros();
         digitalWrite(ignicao_pins[i], 1);
@@ -148,13 +149,13 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
   }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
-    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     tempo_atual = micros() ;
     tempo_final_codigo = micros(); // Registra o tempo final  
     tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) + tempo_decorrido_codigo >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 100){
         captura_dwell[i] = true;
         tempo_percorrido[i] = micros();
         digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
@@ -194,7 +195,9 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
             //verificar o tempo gasto nesta tarefa abaixo
             verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
-            if(posicao_atual_sensor >= verifica_posicao_sensor){     
+            if(posicao_atual_sensor >= verifica_posicao_sensor){
+              //enviar_byte_serial(posicao_atual_sensor, 1);
+              //enviar_byte_serial(verifica_posicao_sensor, 1);     
               captura_dwell[i] = false;
               if (i < qtd_cilindro/2) {
                 digitalWrite(ignicao_pins[i], 0);
@@ -208,7 +211,8 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
               }else{
                 digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
               }
-            }        
+            }
+            //enviar_byte_serial(0, 1);        
         }
     }
     if (captura_req_fuel[i] == true) {
@@ -274,13 +278,13 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
   }
 
    for (int i = 0; i < qtd_cilindro; i++){
-    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
     tempo_atual = micros();
     tempo_final_codigo = micros(); // Registra o tempo final  
     tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) + tempo_decorrido_codigo >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0){ 
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 100){ 
         captura_dwell[i] = true;
         tempo_percorrido[i] = micros();
         digitalWrite(ignicao_pins[i], 1);
@@ -321,14 +325,14 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
     for (int i = 0; i < qtd_cilindro; i++) {
       tempo_atual = micros();
       if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
-            verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
-            if(posicao_atual_sensor >= verifica_posicao_sensor){
-              captura_dwell[i] = false;
-              //ign_acionado[i] = false;
-              digitalWrite(ignicao_pins[i], 0);
-              //enviar_byte_serial(verifica_posicao_sensor, 1);
-              //delay(5); //um pequeno atraso
-            }
+            // verifica_posicao_sensor = ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i);
+            // if(posicao_atual_sensor >= verifica_posicao_sensor){
+            //   captura_dwell[i] = false;
+            //   //ign_acionado[i] = false;
+            //   digitalWrite(ignicao_pins[i], 0);
+            //   //enviar_byte_serial(verifica_posicao_sensor, 1);
+            //   //delay(5); //um pequeno atraso
+            // }
        tempo_atual = micros();     
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
             captura_dwell[i] = false;
