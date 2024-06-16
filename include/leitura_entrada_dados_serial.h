@@ -50,6 +50,10 @@ void leitura_entrada_dados_serial()
     if (data == 'n') {// configuração proteção
       tipo_vetor_protecao = 1;
     }
+    if (data == 'z') {// configuração da ve e ponto
+       gravar_dados_eeprom_tabela_ignicao_map_rpm();
+       gravar_dados_eeprom_tabela_ve_map_rpm();
+    }
     if (data == ';'){ // final do vetor
       if (tipo_vetor_map_tps_avanco){
         for (int i = 0; i < 16; i++){
@@ -72,7 +76,6 @@ void leitura_entrada_dados_serial()
             k++;
           }
         }
-        gravar_dados_eeprom_tabela_ignicao_map_rpm();
         tipo_vetor_matriz_avanco = 0;
       }
       if (tipo_vetor_map_tps_ve){
@@ -96,7 +99,6 @@ void leitura_entrada_dados_serial()
             k++;
           }
         }
-        gravar_dados_eeprom_tabela_ve_map_rpm();
         tipo_vetor_matriz_ve = 0;
       }
       if (tipo_vetor_configuracao_inicial == 1){
