@@ -1,5 +1,5 @@
 void ler_dados_memoria(){
-Serial.print("a,");
+Serial.print(";a,");
       // vetor map ou tps
       for (int  i = 0; i < 16; i++){
         Serial.print(vetor_map_tps[i]);

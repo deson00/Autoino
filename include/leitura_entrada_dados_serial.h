@@ -5,6 +5,7 @@ void leitura_entrada_dados_serial()
     char data = Serial.read();
     if (data == 'a'){//entrada de dados do vetor map ou tps
       tipo_vetor_map_tps_avanco = 1;
+      indice_vetor_entrada_dados_serial = 0;
     }
     if (data == 'b'){//entrada de dados do vetor rpm
       tipo_vetor_rpm_avanco = 1;//b,500,600,700,800,900,1000,2000,3000,4000,5000,6000,7000,8000,9000,10000,11000; exmplo
@@ -56,49 +57,59 @@ void leitura_entrada_dados_serial()
     }
     if (data == ';'){ // final do vetor
       if (tipo_vetor_map_tps_avanco){
-        for (int i = 0; i < 16; i++){
-          vetor_map_tps[i] = values[i];
-        }
+        // for (int i = 0; i < 16; i++){
+        //   vetor_map_tps[i] = values[i];
+        // }
+        indice_vetor_entrada_dados_serial = 0;
         tipo_vetor_map_tps_avanco = 0;
       }
       if (tipo_vetor_rpm_avanco){
-        for (int i = 0; i < 16; i++){
-          vetor_rpm[i] = values[i];
-        }
+        // for (int i = 0; i < 16; i++){
+        //   vetor_rpm[i] = values[i];
+        // }
+        indice_vetor_entrada_dados_serial = 0;
         tipo_vetor_rpm_avanco = 0;
       }
       if (tipo_vetor_matriz_avanco){
-        // transforma o vetor em matriz
-        int k = 0;
-        for (int i = 0; i < 16; i++){
-          for (int j = 0; j < 16; j++){
-            matriz_avanco[i][j] = values[k];
-            k++;
-          }
-        }
+        // // transforma o vetor em matriz
+        // int k = 0;
+        // for (int i = 0; i < 16; i++){
+        //   for (int j = 0; j < 16; j++){
+        //     matriz_avanco[i][j] = values[k];
+        //     k++;
+        //   }
+        // }
+        indice_vetor_entrada_dados_serial = 0;
+        indice_matrix_entrada_dados_seriala = 0; // Índice usado para rastrear a linha atual na matriz
+        indice_matrix_entrada_dados_serialb = 0; // Índice usado para rastrear a coluna atual na matriz
         tipo_vetor_matriz_avanco = 0;
       }
       if (tipo_vetor_map_tps_ve){
-        for (int i = 0; i < 16; i++){
-          vetor_map_tps_ve[i] = values[i];
-        }
+        // for (int i = 0; i < 16; i++){
+        //   vetor_map_tps_ve[i] = values[i];
+        // }
+        indice_vetor_entrada_dados_serial = 0;
         tipo_vetor_map_tps_ve = 0;
       }
       if (tipo_vetor_rpm_ve){
-        for (int i = 0; i < 16; i++){
-          vetor_rpm_ve[i] = values[i];
-        }
+        // for (int i = 0; i < 16; i++){
+        //   vetor_rpm_ve[i] = values[i];
+        // }
+        indice_vetor_entrada_dados_serial = 0;
         tipo_vetor_rpm_ve = 0;
       }
       if (tipo_vetor_matriz_ve){
-        // transforma o vetor em matriz
-        int k = 0;
-        for (int i = 0; i < 16; i++){
-          for (int j = 0; j < 16; j++){
-            matriz_ve[i][j] = values[k];
-            k++;
-          }
-        }
+        // // transforma o vetor em matriz
+        // int k = 0;
+        // for (int i = 0; i < 16; i++){
+        //   for (int j = 0; j < 16; j++){
+        //     matriz_ve[i][j] = values[k];
+        //     k++;
+        //   }
+        // }
+        indice_vetor_entrada_dados_serial = 0;
+        indice_matrix_entrada_dados_seriala = 0; // Índice usado para rastrear a linha atual na matriz
+        indice_matrix_entrada_dados_serialb = 0; // Índice usado para rastrear a coluna atual na matriz
         tipo_vetor_matriz_ve = 0;
       }
       if (tipo_vetor_configuracao_inicial == 1){
@@ -177,6 +188,46 @@ void leitura_entrada_dados_serial()
       //values[index++] = atoi(buffer); // adiciona ao vetor
       //Substituído por strtol
       values[index++] = strtol(buffer, NULL, 10);
+      //--------tabela ignção ----------//
+      if (tipo_vetor_map_tps_avanco){
+          vetor_map_tps[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+          indice_vetor_entrada_dados_serial++;
+      }
+      if (tipo_vetor_rpm_avanco){
+        vetor_rpm[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+        indice_vetor_entrada_dados_serial++;
+      }
+      if (tipo_vetor_matriz_avanco){
+        if (indice_matrix_entrada_dados_seriala < 16) {
+          if (indice_matrix_entrada_dados_serialb < 15) {
+            matriz_avanco[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
+            indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
+          } else {
+            indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha
+            indice_matrix_entrada_dados_serialb = 0; // Reinicia o contador de colunas
+          }
+        } 
+      }
+      //---------tabela ve --------//
+      if (tipo_vetor_map_tps_ve){
+          vetor_map_tps_ve[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+          indice_vetor_entrada_dados_serial++;
+      }
+      if (tipo_vetor_rpm_ve){
+        vetor_rpm_ve[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+        indice_vetor_entrada_dados_serial++;
+      }
+      if (tipo_vetor_matriz_ve){
+        if (indice_matrix_entrada_dados_seriala < 16) {
+          if (indice_matrix_entrada_dados_serialb < 15) {
+            matriz_ve[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
+            indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
+          } else {
+            indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha
+            indice_matrix_entrada_dados_serialb = 0; // Reinicia o contador de colunas
+          }
+        } 
+      }
       if (index >= maximo_valores_recebido){
         index = 0; // reinicia índice do vetor se estiver cheio
       }
