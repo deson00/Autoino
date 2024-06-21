@@ -259,7 +259,8 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
             // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-            tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
+            tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
+            //Serial.println(tps_dot_porcentagem);
             // Atualiza o valor anterior do TPS e o tempo de leitura
             tps_anterior = valor_tps;
             tempo_anterior_aceleracao = tempo_atual;
@@ -381,11 +382,12 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
             // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-            tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
+            tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
             // Atualiza o valor anterior do TPS e o tempo de leitura
             tps_anterior = valor_tps;
             tempo_anterior_aceleracao = tempo_atual;
           }
+          
           
          
 }
@@ -394,6 +396,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm; 
+  
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
