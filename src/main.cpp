@@ -234,7 +234,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
           //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
-          int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
+          int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;   
         }
     }
@@ -258,9 +258,21 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   tempo_atual = micros() ;
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-            // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-            tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
             //Serial.println(tps_dot_porcentagem);
+            // Verifica se está ocorrendo uma aceleração ou desaceleração
+            if (valor_tps > tps_anterior) {
+              //Serial.println("Aceleracao");
+              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+              tps_dot_porcentagem_aceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
+            } else if (valor_tps < tps_anterior) {
+              //Serial.println("Desaceleracao");
+              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+              tps_dot_porcentagem_desaceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
+            } else {
+              //Serial.println("Sem mudanca");
+              tps_dot_porcentagem_aceleracao = 0;
+              tps_dot_porcentagem_desaceleracao = 0;
+            }
             // Atualiza o valor anterior do TPS e o tempo de leitura
             tps_anterior = valor_tps;
             tempo_anterior_aceleracao = tempo_atual;
@@ -357,7 +369,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
           //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
-          int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
+          int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;   
         }
     }
@@ -381,12 +393,25 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
           tempo_atual = micros() ;
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-            // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-            tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
+            //Serial.println(tps_dot_porcentagem);
+            // Verifica se está ocorrendo uma aceleração ou desaceleração
+            if (valor_tps > tps_anterior) {
+              //Serial.println("Aceleracao");
+              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+              tps_dot_porcentagem_aceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
+            } else if (valor_tps < tps_anterior) {
+              //Serial.println("Desaceleracao");
+              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+              tps_dot_porcentagem_desaceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
+            } else {
+              //Serial.println("Sem mudanca");
+              tps_dot_porcentagem_aceleracao = 0;
+              tps_dot_porcentagem_desaceleracao = 0;
+            }
             // Atualiza o valor anterior do TPS e o tempo de leitura
             tps_anterior = valor_tps;
             tempo_anterior_aceleracao = tempo_atual;
-          }
+          }                
           
           
          

@@ -144,4 +144,5 @@ int status_corte = 0;
 int tps_anterior = 0;   // Variável para armazenar o valor anterior do sensor de TPS
 unsigned long intervalo_tempo_aceleracao = 100000; // 100 ms em microssegundos Intervalo de tempo para calcular a taxa de mudança do TPS 
 unsigned long tempo_anterior_aceleracao = 0;  // Variável para armazenar o tempo anterior de leitura do sensor
-float tps_dot_porcentagem = 0;
+float tps_dot_porcentagem_aceleracao = 0;
+float tps_dot_porcentagem_desaceleracao = 0;
