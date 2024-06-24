@@ -52,7 +52,7 @@ void loop(){
     //leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
     //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-    valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
+    valor_tps = map(analogRead(pino_sensor_tps), 200, 1023, valor_tps_minimo, valor_tps_maximo);
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
     }else{
@@ -108,7 +108,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
   }
 
   for (int i = 0; i < qtd_cilindro/2; i++){
-    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     tempo_atual = micros();
     tempo_final_codigo = micros(); // Registra o tempo final
     tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
@@ -149,7 +149,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
   }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
-    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     tempo_atual = micros() ;
     tempo_final_codigo = micros(); // Registra o tempo final  
     tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
@@ -279,7 +279,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
   }
 
    for (int i = 0; i < qtd_cilindro; i++){
-    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
+    tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
     tempo_atual = micros();
     tempo_final_codigo = micros(); // Registra o tempo final  
     tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
@@ -396,7 +396,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm; 
-  
+  //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
