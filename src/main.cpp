@@ -52,7 +52,7 @@ void loop(){
     //leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
     //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-    valor_tps = map(analogRead(pino_sensor_tps), 200, 1023, valor_tps_minimo, valor_tps_maximo);
+    valor_tps = map(analogRead(pino_sensor_tps), 35, 1023, valor_tps_minimo, valor_tps_maximo);
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
     }else{
@@ -233,7 +233,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
           //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
           //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
           // Calcula o tempo de injeção ajustado
-          int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
+          int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;   
         }
@@ -368,7 +368,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
           //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
           //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
           // Calcula o tempo de injeção ajustado
-          int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
+          int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;   
         }
