@@ -15,7 +15,7 @@ void envia_dados_tempo_real(int indice_envio){
         enviar_byte_serial(tempo_injecao, 2);
         enviar_byte_serial(valor_tps, 1);
         enviar_byte_serial(status_corte, 1);
-        enviar_byte_serial(tps_dot_porcentagem, 2);
+        enviar_byte_serial(tps_dot_porcentagem_aceleracao, 2);
       }
     } 
 }
