@@ -160,7 +160,7 @@ void leitura_entrada_dados_serial()
           tipo_acionamento_injetor = values[9];
           tipo_combustivel = values[10];
           REQ_FUEL = values[11];
-          dreq_fuel = values[12]/numero_esguicho;
+          dreq_fuel = values[12];
           gravar_dados_eeprom_configuracao_injecao();
           tipo_vetor_configuracao_injecao = 0;
       }
