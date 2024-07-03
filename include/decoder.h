@@ -61,7 +61,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     qtd_leitura = 0;
     revolucoes_sincronizada++;// reservado para escapar rotação caso necessario no futuro   
     if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){
-    digitalWrite(ignicao_pins[0], 0);    
+    //digitalWrite(ignicao_pins[0], 0);    
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     ign_acionado[0] = false;
     captura_dwell[0] = false; 
@@ -70,7 +70,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     captura_req_fuel[0] = false; 
     }
     if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-    digitalWrite(ignicao_pins[0], 0);
+    //digitalWrite(ignicao_pins[0], 0);
       tempo_atual_proxima_ignicao[0] = tempo_atual;
       ign_acionado[0] = false;
       captura_dwell[0] = false;

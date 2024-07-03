@@ -52,7 +52,9 @@ void loop(){
     //leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
     //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-    valor_tps = map(analogRead(pino_sensor_tps), 35, 1023, valor_tps_minimo, valor_tps_maximo);
+    valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
+    valor_o2 = analogRead(pino_sensor_o2);
+    sonda_narrow = valor_o2 * (1000.0 / 1023.0);
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
     }else{
@@ -194,24 +196,24 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     if (captura_dwell[i] == true) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
             //verificar o tempo gasto nesta tarefa abaixo
-            verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
-            if(posicao_atual_sensor >= verifica_posicao_sensor){
-              //enviar_byte_serial(posicao_atual_sensor, 1);
-              //enviar_byte_serial(verifica_posicao_sensor, 1);     
+            // verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+            // if(posicao_atual_sensor >= verifica_posicao_sensor){
+            //   //enviar_byte_serial(posicao_atual_sensor, 1);
+            //   //enviar_byte_serial(verifica_posicao_sensor, 1);     
+            //   captura_dwell[i] = false;
+            //   if (i < qtd_cilindro/2) {
+            //     digitalWrite(ignicao_pins[i], 0);
+            //   }else{
+            //     digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
+            //   }
+            // }else{
               captura_dwell[i] = false;
               if (i < qtd_cilindro/2) {
                 digitalWrite(ignicao_pins[i], 0);
               }else{
                 digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
               }
-            }else{
-              captura_dwell[i] = false;
-              if (i < qtd_cilindro/2) {
-                digitalWrite(ignicao_pins[i], 0);
-              }else{
-                digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
-              }
-            }
+            // }
             //enviar_byte_serial(0, 1);        
         }
     }
@@ -336,7 +338,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
     }
   }
     for (int i = 0; i < qtd_cilindro; i++) {
-      tempo_atual = micros();
+      //tempo_atual = micros();
       if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
             // verifica_posicao_sensor = ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i);
             // if(posicao_atual_sensor >= verifica_posicao_sensor){
