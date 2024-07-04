@@ -257,21 +257,22 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     //   tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;              
     //   }
   }
-  tempo_atual = micros() ;
+          tempo_atual = micros() ;
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-            //Serial.println(tps_dot_porcentagem);
+            // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
+            float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
             // Verifica se está ocorrendo uma aceleração ou desaceleração
-            if (valor_tps > tps_anterior) {
-              //Serial.println("Aceleracao");
-              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-              tps_dot_porcentagem_aceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
-            } else if (valor_tps < tps_anterior) {
-              //Serial.println("Desaceleracao");
-              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-              tps_dot_porcentagem_desaceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
-            } else {
-              //Serial.println("Sem mudanca");
+            if (tps_dot > tps_mudanca_minima) {
+              tps_dot_porcentagem_aceleracao = tps_dot;
+              tps_dot_porcentagem_desaceleracao = 0; // Reseta o valor de desaceleração
+              tempo_ultima_mudanca = tempo_atual; // Atualiza o tempo da última mudança
+            } else if (tps_dot < -tps_mudanca_minima) {
+              tps_dot_porcentagem_desaceleracao = 5;//abs(tps_dot) * enriquecimento_desaceleracao;
+              tps_dot_porcentagem_aceleracao = 0; // Reseta o valor de aceleração
+              tempo_ultima_mudanca = tempo_atual; // Atualiza o tempo da última mudança
+            } 
+            if (tempo_atual - tempo_ultima_mudanca >= duracao_enriquecimento){
               tps_dot_porcentagem_aceleracao = 0;
               tps_dot_porcentagem_desaceleracao = 0;
             }
