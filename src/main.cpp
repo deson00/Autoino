@@ -262,7 +262,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
             float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
             // Verifica se está ocorrendo uma aceleração ou desaceleração
             if (tps_dot > tps_mudanca_minima) {
-              tps_dot_porcentagem_aceleracao = tps_dot;
+              tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao;
               tps_dot_porcentagem_desaceleracao = 0; // Reseta o valor de desaceleração
               tempo_ultima_mudanca = tempo_atual; // Atualiza o tempo da última mudança
             } else if (tps_dot < -tps_mudanca_minima) {
