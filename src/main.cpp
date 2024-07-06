@@ -127,27 +127,33 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], 1);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{
         captura_req_fuel[i] = true;
-        tempo_percorrido_inj[i] = micros();
+        tempo_final_codigo = micros(); // Registra o tempo final  
+        tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+        tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
         digitalWrite(injecao_pins[i], 1);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
         inj_acionado[i] = true;
         inj_acionado[i+1] = false;
         captura_req_fuel[i+1] = false;
-        }  
+        }
+      VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+    
     }
   }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
@@ -168,27 +174,33 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], 1);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{  
         captura_req_fuel[i] = true;
-        tempo_percorrido_inj[i] = micros();
+        tempo_final_codigo = micros(); // Registra o tempo final  
+        tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+        tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
         digitalWrite(injecao_pins[i - qtd_cilindro/2], 1);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
         inj_acionado[i] = true;
         inj_acionado[i+1] = false;
         captura_req_fuel[i+1] = false;
         }
+      VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+
     }
   }
   for (int i = 0; i < qtd_cilindro; i++) {
@@ -231,32 +243,18 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
               }else{
                 digitalWrite(injecao_pins[i - qtd_cilindro/2], 0);
               }
-              VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+          
+        }
+    }
+    
+  }
           //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
           //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
-          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;   
-        }
-    }
-    // if(i == qtd_cilindro - 1){
-    //   tempo_atual = micros() ;
-    //   // Calcula a taxa de mudança do TPS (TPSDot)
-    //   if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-    //   // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-    //   tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
-    //   // Atualiza o valor anterior do TPS e o tempo de leitura
-    //   tps_anterior = valor_tps;
-    //   tempo_anterior_aceleracao = tempo_atual;
-    //   }
-    //   VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
-    //   //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime; 
-    //   int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
-    //   int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
-    //   tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;              
-    //   }
-  }
+          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;     
+
           tempo_atual = micros() ;
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
@@ -279,7 +277,8 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
             // Atualiza o valor anterior do TPS e o tempo de leitura
             tps_anterior = valor_tps;
             tempo_anterior_aceleracao = tempo_atual;
-          }             
+          }
+                     
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
@@ -296,8 +295,6 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
    for (int i = 0; i < qtd_cilindro; i++){
     tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
     tempo_atual = micros();
-    tempo_final_codigo = micros(); // Registra o tempo final  
-    tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) + tempo_decorrido_codigo >= tempo_proxima_ignicao[i]) && 
         revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 100){ 
@@ -311,31 +308,33 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     tempo_atual = micros();
-    tempo_final_codigo = micros(); // Registra o tempo final  
-    tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] + tempo_decorrido_codigo >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], 1);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           digitalWrite(injecao_pins[i], 1);
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }  
-        
+        VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
     }
   }
     for (int i = 0; i < qtd_cilindro; i++) {
