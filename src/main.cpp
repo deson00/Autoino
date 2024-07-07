@@ -255,29 +255,47 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;     
 
-          tempo_atual = micros() ;
+          
+
+          tempo_atual = micros();
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-            // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-            float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
-            // Verifica se está ocorrendo uma aceleração ou desaceleração
-            if (tps_dot > tps_mudanca_minima) {
-              tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao;
-              tps_dot_porcentagem_desaceleracao = 0; // Reseta o valor de desaceleração
-              tempo_ultima_mudanca = tempo_atual; // Atualiza o tempo da última mudança
-            } else if (tps_dot < -tps_mudanca_minima) {
-              tps_dot_porcentagem_desaceleracao = 5;//abs(tps_dot) * enriquecimento_desaceleracao;
-              tps_dot_porcentagem_aceleracao = 0; // Reseta o valor de aceleração
-              tempo_ultima_mudanca = tempo_atual; // Atualiza o tempo da última mudança
-            } 
-            if (tempo_atual - tempo_ultima_mudanca >= duracao_enriquecimento){
-              tps_dot_porcentagem_aceleracao = 0;
-              tps_dot_porcentagem_desaceleracao = 0;
-            }
-            // Atualiza o valor anterior do TPS e o tempo de leitura
-            tps_anterior = valor_tps;
-            tempo_anterior_aceleracao = tempo_atual;
+              // Converte o intervalo para segundos
+              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0);
+
+              // Verifica se está ocorrendo uma aceleração ou desaceleração
+              if (tps_dot > tps_mudanca_minima) {
+                  // Interpolação linear para o enriquecimento de aceleração
+                  for (int i = 0; i < 5; i++) {
+                      if (tps_dot <= tps_dot_escala[i+1]) {
+                          // Calcula a interpolação linear
+                          float tps_dot_range = tps_dot_escala[i+1] - tps_dot_escala[i];
+                          float enrichment_range = enriquecimento_aceleracao[i+1] - enriquecimento_aceleracao[i];
+                          float proportion = (tps_dot - tps_dot_escala[i]) / tps_dot_range;
+                          tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[i] + (proportion * enrichment_range);
+                          break;
+                      }
+                  }
+                  tps_dot_porcentagem_desaceleracao = 0;
+                  tempo_ultima_mudanca = tempo_atual;
+              } else if (tps_dot < -tps_mudanca_minima) {
+                  tps_dot_porcentagem_desaceleracao = 5; // Pode ajustar conforme necessário
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tempo_ultima_mudanca = tempo_atual;
+              }
+
+              // Reseta os valores após a duração do enriquecimento
+              if (tempo_atual - tempo_ultima_mudanca >= duracao_enriquecimento) {
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tps_dot_porcentagem_desaceleracao = 0;
+              }
+
+              // Atualiza o valor anterior do TPS e o tempo de leitura
+              tps_anterior = valor_tps;
+              tempo_anterior_aceleracao = tempo_atual;
           }
+
+
                      
 }
 
