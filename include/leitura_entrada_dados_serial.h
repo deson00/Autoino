@@ -51,6 +51,9 @@ void leitura_entrada_dados_serial()
     if (data == 'n') {// configuração proteção
       tipo_vetor_protecao = 1;
     }
+    if (data == 'o') {// configuração proteção
+      tipo_vetor_enriquecimento_aceleracao = 1;
+    }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
        gravar_dados_eeprom_tabela_ve_map_rpm();
@@ -174,6 +177,27 @@ void leitura_entrada_dados_serial()
           qtd_corte = values[6];
           gravar_dados_eeprom_configuracao_protecao();
           tipo_vetor_protecao = 0;
+      }
+      if (tipo_vetor_enriquecimento_aceleracao == 1){
+          enriquecimento_aceleracao[0] = values[0];
+          enriquecimento_aceleracao[1] = values[1];
+          enriquecimento_aceleracao[2] = values[2]; 
+          enriquecimento_aceleracao[3] = values[3]; 
+          enriquecimento_aceleracao[4] = values[4];
+          tps_dot_escala[0] = values[5];
+          tps_dot_escala[1] = values[6];
+          tps_dot_escala[2] = values[7];
+          tps_dot_escala[3] = values[8];
+          tps_dot_escala[4] = values[9];
+          tipo_verificacao_aceleracao_rapida = values[10];
+          tps_mudanca_minima = values[11];
+          intervalo_tempo_aceleracao = values[12];
+          duracao_enriquecimento = values[13];
+          rpm_minimo_enriquecimento = values[14];
+          rpm_maximo_enriquecimento = values[15];
+          enriquecimento_desaceleracao = values[16];
+          gravar_dados_eeprom_enriquecimento_aceleracao();
+          tipo_vetor_enriquecimento_aceleracao = 0;
       }
       index = 0; // reinicia índice do vetor
     }

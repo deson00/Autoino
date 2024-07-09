@@ -259,9 +259,9 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
 
           tempo_atual = micros();
           // Calcula a taxa de mudança do TPS (TPSDot)
-          if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
+          if (tempo_atual - tempo_anterior_aceleracao >= (unsigned long)intervalo_tempo_aceleracao * 1000) {
               // Converte o intervalo para segundos
-              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0);
+              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0);
 
               // Verifica se está ocorrendo uma aceleração ou desaceleração
               if (tps_dot > tps_mudanca_minima) {
@@ -285,7 +285,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
               }
 
               // Reseta os valores após a duração do enriquecimento
-              if (tempo_atual - tempo_ultima_mudanca >= duracao_enriquecimento) {
+              if (tempo_atual - tempo_ultima_mudanca >= (unsigned long)duracao_enriquecimento * 1000) {
                   tps_dot_porcentagem_aceleracao = 0;
                   tps_dot_porcentagem_desaceleracao = 0;
               }
