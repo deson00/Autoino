@@ -52,7 +52,10 @@ void loop(){
     //leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
     //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-    valor_tps = map(analogRead(pino_sensor_tps), 35, 1023, valor_tps_minimo, valor_tps_maximo);
+    valor_tps_adc = analogRead(pino_sensor_tps);
+    valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
+    valor_o2 = analogRead(pino_sensor_o2);
+    sonda_narrow = valor_o2 * (1000.0 / 1023.0);
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
     }else{
@@ -125,27 +128,33 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], 1);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{
         captura_req_fuel[i] = true;
-        tempo_percorrido_inj[i] = micros();
+        tempo_final_codigo = micros(); // Registra o tempo final  
+        tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+        tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
         digitalWrite(injecao_pins[i], 1);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
         inj_acionado[i] = true;
         inj_acionado[i+1] = false;
         captura_req_fuel[i+1] = false;
-        }  
+        }
+      VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+    
     }
   }
   for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){  
@@ -166,27 +175,33 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], 1);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{  
         captura_req_fuel[i] = true;
-        tempo_percorrido_inj[i] = micros();
+        tempo_final_codigo = micros(); // Registra o tempo final  
+        tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+        tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
         digitalWrite(injecao_pins[i - qtd_cilindro/2], 1);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
         inj_acionado[i] = true;
         inj_acionado[i+1] = false;
         captura_req_fuel[i+1] = false;
         }
+      VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+
     }
   }
   for (int i = 0; i < qtd_cilindro; i++) {
@@ -194,24 +209,24 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
     if (captura_dwell[i] == true) {
         if ((tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
             //verificar o tempo gasto nesta tarefa abaixo
-            verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
-            if(posicao_atual_sensor >= verifica_posicao_sensor){
-              //enviar_byte_serial(posicao_atual_sensor, 1);
-              //enviar_byte_serial(verifica_posicao_sensor, 1);     
+            // verifica_posicao_sensor = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+            // if(posicao_atual_sensor >= verifica_posicao_sensor){
+            //   //enviar_byte_serial(posicao_atual_sensor, 1);
+            //   //enviar_byte_serial(verifica_posicao_sensor, 1);     
+            //   captura_dwell[i] = false;
+            //   if (i < qtd_cilindro/2) {
+            //     digitalWrite(ignicao_pins[i], 0);
+            //   }else{
+            //     digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
+            //   }
+            // }else{
               captura_dwell[i] = false;
               if (i < qtd_cilindro/2) {
                 digitalWrite(ignicao_pins[i], 0);
               }else{
                 digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
               }
-            }else{
-              captura_dwell[i] = false;
-              if (i < qtd_cilindro/2) {
-                digitalWrite(ignicao_pins[i], 0);
-              }else{
-                digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
-              }
-            }
+            // }
             //enviar_byte_serial(0, 1);        
         }
     }
@@ -229,54 +244,60 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
               }else{
                 digitalWrite(injecao_pins[i - qtd_cilindro/2], 0);
               }
-              VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+          
+        }
+    }
+    
+  }
           //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
           //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime;
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
-          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;   
-        }
-    }
-    // if(i == qtd_cilindro - 1){
-    //   tempo_atual = micros() ;
-    //   // Calcula a taxa de mudança do TPS (TPSDot)
-    //   if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-    //   // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-    //   tps_dot_porcentagem = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
-    //   // Atualiza o valor anterior do TPS e o tempo de leitura
-    //   tps_anterior = valor_tps;
-    //   tempo_anterior_aceleracao = tempo_atual;
-    //   }
-    //   VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
-    //   //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + InjOpenTime; 
-    //   int tempo_pulso = tempo_pulso_ve(REQ_FUEL / 1000, valor_map, VE);
-    //   int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem / 100.0));
-    //   tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;              
-    //   }
-  }
-  tempo_atual = micros() ;
+          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;     
+
+          
+
+          tempo_atual = micros();
           // Calcula a taxa de mudança do TPS (TPSDot)
-          if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-            //Serial.println(tps_dot_porcentagem);
-            // Verifica se está ocorrendo uma aceleração ou desaceleração
-            if (valor_tps > tps_anterior) {
-              //Serial.println("Aceleracao");
-              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-              tps_dot_porcentagem_aceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
-            } else if (valor_tps < tps_anterior) {
-              //Serial.println("Desaceleracao");
-              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-              tps_dot_porcentagem_desaceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
-            } else {
-              //Serial.println("Sem mudanca");
-              tps_dot_porcentagem_aceleracao = 0;
-              tps_dot_porcentagem_desaceleracao = 0;
-            }
-            // Atualiza o valor anterior do TPS e o tempo de leitura
-            tps_anterior = valor_tps;
-            tempo_anterior_aceleracao = tempo_atual;
-          }             
+          if (tempo_atual - tempo_anterior_aceleracao >= (unsigned long)intervalo_tempo_aceleracao * 1000) {
+              // Converte o intervalo para segundos
+              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0);
+
+              // Verifica se está ocorrendo uma aceleração ou desaceleração
+              if (tps_dot > tps_mudanca_minima) {
+                  // Interpolação linear para o enriquecimento de aceleração
+                  for (int i = 0; i < 5; i++) {
+                      if (tps_dot <= tps_dot_escala[i+1]) {
+                          // Calcula a interpolação linear
+                          float tps_dot_range = tps_dot_escala[i+1] - tps_dot_escala[i];
+                          float enrichment_range = enriquecimento_aceleracao[i+1] - enriquecimento_aceleracao[i];
+                          float proportion = (tps_dot - tps_dot_escala[i]) / tps_dot_range;
+                          tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[i] + (proportion * enrichment_range);
+                          break;
+                      }
+                  }
+                  tps_dot_porcentagem_desaceleracao = 0;
+                  tempo_ultima_mudanca = tempo_atual;
+              } else if (tps_dot < -tps_mudanca_minima) {
+                  tps_dot_porcentagem_desaceleracao = 5; // Pode ajustar conforme necessário
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tempo_ultima_mudanca = tempo_atual;
+              }
+
+              // Reseta os valores após a duração do enriquecimento
+              if (tempo_atual - tempo_ultima_mudanca >= (unsigned long)duracao_enriquecimento * 1000) {
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tps_dot_porcentagem_desaceleracao = 0;
+              }
+
+              // Atualiza o valor anterior do TPS e o tempo de leitura
+              tps_anterior = valor_tps;
+              tempo_anterior_aceleracao = tempo_atual;
+          }
+
+
+                     
 }
 
 if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
@@ -293,8 +314,6 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
    for (int i = 0; i < qtd_cilindro; i++){
     tempo_proxima_ignicao[i] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i) ) * tempo_cada_grau;
     tempo_atual = micros();
-    tempo_final_codigo = micros(); // Registra o tempo final  
-    tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) + tempo_decorrido_codigo >= tempo_proxima_ignicao[i]) && 
         revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 100){ 
@@ -308,35 +327,37 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
     }
     tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     tempo_atual = micros();
-    tempo_final_codigo = micros(); // Registra o tempo final  
-    tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] + tempo_decorrido_codigo >= tempo_proxima_injecao[i] - tempo_injecao - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], 1);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = micros();
+          tempo_final_codigo = micros(); // Registra o tempo final  
+          tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+          tempo_percorrido_inj[i] = micros() - tempo_decorrido_codigo;
           digitalWrite(injecao_pins[i], 1);
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }  
-        
+        VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
     }
   }
     for (int i = 0; i < qtd_cilindro; i++) {
-      tempo_atual = micros();
+      //tempo_atual = micros();
       if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
             // verifica_posicao_sensor = ajuste_pms + grau_pms + grau_avanco + (grau_entre_cada_cilindro * i);
             // if(posicao_atual_sensor >= verifica_posicao_sensor){
@@ -390,28 +411,44 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
     //   tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;              
     //   }
   }
-          tempo_atual = micros() ;
+          
+          tempo_atual = micros();
           // Calcula a taxa de mudança do TPS (TPSDot)
-          if (tempo_atual - tempo_anterior_aceleracao >= intervalo_tempo_aceleracao) {
-            //Serial.println(tps_dot_porcentagem);
-            // Verifica se está ocorrendo uma aceleração ou desaceleração
-            if (valor_tps > tps_anterior) {
-              //Serial.println("Aceleracao");
-              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-              tps_dot_porcentagem_aceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
-            } else if (valor_tps < tps_anterior) {
-              //Serial.println("Desaceleracao");
-              // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-              tps_dot_porcentagem_desaceleracao = abs(valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000000.0); // Converte o intervalo para segundos
-            } else {
-              //Serial.println("Sem mudanca");
-              tps_dot_porcentagem_aceleracao = 0;
-              tps_dot_porcentagem_desaceleracao = 0;
-            }
-            // Atualiza o valor anterior do TPS e o tempo de leitura
-            tps_anterior = valor_tps;
-            tempo_anterior_aceleracao = tempo_atual;
-          }                
+          if (tempo_atual - tempo_anterior_aceleracao >= (unsigned long)intervalo_tempo_aceleracao * 1000) {
+              // Converte o intervalo para segundos
+              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0);
+
+              // Verifica se está ocorrendo uma aceleração ou desaceleração
+              if (tps_dot > tps_mudanca_minima) {
+                  // Interpolação linear para o enriquecimento de aceleração
+                  for (int i = 0; i < 5; i++) {
+                      if (tps_dot <= tps_dot_escala[i+1]) {
+                          // Calcula a interpolação linear
+                          float tps_dot_range = tps_dot_escala[i+1] - tps_dot_escala[i];
+                          float enrichment_range = enriquecimento_aceleracao[i+1] - enriquecimento_aceleracao[i];
+                          float proportion = (tps_dot - tps_dot_escala[i]) / tps_dot_range;
+                          tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[i] + (proportion * enrichment_range);
+                          break;
+                      }
+                  }
+                  tps_dot_porcentagem_desaceleracao = 0;
+                  tempo_ultima_mudanca = tempo_atual;
+              } else if (tps_dot < -tps_mudanca_minima) {
+                  tps_dot_porcentagem_desaceleracao = 5; // Pode ajustar conforme necessário
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tempo_ultima_mudanca = tempo_atual;
+              }
+
+              // Reseta os valores após a duração do enriquecimento
+              if (tempo_atual - tempo_ultima_mudanca >= (unsigned long)duracao_enriquecimento * 1000) {
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tps_dot_porcentagem_desaceleracao = 0;
+              }
+
+              // Atualiza o valor anterior do TPS e o tempo de leitura
+              tps_anterior = valor_tps;
+              tempo_anterior_aceleracao = tempo_atual;
+          }           
           
           
          

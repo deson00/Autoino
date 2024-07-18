@@ -124,3 +124,38 @@ void gravar_dados_eeprom_configuracao_protecao(){
     EEPROM.update(endereco++, numero_base_corte);
     EEPROM.update(endereco++, qtd_corte);
 }
+void gravar_dados_eeprom_enriquecimento_aceleracao() {
+    int endereco = 770; // Inicializa o endereço de memória
+    // Gravar os valores de enriquecimento_aceleracao (1 byte cada)
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, enriquecimento_aceleracao[i]);
+    }
+    // Gravar os valores de tps_dot_escala (2 bytes cada)
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, tps_dot_escala[i] & 0xFF);          // Byte menos significativo
+        EEPROM.update(endereco++, (tps_dot_escala[i] >> 8) & 0xFF);   // Byte mais significativo
+    }
+    // Gravar os valores dos parâmetros restantes
+    EEPROM.update(endereco++, tipo_verificacao_aceleracao_rapida);
+    EEPROM.update(endereco++, tps_mudanca_minima);
+    EEPROM.update(endereco++, intervalo_tempo_aceleracao & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (intervalo_tempo_aceleracao >> 8) & 0xFF); // Byte mais significativo
+    EEPROM.update(endereco++, duracao_enriquecimento & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (duracao_enriquecimento >> 8) & 0xFF); // Byte mais significativo
+    EEPROM.update(endereco++, rpm_minimo_enriquecimento & 0xFF);       // Byte menos significativo
+    EEPROM.update(endereco++, (rpm_minimo_enriquecimento >> 8) & 0xFF); // Byte mais significativo
+    EEPROM.update(endereco++, rpm_maximo_enriquecimento & 0xFF);       // Byte menos significativo
+    EEPROM.update(endereco++, (rpm_maximo_enriquecimento >> 8) & 0xFF); // Byte mais significativo
+    EEPROM.update(endereco++, enriquecimento_desaceleracao);
+}
+void gravar_dados_eeprom_configuracao_tps() {
+    int endereco = 800; // Inicializa o endereço de memória
+    // Gravar os valores dos parâmetros 
+    EEPROM.update(endereco++, valor_tps_minimo & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (valor_tps_minimo >> 8) & 0xFF); // Byte mais significativo
+    EEPROM.update(endereco++, valor_tps_maximo & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (valor_tps_maximo >> 8) & 0xFF); // Byte mais significativo
+}
+
+
+

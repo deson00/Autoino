@@ -187,6 +187,55 @@ void ler_dados_memoria() {
   sendSerialInt(qtd_corte);
   Serial.write(',');
   Serial.write(';');
+
+    // Dados de configuração de enriquecimento na aceleração
+    Serial.write('o');
+    Serial.write(',');
+    sendSerialInt(enriquecimento_aceleracao[0]);
+    Serial.write(',');
+    sendSerialInt(enriquecimento_aceleracao[1]);
+    Serial.write(',');
+    sendSerialInt(enriquecimento_aceleracao[2]);
+    Serial.write(',');
+    sendSerialInt(enriquecimento_aceleracao[3]);
+    Serial.write(',');
+    sendSerialInt(enriquecimento_aceleracao[4]);
+    Serial.write(',');
+    sendSerialInt(tps_dot_escala[0]);
+    Serial.write(',');
+    sendSerialInt(tps_dot_escala[1]);
+    Serial.write(',');
+    sendSerialInt(tps_dot_escala[2]);
+    Serial.write(',');
+    sendSerialInt(tps_dot_escala[3]);
+    Serial.write(',');
+    sendSerialInt(tps_dot_escala[4]);
+    Serial.write(',');
+    sendSerialInt(tipo_verificacao_aceleracao_rapida);
+    Serial.write(',');
+    sendSerialInt(tps_mudanca_minima);
+    Serial.write(',');
+    sendSerialInt(intervalo_tempo_aceleracao);
+    Serial.write(',');
+    sendSerialInt(duracao_enriquecimento);
+    Serial.write(',');
+    sendSerialInt(rpm_minimo_enriquecimento);
+    Serial.write(',');
+    sendSerialInt(rpm_maximo_enriquecimento);
+    Serial.write(',');
+    sendSerialInt(enriquecimento_desaceleracao);
+    Serial.write(',');
+    Serial.write(';');
+
+  // dados configuração TPS 
+  Serial.write('p');
+  Serial.write(',');
+  sendSerialInt(valor_tps_minimo);
+  Serial.write(',');
+  sendSerialInt(valor_tps_maximo);
+  Serial.write(',');
+  Serial.write(';');
+
 }
 
 
