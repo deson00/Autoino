@@ -54,6 +54,9 @@ void leitura_entrada_dados_serial()
     if (data == 'o') {// configuração proteção
       tipo_vetor_enriquecimento_aceleracao = 1;
     }
+    if (data == 'p') {// configuração TPS
+      tipo_vetor_configuracao_tps = 1;
+    }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
        gravar_dados_eeprom_tabela_ve_map_rpm();
@@ -198,6 +201,12 @@ void leitura_entrada_dados_serial()
           enriquecimento_desaceleracao = values[16];
           gravar_dados_eeprom_enriquecimento_aceleracao();
           tipo_vetor_enriquecimento_aceleracao = 0;
+      }
+      if (tipo_vetor_configuracao_tps == 1){
+          valor_tps_minimo = values[0];
+          valor_tps_maximo = values[1];
+          gravar_dados_eeprom_configuracao_tps();
+          tipo_vetor_configuracao_tps = 0;
       }
       index = 0; // reinicia índice do vetor
     }

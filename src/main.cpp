@@ -52,7 +52,8 @@ void loop(){
     //leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
     //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-    valor_tps = map(analogRead(pino_sensor_tps), 0, 1023, valor_tps_minimo, valor_tps_maximo);
+    valor_tps_adc = analogRead(pino_sensor_tps);
+    valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
     valor_o2 = analogRead(pino_sensor_o2);
     sonda_narrow = valor_o2 * (1000.0 / 1023.0);
     if(referencia_leitura_ignicao == 1){

@@ -120,7 +120,14 @@ void ler_dados_eeprom_enriquecimento_aceleracao() {
     rpm_maximo_enriquecimento |= EEPROM.read(endereco++) << 8; // Byte mais significativo    
     enriquecimento_desaceleracao = EEPROM.read(endereco++);
 }
-
+void leitura_dados_eeprom_configuracao_tps() {
+    int endereco = 800; // Inicializa o endereço de memória
+    // Ler os valores dos parâmetros
+    valor_tps_minimo = EEPROM.read(endereco++);                // Byte menos significativo
+    valor_tps_minimo |= (EEPROM.read(endereco++) << 8);        // Byte mais significativo
+    valor_tps_maximo = EEPROM.read(endereco++);                // Byte menos significativo
+    valor_tps_maximo |= (EEPROM.read(endereco++) << 8);        // Byte mais significativo
+}
 
 
 void ler_dados_eeprom(){
@@ -144,6 +151,7 @@ ler_dados_eeprom_tabela_ve_map_rpm();
 ler_dados_eeprom_configuracao_injecao();
 ler_dados_eeprom_configuracao_protecao();
 ler_dados_eeprom_enriquecimento_aceleracao();
+leitura_dados_eeprom_configuracao_tps();
 //leitura dos dados de configurações iniciais
 tipo_ignicao = EEPROM.read(0*2+360); 
 qtd_dente = EEPROM.read(1*2+360);

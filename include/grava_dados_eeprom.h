@@ -148,4 +148,14 @@ void gravar_dados_eeprom_enriquecimento_aceleracao() {
     EEPROM.update(endereco++, (rpm_maximo_enriquecimento >> 8) & 0xFF); // Byte mais significativo
     EEPROM.update(endereco++, enriquecimento_desaceleracao);
 }
+void gravar_dados_eeprom_configuracao_tps() {
+    int endereco = 800; // Inicializa o endereço de memória
+    // Gravar os valores dos parâmetros 
+    EEPROM.update(endereco++, valor_tps_minimo & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (valor_tps_minimo >> 8) & 0xFF); // Byte mais significativo
+    EEPROM.update(endereco++, valor_tps_maximo & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (valor_tps_maximo >> 8) & 0xFF); // Byte mais significativo
+}
+
+
 

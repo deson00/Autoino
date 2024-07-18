@@ -227,6 +227,15 @@ void ler_dados_memoria() {
     Serial.write(',');
     Serial.write(';');
 
+  // dados configuração TPS 
+  Serial.write('p');
+  Serial.write(',');
+  sendSerialInt(valor_tps_minimo);
+  Serial.write(',');
+  sendSerialInt(valor_tps_maximo);
+  Serial.write(',');
+  Serial.write(';');
+
 }
 
 
