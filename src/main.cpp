@@ -218,7 +218,7 @@ if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0){ // 2 para virabrequin
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
-          tempo_injecao = tempo_pulso + InjOpenTime + 0;
+          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;
 
           tempo_atual = micros();
           // Calcula a taxa de mudança do TPS (TPSDot)
@@ -328,7 +328,7 @@ if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequi
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
-          tempo_injecao = tempo_pulso + InjOpenTime + 0;
+          tempo_injecao = tempo_pulso + InjOpenTime + incremento_percentual;
           tempo_atual = micros();
           // Calcula a taxa de mudança do TPS (TPSDot)
           if (tempo_atual - tempo_anterior_aceleracao >= (unsigned long)intervalo_tempo_aceleracao * 1000) {
