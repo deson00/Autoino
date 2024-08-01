@@ -35,8 +35,6 @@ volatile unsigned long tempo_proxima_injecao[8];
 volatile unsigned long tempo_atual = 0;
 volatile unsigned long tempo_atual_proxima_ignicao[8];
 volatile unsigned long tempo_atual_proxima_injecao[8];
-//volatile unsigned long tempo_inicio_dwell;
-//volatile unsigned long tempo_final_dwell;
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 volatile unsigned long verifica_falha = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
@@ -45,15 +43,15 @@ int qtd_revolucoes = 0;
 byte qtd_perda_sincronia = 0;
 int qtd_loop = 0;
 int verifica_posicao_sensor = 0;
-unsigned long intervalo_execucao = 200; // intervalo em milissegundos
+byte intervalo_execucao = 200; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
 unsigned int rpm_partida = 400;
-const int ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
-const int injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
+byte ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
+byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
 // Declare as variáveis para controlar o estado do pino de saída
 volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
 volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
@@ -61,10 +59,10 @@ volatile bool captura_req_fuel[8] = {false, false, false, false, false, false, f
 volatile bool inj_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
 volatile unsigned long tempo_percorrido_inj[8];
-volatile bool flag_interrupcao = false;
-unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
+//volatile bool flag_interrupcao = false;
+//unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
-const int maximo_valores_recebido = 270; // tamanho máximo de dados recebido do vetor ou matriz
+const int maximo_valores_recebido = 30; // tamanho máximo de dados recebido do vetor ou matriz
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
 byte matriz_avanco[16][16];
 byte matriz_ve[16][16];
@@ -127,14 +125,13 @@ byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
 byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
 byte limite_injetor = 100; // 90% valor em porcentagem
-int tempo_abertura_injetor = 1;// Dead time, tempo que o injetor leva para abrir
+int tempo_abertura_injetor = 1000;// Dead time, tempo que o injetor leva para abrir
 int acrescimo_injecao_partida = 0;// valor de acrecimo da ve na partida em porcentagem 
 int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
 int REQ_FUEL = 10000; //em ms
 int dreq_fuel = 10000;//em ms
 int VE = 0;
 int GammaE = 100;
-int InjOpenTime = 0; // em ms
 unsigned long tempo_injecao = 0;
 int tipo_protecao = 1; // 0 desligado, 1 apenas ignição, 2 apenas injeção e 3 ignição e injeção
 int rpm_pre_corte = 6000;
