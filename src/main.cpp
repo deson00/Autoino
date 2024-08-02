@@ -36,7 +36,7 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
-  initializeTimerOne(300); 
+  initializeTimerOne(200); 
   sei(); // Habilita interrupções globais
 }
 void loop(){ 
