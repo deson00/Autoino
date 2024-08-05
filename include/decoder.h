@@ -2,12 +2,13 @@
 void leitor_sensor_roda_fonica()
 {
   noInterrupts();
+  // tempo_inicial_codigo = micros(); // Registra o tempo inicial
   qtd_leitura++;
   tempo_atual = micros() ;
-  //tempo_inicial_codigo = micros(); // Registra o tempo inicial
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
   //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
-  verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
+  // verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
+  verifica_falha = (tempo_dente_anterior[leitura] >> 1) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
 
   if (inicia_tempo_sensor_roda_fonica){
     tempo_anterior = tempo_atual;
@@ -23,8 +24,9 @@ void leitor_sensor_roda_fonica()
     tempo_dente_anterior[1] = (tempo_atual - tempo_anterior);
   }
   //Serial.print("|");
-  //Serial.print(qtd_leitura); 
-if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4))))
+  //Serial.print(qtd_leitura);
+  // if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4)))) //linha original 
+if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante << 4))))
   {
     if (qtd_voltas == 1){
       tempo_final_volta_completa = tempo_atual;
@@ -38,14 +40,14 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     //Serial.print("__");
     //Serial.println("");
     //Serial.print(posicao_atual_sensor); 
-    tempo_final_rpm = micros();
-    long delta = tempo_final_rpm - tempo_inicial_rpm;
-    if(local_rodafonica == 1){
-      rpm = (60) / (float(delta) / 1000000) * 2;
-    }else{
-      rpm = (60) / (float(delta) / 1000000);
-    } 
-    tempo_inicial_rpm = tempo_final_rpm;
+    // tempo_final_rpm = tempo_atual;
+    // long delta = tempo_final_rpm - tempo_inicial_rpm;
+    // if(local_rodafonica == 1){
+    //   rpm = (60) / (float(delta) / 1000000) * 2;
+    // }else{
+    //   rpm = (60) / (float(delta) / 1000000);
+    // } 
+    // tempo_inicial_rpm = tempo_final_rpm;
     qtd_revolucoes++;
     tempo_cada_grau = tempo_total_volta_completa / 360;
     // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
@@ -86,7 +88,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;
-  //tempo_final_codigo = micros(); // Registra o tempo final
-  //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+  // tempo_final_codigo = micros(); // Registra o tempo final
+  // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
   interrupts();
 }
