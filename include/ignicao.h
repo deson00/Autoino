@@ -1,9 +1,4 @@
 
-constexpr byte VIRABREQUIM = 2;
-constexpr byte COMANDO = 1;
-constexpr byte SEQUENCIAL = 1;
-constexpr byte SEMI_SEQUENCIAL = 0;
-
 // Define funções auxiliares
 inline int calcularAjustePMS(int grau_pms, int rpm) {
     return (grau_pms <= 120 && (grau_pms < 60 || rpm > 3000)) ? 180 : 0;
@@ -23,44 +18,15 @@ void iniciarDwell(int i) {
     captura_dwell[(i + 1) % qtd_cilindro] = false;
 }
 
-void configurarInjecao(int i, int ajuste_pms) {
-    tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
-}
 
-void iniciarInjecao(int i) {
-    if (tipo_acionamento_injetor == 1) {
-        for (int j = 0; j < numero_injetor; j++) {
-            digitalWrite(injecao_pins[j], HIGH);
-        }
-    } else {
-        digitalWrite(injecao_pins[i], HIGH);
-    }
-    captura_req_fuel[i] = true;
-    tempo_percorrido_inj[i] = tempo_atual;
-    tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i];
-    inj_acionado[i] = true;
-    inj_acionado[(i + 1) % qtd_cilindro] = false;
-    captura_req_fuel[(i + 1) % qtd_cilindro] = false;
-}
 
 void pararIgnicao(int i) {
     captura_dwell[i] = false;
     digitalWrite(ignicao_pins[i], LOW);
 }
 
-void pararInjecao(int i) {
-    captura_req_fuel[i] = false;
-    if (tipo_acionamento_injetor == 1) {
-        for (int j = 0; j < numero_injetor; j++) {
-            digitalWrite(injecao_pins[j], LOW);
-        }
-    } else {
-        digitalWrite(injecao_pins[i], LOW);
-    }
-}
-
 void processarCiclo() {
-    if (local_rodafonica == VIRABREQUIM && tipo_ignicao_sequencial == SEMI_SEQUENCIAL) {
+    if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
         if (loop_timer >= qtd_cilindro) {
             loop_timer = 0;
         }
@@ -73,7 +39,7 @@ void processarCiclo() {
         }
 
         if ((captura_dwell[i] == false) && (ign_acionado[i] == false) &&
-            (tempo_atual - tempo_atual_proxima_ignicao[i] + (dwell_bobina * 1000ul) >= tempo_proxima_ignicao[i]) &&
+            (tempo_atual - tempo_atual_proxima_ignicao[i] + dwell_bobina >= tempo_proxima_ignicao[i]) &&
             revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 100) {
             iniciarDwell(i);
         }
@@ -89,7 +55,7 @@ void processarCiclo() {
         }
 
         if ((captura_dwell[i] == true) && (ign_acionado[i] == true) &&
-            (tempo_atual - tempo_percorrido[i]) >= (dwell_bobina * 1000ul)) {
+            (tempo_atual - tempo_percorrido[i]) >= dwell_bobina) {
             pararIgnicao(i);
         }
 

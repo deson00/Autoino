@@ -61,7 +61,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
       revolucoes_sincronizada++;
     }
     qtd_leitura = 0;
-    revolucoes_sincronizada++;// reservado para escapar rotação caso necessario no futuro   
+    // revolucoes_sincronizada++;// reservado para escapar rotação caso necessario no futuro   
     if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){
     //digitalWrite(ignicao_pins[0], 0);    
     tempo_atual_proxima_ignicao[0] = tempo_atual;
@@ -86,7 +86,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     }
     //enviar_byte_serial(tempo_cada_grau / 1000, 1);
   }
-  posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
+  // posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;
   // tempo_final_codigo = micros(); // Registra o tempo final
   // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
