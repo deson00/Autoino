@@ -14,6 +14,18 @@
 #include <injecao.h>
 #include <timer.h>
 
+// Função para calcular a RPM
+void calcularRPM() {
+  unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
+  qtd_revolucoes = 0;  // Reseta o contador de revoluções
+  unsigned long tempo_atual_local = tempo_atual;  // Captura o valor atual de tempo
+  if (revolucoes > 0) {
+    tempo_final_rpm = tempo_atual_local;
+    volatile unsigned long delta = tempo_final_rpm - tempo_inicial_rpm;
+    rpm = (revolucoes * 60) / (float(delta) / 1000000);
+    tempo_inicial_rpm = tempo_final_rpm;
+  }
+}
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
   delay(1000);  
@@ -36,10 +48,21 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
-  initializeTimerOne(300); 
+  initializeTimerOne(100);
+  
   sei(); // Habilita interrupções globais
+  // Imprime uma mensagem dependendo do microcontrolador
+  #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
+    Serial.println("Define OK: Arduino Uno ou Nano detectado.");
+  #elif defined(__AVR_ATmega2560__)
+    Serial.println("Define OK: Arduino Mega 2560 detectado.");
+  #else
+    Serial.println("Define não reconhecido: Microcontrolador desconhecido.");
+  #endif
 }
-void loop(){ 
+void loop(){
+  calcularRPM();
+  
     qtd_loop++;
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
     // if(contador_leitura >=10){
@@ -73,18 +96,18 @@ void loop(){
          
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
-      dwell_bobina = dwell_partida;
+      dwell_bobina = dwell_partida * 1000ul; 
       status_corte = 0;
     }
     else if(avanco_fixo){
       grau_avanco = grau_avanco_fixo;
-      dwell_bobina = dwell_funcionamento;
+      dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
     }
     else if(tipo_protecao != 0 && rpm_anterior >= rpm_pre_corte){
       grau_avanco = avanco_corte;
       status_corte = 1;
-      dwell_bobina = dwell_funcionamento;
+      dwell_bobina = dwell_funcionamento * 1000ul;
     }
     else if(rpm < 7000 && busca_avanco_linear == true){
       int grau_minimo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
@@ -92,12 +115,12 @@ void loop(){
       int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
-      dwell_bobina = dwell_funcionamento;
+      dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
     }
     else{
       grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
-      dwell_bobina = dwell_funcionamento;
+      dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
     }
 
@@ -146,8 +169,7 @@ VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tp
               tempo_anterior_aceleracao = micros();
           }           
 
-
-  leitura_entrada_dados_serial(); 
+    leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm; 
@@ -161,6 +183,9 @@ VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tp
    // atualiza o tempo da última execução
    ultima_execucao = millis();
    qtd_loop = 0;
+  // Serial.print(tempo_decorrido_codigo);
+  // Serial.print(",");
+  // Serial.println(rpm_anterior);
   }
   //  tempo_final_codigo = micros(); // Registra o tempo final  
   //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo; 

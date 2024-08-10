@@ -4,7 +4,7 @@ byte qtd_dente_faltante = 1; //2
 byte local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
 byte qtd_cilindro = 6 / local_rodafonica;
 int grau_pms = 60;
-int dwell_bobina = 3;
+volatile unsigned long dwell_bobina = 3;
 int dwell_partida = 4;
 int dwell_funcionamento = 3;
 
@@ -42,6 +42,7 @@ volatile long revolucoes_sincronizada = 0;
 int qtd_revolucoes = 0;
 byte qtd_perda_sincronia = 0;
 int qtd_loop = 0;
+int loop_timer = 0; //variavel para ser incrementada a cada chamada da função timer 
 int verifica_posicao_sensor = 0;
 byte intervalo_execucao = 200; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
@@ -60,7 +61,7 @@ volatile bool inj_acionado[8] = {false, false, false, false, false, false, false
 volatile unsigned long tempo_percorrido[8];
 volatile unsigned long tempo_percorrido_inj[8];
 //volatile bool flag_interrupcao = false;
-//unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
+unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
 const int maximo_valores_recebido = 30; // tamanho máximo de dados recebido do vetor ou matriz
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
