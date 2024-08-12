@@ -86,7 +86,7 @@ int i = loop_timer; //provisorio para teste
           captura_req_fuel[i] = true;
           for (int j = 0; j < numero_injetor; j++){
           // digitalWrite(injecao_pins[j], 1);
-          setPinHigh(injecao_pins[i]);
+          setPinHigh(injecao_pins[j]);
           }
           //tempo_final_codigo = tempo_atual; // Registra o tempo final  
           //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
@@ -220,7 +220,7 @@ int i = loop_timer; //provisorio para teste
               captura_req_fuel[i] = false;
             for (int j = 0; j < numero_injetor; j++){
               // digitalWrite(injecao_pins[j], LOW);
-              setPinLow(injecao_pins[i]);
+              setPinLow(injecao_pins[j]);
             }
           }
               if (i < qtd_cilindro/2) {
