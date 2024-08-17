@@ -8,23 +8,6 @@ void configurarIgnicao(int i, int ajuste_pms) {
     tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
 }
 
-void iniciarDwell(int i) {
-    captura_dwell[i] = true;
-    tempo_percorrido[i] = tempo_atual;
-    digitalWrite(ignicao_pins[i], HIGH);
-    tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i];
-    ign_acionado[i] = true;
-    ign_acionado[(i + 1) % qtd_cilindro] = false;
-    captura_dwell[(i + 1) % qtd_cilindro] = false;
-}
-
-
-
-void pararIgnicao(int i) {
-    captura_dwell[i] = false;
-    digitalWrite(ignicao_pins[i], LOW);
-}
-
 void processarCiclo() {
     if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
         if (loop_timer >= qtd_cilindro) {

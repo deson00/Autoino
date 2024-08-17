@@ -18,11 +18,15 @@
 void calcularRPM() {
   unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
   qtd_revolucoes = 0;  // Reseta o contador de revoluções
-  unsigned long tempo_atual_local = tempo_atual;  // Captura o valor atual de tempo
+  unsigned long tempo_atual_local = micros();  // Captura o valor atual de tempo
   if (revolucoes > 0) {
     tempo_final_rpm = tempo_atual_local;
     volatile unsigned long delta = tempo_final_rpm - tempo_inicial_rpm;
-    rpm = (revolucoes * 60) / (float(delta) / 1000000);
+    if(local_rodafonica == 1){
+      rpm = (revolucoes * 60) / (float(delta) / 1000000) * 2;
+    }else{
+      rpm = (revolucoes * 60) / (float(delta) / 1000000);
+    } 
     tempo_inicial_rpm = tempo_final_rpm;
   }
 }
@@ -61,8 +65,6 @@ void setup(){
   #endif
 }
 void loop(){
-  calcularRPM();
-  
     qtd_loop++;
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
     // if(contador_leitura >=10){
@@ -172,6 +174,7 @@ VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tp
     leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
+  calcularRPM();
   rpm_anterior = rpm; 
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial

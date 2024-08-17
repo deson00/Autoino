@@ -17,11 +17,11 @@ void leitor_sensor_roda_fonica()
   }
   if (leitura == 0){
     leitura = 1;
-    tempo_dente_anterior[0] = (tempo_atual - tempo_anterior);
+    tempo_dente_anterior[0] = intervalo_tempo_entre_dente;
   }
   else{
     leitura = 0;
-    tempo_dente_anterior[1] = (tempo_atual - tempo_anterior);
+    tempo_dente_anterior[1] = intervalo_tempo_entre_dente;
   }
   //Serial.print("|");
   //Serial.print(qtd_leitura);
@@ -53,17 +53,15 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     posicao_atual_sensor = 0;
    if ((qtd_leitura != (qtd_dente - qtd_dente_faltante))) {
-    qtd_perda_sincronia++;
-      if(qtd_perda_sincronia >=255){
+      if(++qtd_perda_sincronia >=255){
         qtd_perda_sincronia = 0;
       }
     }else{
-      revolucoes_sincronizada++;
+      revolucoes_sincronizada=1;
     }
     qtd_leitura = 0;
     // revolucoes_sincronizada++;// reservado para escapar rotação caso necessario no futuro   
-    if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0 ){
-    //digitalWrite(ignicao_pins[0], 0);    
+    if(tipo_ignicao_sequencial == 0 ){    
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     ign_acionado[0] = false;
     captura_dwell[0] = false; 
@@ -71,15 +69,14 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     inj_acionado[0] = false;
     captura_req_fuel[0] = false; 
     }
-    if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-    //digitalWrite(ignicao_pins[0], 0);
-      tempo_atual_proxima_ignicao[0] = tempo_atual;
-      ign_acionado[0] = false;
-      captura_dwell[0] = false;
-      tempo_atual_proxima_injecao[0] = tempo_atual;
-      inj_acionado[0] = false;
-      captura_req_fuel[0] = false;  
-    }
+    // if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+    //   tempo_atual_proxima_ignicao[0] = tempo_atual;
+    //   ign_acionado[0] = false;
+    //   captura_dwell[0] = false;
+    //   tempo_atual_proxima_injecao[0] = tempo_atual;
+    //   inj_acionado[0] = false;
+    //   captura_req_fuel[0] = false;  
+    // }
   }else{
     if(rpm < rpm_partida){
     tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
