@@ -11,6 +11,7 @@
 #include <sensores.h>
 #include <protecao.h>
 #include <decoder.h>
+#include <ignicao.h>
 #include <injecao.h>
 #include <timer.h>
 
@@ -65,6 +66,7 @@ void setup(){
   #endif
 }
 void loop(){
+   calcularRPM();
     qtd_loop++;
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
     // if(contador_leitura >=10){
@@ -174,7 +176,6 @@ VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tp
     leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
-  calcularRPM();
   rpm_anterior = rpm; 
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
