@@ -260,6 +260,5 @@ ligar_injetor(i);
 desligar_dwell(i);
 desligar_injetor(i);  
 }
-  // tempo_final_codigo = micros(); // Registra o tempo final  
-  // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;  
+
 }

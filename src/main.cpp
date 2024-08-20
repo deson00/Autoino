@@ -11,8 +11,8 @@
 #include <sensores.h>
 #include <protecao.h>
 #include <decoder.h>
-#include <ignicao.h>
 #include <injecao.h>
+#include <ignicao.h>
 #include <timer.h>
 
 // Função para calcular a RPM
@@ -54,6 +54,7 @@ void setup(){
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
   initializeTimerOne(100);
+  // initializeTimerTwo(200);
   
   sei(); // Habilita interrupções globais
   // Imprime uma mensagem dependendo do microcontrolador

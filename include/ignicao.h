@@ -14,7 +14,7 @@ if((captura_dwell[i] == false) && (ign_acionado[i] == false)){
         ign_acionado[i] = true;
         ign_acionado[i+1] = false;
         captura_dwell[i+1] = false;
-        // tempo_proxima_ignicao[i+1] = ( ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;      
+        tempo_proxima_ignicao[i+1] = (grau_pms - grau_avanco + (grau_entre_cada_cilindro * i+1) ) * tempo_cada_grau;      
     }
 }
 
