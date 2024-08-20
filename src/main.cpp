@@ -12,17 +12,22 @@
 #include <protecao.h>
 #include <decoder.h>
 #include <injecao.h>
+#include <ignicao.h>
 #include <timer.h>
 
 // Função para calcular a RPM
 void calcularRPM() {
   unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
   qtd_revolucoes = 0;  // Reseta o contador de revoluções
-  unsigned long tempo_atual_local = tempo_atual;  // Captura o valor atual de tempo
+  unsigned long tempo_atual_local = micros();  // Captura o valor atual de tempo
   if (revolucoes > 0) {
     tempo_final_rpm = tempo_atual_local;
     volatile unsigned long delta = tempo_final_rpm - tempo_inicial_rpm;
-    rpm = (revolucoes * 60) / (float(delta) / 1000000);
+    if(local_rodafonica == 1){
+      rpm = (revolucoes * 60) / (float(delta) / 1000000) * 2;
+    }else{
+      rpm = (revolucoes * 60) / (float(delta) / 1000000);
+    } 
     tempo_inicial_rpm = tempo_final_rpm;
   }
 }
@@ -49,6 +54,7 @@ void setup(){
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
   initializeTimerOne(100);
+  // initializeTimerTwo(200);
   
   sei(); // Habilita interrupções globais
   // Imprime uma mensagem dependendo do microcontrolador
@@ -61,8 +67,7 @@ void setup(){
   #endif
 }
 void loop(){
-  calcularRPM();
-  
+   calcularRPM();
     qtd_loop++;
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
     // if(contador_leitura >=10){
