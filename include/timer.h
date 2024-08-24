@@ -258,7 +258,8 @@ if(++loop_timer >= qtd_cilindro){
 iniciar_dwell(i);
 ligar_injetor(i);
 desligar_dwell(i);
-desligar_injetor(i);  
+desligar_injetor(i); 
+
 }
 
 }

@@ -14,6 +14,7 @@
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
+#include <timer2.h>
 
 // Função para calcular a RPM
 void calcularRPM() {
@@ -53,7 +54,7 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
-  initializeTimerOne(100);
+  initializeTimerOne(200);
   // initializeTimerTwo(200);
   
   sei(); // Habilita interrupções globais
@@ -173,7 +174,25 @@ VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tp
               tps_anterior = valor_tps;
               tempo_anterior_aceleracao = micros();
           }           
+if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+for (int i = 0; i < qtd_cilindro; i++)
+{
+  if (grau_pms <= 120) {
+    if (grau_pms < 60 || rpm > 3000) {
+        ajuste_pms = 180;
+    }else{
+      ajuste_pms = 0;
+    } 
+  }else{
+    ajuste_pms = 0;
+  }
 
+calcula_grau_injetor(i);
+calcula_grau_ignicao(i);
+}
+
+
+}
     leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
