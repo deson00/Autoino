@@ -190,8 +190,6 @@ for (int i = 0; i < qtd_cilindro; i++)
 calcula_grau_injetor(i);
 calcula_grau_ignicao(i);
 }
-
-
 }
     leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
