@@ -1,25 +1,38 @@
+void calcula_enriquecimento_aceleracao(){
+ // Calcula a taxa de mudança do TPS (TPSDot)
+          if (micros() - tempo_anterior_aceleracao >= (unsigned long)intervalo_tempo_aceleracao * 1000) {
+              // Converte o intervalo para segundos
+              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0);
 
-int tps_anterior = 0;   // Variável para armazenar o valor anterior do sensor de TPS
-unsigned long previousMillis = 0;  // Variável para armazenar o tempo anterior de leitura do sensor
-const int intervalo_tempo_aceleracao = 500; // Intervalo de tempo para calcular a taxa de mudança do TPS (em milissegundos)
+              // Verifica se está ocorrendo uma aceleração ou desaceleração
+              if (tps_dot > tps_mudanca_minima) {
+                  // Interpolação linear para o enriquecimento de aceleração
+                  for (int i = 0; i < 5; i++) {
+                      if (tps_dot <= tps_dot_escala[i+1]) {
+                          // Calcula a interpolação linear
+                          float tps_dot_range = tps_dot_escala[i+1] - tps_dot_escala[i];
+                          float enrichment_range = enriquecimento_aceleracao[i+1] - enriquecimento_aceleracao[i];
+                          float proportion = (tps_dot - tps_dot_escala[i]) / tps_dot_range;
+                          tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[i] + (proportion * enrichment_range);
+                          break;
+                      }
+                  }
+                  tps_dot_porcentagem_desaceleracao = 0;
+                  tempo_ultima_mudanca = micros();
+              } else if (tps_dot < -tps_mudanca_minima) {
+                  tps_dot_porcentagem_desaceleracao = 5; // Pode ajustar conforme necessário
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tempo_ultima_mudanca = micros();
+              }
 
-  // Lê o valor do sensor de TPS
-  tpsValue = analogRead(pinTPS);
+              // Reseta os valores após a duração do enriquecimento
+              if (micros() - tempo_ultima_mudanca >= (unsigned long)duracao_enriquecimento * 1000) {
+                  tps_dot_porcentagem_aceleracao = 0;
+                  tps_dot_porcentagem_desaceleracao = 0;
+              }
 
-  // Converte o valor lido do sensor de TPS para uma porcentagem (0% a 100%)
-  float tpsPercentage = (tpsValue / 1023.0) * 100.0;
-
-  // Calcula a taxa de mudança do TPS (TPSDot)
-  if (tempo_atual - previousMillis >= intervalo_tempo_aceleracao) {
-    // Calcula a diferença entre os valores atuais e anteriores do TPS em porcentagem
-    float tpsDiffPercentage = abs(tpsPercentage - ((tps_anterior / 1023.0) * 100.0));
-    // Calcula a taxa de mudança do TPS (TPSDot) em porcentagem por segundo
-    float tpsDotPercentage = tpsDiffPercentage / (intervalo_tempo_aceleracao / 1000.0); // Converte o intervalo para segundos
-    // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
-    Serial.print("TPSDot: ");
-    Serial.print(tpsDotPercentage);
-    Serial.println("%/s");
-    // Atualiza o valor anterior do TPS e o tempo de leitura
-    tps_anterior = tpsValue;
-    previousMillis = tempo_atual;
-  }
+              // Atualiza o valor anterior do TPS e o tempo de leitura
+              tps_anterior = valor_tps;
+              tempo_anterior_aceleracao = micros();
+          }       
+}
