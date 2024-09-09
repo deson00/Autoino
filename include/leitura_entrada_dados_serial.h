@@ -57,6 +57,9 @@ void leitura_entrada_dados_serial()
     if (data == 'p') {// configuração TPS
       tipo_vetor_configuracao_tps = 1;
     }
+    if (data == 'q') {// configuração MAP
+      tipo_vetor_configuracao_map = 1;
+    }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
        gravar_dados_eeprom_tabela_ve_map_rpm();
@@ -207,6 +210,13 @@ void leitura_entrada_dados_serial()
           valor_tps_maximo = values[1];
           gravar_dados_eeprom_configuracao_tps();
           tipo_vetor_configuracao_tps = 0;
+      }
+      if (tipo_vetor_configuracao_map == 1){
+          valor_map_tipo = values[0];
+          valor_map_minimo = values[1];
+          valor_map_maximo = values[2];
+          gravar_dados_eeprom_configuracao_map();
+          tipo_vetor_configuracao_map = 0;
       }
       index = 0; // reinicia índice do vetor
     }

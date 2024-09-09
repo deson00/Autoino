@@ -156,6 +156,20 @@ void gravar_dados_eeprom_configuracao_tps() {
     EEPROM.update(endereco++, valor_tps_maximo & 0xFF);        // Byte menos significativo
     EEPROM.update(endereco++, (valor_tps_maximo >> 8) & 0xFF); // Byte mais significativo
 }
+#include <EEPROM.h>
+
+void gravar_dados_eeprom_configuracao_map() {
+    int endereco = 804; // Inicializa o endereço de memória
+    // Gravar o valor do tipo de MAP (1 byte)
+    EEPROM.update(endereco++, valor_map_tipo);
+    // Gravar o valor mínimo do MAP (2 bytes)
+    EEPROM.update(endereco++, valor_map_minimo & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (valor_map_minimo >> 8) & 0xFF); // Byte mais significativo
+    // Gravar o valor máximo do MAP (2 bytes)
+    EEPROM.update(endereco++, valor_map_maximo & 0xFF);        // Byte menos significativo
+    EEPROM.update(endereco++, (valor_map_maximo >> 8) & 0xFF); // Byte mais significativo
+}
+
 
 
 
