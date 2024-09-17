@@ -14,6 +14,8 @@
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
+#include <timer2.h>
+#include <enriquecimento_aceleracao.h>
 
 // Função para calcular a RPM
 void calcularRPM() {
@@ -53,7 +55,7 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
-  initializeTimerOne(100);
+  initializeTimerOne(200);
   // initializeTimerTwo(200);
   
   sei(); // Habilita interrupções globais
@@ -134,46 +136,28 @@ VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tp
           //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + tempo_abertura_injetor;
           // Calcula o tempo de injeção ajustado
           int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
+          calcula_enriquecimento_aceleracao();
           int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_percentual;
           // tempo_atual = micros();
-          // Calcula a taxa de mudança do TPS (TPSDot)
-          if (micros() - tempo_anterior_aceleracao >= (unsigned long)intervalo_tempo_aceleracao * 1000) {
-              // Converte o intervalo para segundos
-              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0);
+             
+if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+for (int i = 0; i < qtd_cilindro; i++)
+{
+  if (grau_pms <= 120) {
+    if (grau_pms < 60 || rpm > 3000) {
+        ajuste_pms = 180;
+    }else{
+      ajuste_pms = 0;
+    } 
+  }else{
+    ajuste_pms = 0;
+  }
 
-              // Verifica se está ocorrendo uma aceleração ou desaceleração
-              if (tps_dot > tps_mudanca_minima) {
-                  // Interpolação linear para o enriquecimento de aceleração
-                  for (int i = 0; i < 5; i++) {
-                      if (tps_dot <= tps_dot_escala[i+1]) {
-                          // Calcula a interpolação linear
-                          float tps_dot_range = tps_dot_escala[i+1] - tps_dot_escala[i];
-                          float enrichment_range = enriquecimento_aceleracao[i+1] - enriquecimento_aceleracao[i];
-                          float proportion = (tps_dot - tps_dot_escala[i]) / tps_dot_range;
-                          tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[i] + (proportion * enrichment_range);
-                          break;
-                      }
-                  }
-                  tps_dot_porcentagem_desaceleracao = 0;
-                  tempo_ultima_mudanca = micros();
-              } else if (tps_dot < -tps_mudanca_minima) {
-                  tps_dot_porcentagem_desaceleracao = 5; // Pode ajustar conforme necessário
-                  tps_dot_porcentagem_aceleracao = 0;
-                  tempo_ultima_mudanca = micros();
-              }
-
-              // Reseta os valores após a duração do enriquecimento
-              if (micros() - tempo_ultima_mudanca >= (unsigned long)duracao_enriquecimento * 1000) {
-                  tps_dot_porcentagem_aceleracao = 0;
-                  tps_dot_porcentagem_desaceleracao = 0;
-              }
-
-              // Atualiza o valor anterior do TPS e o tempo de leitura
-              tps_anterior = valor_tps;
-              tempo_anterior_aceleracao = micros();
-          }           
-
+calcula_grau_injetor(i);
+calcula_grau_ignicao(i);
+}
+}
     leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     

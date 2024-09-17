@@ -11,14 +11,15 @@ float tempo_enriquecimento_gama(float valor_referencia, float correcao_aquecimen
  
     return valor_referencia * enriquecimento_gama;
 }
-
-void ligar_injetor(int i){
- if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+void calcula_grau_injetor(int i){
+if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
+      tempo_proxima_injecao[i] = ((ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau) - (grau_fechamento_injetor * tempo_cada_grau);
     }
-    // tempo_atual = tempo_atual;
+}
+void ligar_injetor(int i){
+    tempo_atual = micros();
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
+        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] ) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
@@ -26,9 +27,6 @@ void ligar_injetor(int i){
           setPinHigh(injecao_pins[j]);
           }
           captura_req_fuel[i] = true;
-          //tempo_final_codigo = tempo_atual; // Registra o tempo final  
-          //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-          // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
           tempo_percorrido_inj[i] = tempo_atual;
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
@@ -36,9 +34,6 @@ void ligar_injetor(int i){
           captura_req_fuel[i+1] = false;
         }else{
           captura_req_fuel[i] = true;
-          //tempo_final_codigo = tempo_atual; // Registra o tempo final  
-          //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-          // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
           tempo_percorrido_inj[i] = tempo_atual;
           // digitalWrite(injecao_pins[i], 1);
           setPinHigh(injecao_pins[i]);
@@ -63,5 +58,5 @@ if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
           }
           // digitalWrite(injecao_pins[i], LOW);
           setPinLow(injecao_pins[i]);     
-        }
+        }    
 }

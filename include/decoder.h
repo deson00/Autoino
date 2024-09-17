@@ -1,14 +1,12 @@
-void leitor_sensor_roda_fonica()
-{
-  noInterrupts();
-  // tempo_inicial_codigo = micros(); // Registra o tempo inicial
+void decoder_roda_fonica_padrao(){//roda fonica padrao com quantidade de dente - dente faltante
+ // tempo_inicial_codigo = micros(); // Registra o tempo inicial
   qtd_leitura++;
   tempo_atual = micros() ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
   //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
   // verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
-  verifica_falha = (tempo_dente_anterior[leitura] >> 1) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
-
+  // verifica_falha = (tempo_dente_anterior[leitura] >> 1) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
+  verifica_falha = (tempo_dente_anterior[leitura] >> 1) + tempo_dente_anterior[leitura];
   if (inicia_tempo_sensor_roda_fonica){
     tempo_anterior = tempo_atual;
     tempo_dente_anterior[0] = tempo_anterior;
@@ -25,8 +23,10 @@ void leitor_sensor_roda_fonica()
   //Serial.print("|");
   //Serial.print(qtd_leitura);
   // if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4)))) //linha original 
-if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante << 4))))
+// if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante << 4))))
+if (verifica_falha < intervalo_tempo_entre_dente)
   {
+    
     if (qtd_voltas == 1){
       tempo_final_volta_completa = tempo_atual;
       tempo_total_volta_completa = (tempo_final_volta_completa - tempo_inicio_volta_completa);
@@ -61,6 +61,7 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
     inj_acionado[0] = false;
     captura_req_fuel[0] = false; 
     }
+
   }else{
     if(rpm < rpm_partida){
     tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
@@ -71,5 +72,15 @@ if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente
   tempo_anterior = tempo_atual;
   // tempo_final_codigo = micros(); // Registra o tempo final
   // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
+}
+void leitor_sensor_roda_fonica()
+{
+//  tempo_inicial_codigo = micros(); // Registra o tempo inicial 
+  noInterrupts();
+   TIMSK1 &= ~_BV(TOIE1);  // Desativa a interrupção do Timer1
+ decoder_roda_fonica_padrao();
+ TIMSK1 |= _BV(TOIE1);   // Reativa a interrupção do Timer1
   interrupts();
+// tempo_final_codigo = micros(); // Registra o tempo final  
+// tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;   
 }

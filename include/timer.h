@@ -254,11 +254,13 @@ if(++loop_timer >= qtd_cilindro){
   }else{
     ajuste_pms = 0;
   }
-
+// calcula_grau_injetor(i);
+// calcula_grau_ignicao(i);
 iniciar_dwell(i);
 ligar_injetor(i);
 desligar_dwell(i);
-desligar_injetor(i);  
+desligar_injetor(i); 
+
 }
 
 }

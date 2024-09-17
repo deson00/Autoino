@@ -57,6 +57,9 @@ void leitura_entrada_dados_serial()
     if (data == 'p') {// configuração TPS
       tipo_vetor_configuracao_tps = 1;
     }
+    if (data == 'q') {// configuração MAP
+      tipo_vetor_configuracao_map = 1;
+    }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
        gravar_dados_eeprom_tabela_ve_map_rpm();
@@ -208,6 +211,13 @@ void leitura_entrada_dados_serial()
           gravar_dados_eeprom_configuracao_tps();
           tipo_vetor_configuracao_tps = 0;
       }
+      if (tipo_vetor_configuracao_map == 1){
+          valor_map_tipo = values[0];
+          valor_map_minimo = values[1];
+          valor_map_maximo = values[2];
+          gravar_dados_eeprom_configuracao_map();
+          tipo_vetor_configuracao_map = 0;
+      }
       index = 0; // reinicia índice do vetor
     }
     else if (isdigit(data)){                                
@@ -216,7 +226,7 @@ void leitura_entrada_dados_serial()
         buffer[sizeof(buffer) - 1] = '\0'; // adiciona um terminador de string para evitar um buffer overflow
       }
     }
-    else if (data == ',' && strlen(buffer) > 0){                                 
+    else if ((data == ',' || data == ';') && strlen(buffer) > 0){                                 
       buffer[strlen(buffer)] = '\0';  // adiciona um terminador de string para converter o buffer em uma string válida
       //values[index++] = atoi(buffer); // adiciona ao vetor
       //Substituído por strtol
@@ -232,8 +242,8 @@ void leitura_entrada_dados_serial()
       }
       if (tipo_vetor_matriz_avanco){
         if (indice_matrix_entrada_dados_seriala < 16) {
-          if (indice_matrix_entrada_dados_serialb < 15) {
             matriz_avanco[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
+          if (indice_matrix_entrada_dados_serialb < 15) {
             indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
           } else {
             indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha
@@ -252,8 +262,8 @@ void leitura_entrada_dados_serial()
       }
       if (tipo_vetor_matriz_ve){
         if (indice_matrix_entrada_dados_seriala < 16) {
-          if (indice_matrix_entrada_dados_serialb < 15) {
             matriz_ve[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
+          if (indice_matrix_entrada_dados_serialb < 15) {
             indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
           } else {
             indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha

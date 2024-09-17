@@ -41,5 +41,5 @@ ISR(TIMER2_COMPA_vect) {
 }
 
 void timerCallback2() {
-//funçoes de controle aqui
+//funçoes de controel
 }
