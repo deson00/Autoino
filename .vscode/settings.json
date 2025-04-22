@@ -4,7 +4,7 @@
   "C_Cpp_Runner.debuggerPath": "C:/Users/byllt/.platformio/packages/toolchain-atmelavr/bin/avr-gdb.exe",
   "C_Cpp_Runner.cStandard": "gnu11",
   "C_Cpp_Runner.cppStandard": "gnu++11",
-  "C_Cpp_Runner.msvcBatchPath": "",
+  "C_Cpp_Runner.msvcBatchPath": "C:/Program Files/Microsoft Visual Studio/VR_NR/Community/VC/Auxiliary/Build/vcvarsall.bat",
   "C_Cpp_Runner.useMsvc": false,
   "C_Cpp_Runner.warnings": [
     "-Wall",

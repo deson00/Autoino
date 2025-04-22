@@ -55,7 +55,7 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
-  initializeTimerOne(200);
+  initializeTimerOne(100);
   // initializeTimerTwo(200);
   
   sei(); // Habilita interrupções globais
@@ -133,31 +133,32 @@ void loop(){
 
 VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
  //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
-          //tempo_injecao = tempo_pulso_ve(REQ_FUEL/1000, valor_map, VE) + tempo_abertura_injetor;
           // Calcula o tempo de injeção ajustado
-          int tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, valor_map, VE);
+          float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
           calcula_enriquecimento_aceleracao();
-          int incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
+          unsigned long incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_percentual;
+          // tempo_injecao = round(tempo_pulso);
+          
           // tempo_atual = micros();
              
-if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
-for (int i = 0; i < qtd_cilindro; i++)
-{
-  if (grau_pms <= 120) {
-    if (grau_pms < 60 || rpm > 3000) {
-        ajuste_pms = 180;
-    }else{
-      ajuste_pms = 0;
-    } 
-  }else{
-    ajuste_pms = 0;
-  }
+// if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0 ){ // 2 para virabrequinho e 1 para comando, sequencial 1 e semi 0
+// for (int i = 0; i < qtd_cilindro; i++)
+// {
+//   if (grau_pms <= 120) {
+//     if (grau_pms < 60 || rpm > 3000) {
+//         ajuste_pms = 180;
+//     }else{
+//       ajuste_pms = 0;
+//     } 
+//   }else{
+//     ajuste_pms = 0;
+//   }
 
-calcula_grau_injetor(i);
-calcula_grau_ignicao(i);
-}
-}
+// calcula_grau_injetor(i);
+// calcula_grau_ignicao(i);
+// }
+// }
     leitura_entrada_dados_serial(); 
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
@@ -173,7 +174,10 @@ calcula_grau_ignicao(i);
    ultima_execucao = millis();
    qtd_loop = 0;
   // Serial.print(tempo_decorrido_codigo);
-  // Serial.print(",");
+  // Serial.println(REQ_FUEL);
+  // Serial.println(dreq_fuel);
+  // Serial.println(tempo_injecao);
+
   // Serial.println(rpm_anterior);
   }
   //  tempo_final_codigo = micros(); // Registra o tempo final  

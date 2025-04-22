@@ -1,5 +1,5 @@
 // Função para calcular a largura do pulso de injeção
-float tempo_pulso_ve(float REQ_FUEL, float MAP, float VE) {
+float tempo_pulso_ve(float REQ_FUEL, float VE) {
     const float tempo_pulso_ve = REQ_FUEL * (VE / 100.0);
     return tempo_pulso_ve * 1000ul;
 }
@@ -23,8 +23,8 @@ void ligar_injetor(int i){
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
-          // digitalWrite(injecao_pins[j], 1);
-          setPinHigh(injecao_pins[j]);
+          digitalWrite(injecao_pins[j], 1);
+          //setPinHigh(injecao_pins[j]);
           }
           captura_req_fuel[i] = true;
           tempo_percorrido_inj[i] = tempo_atual;
@@ -35,8 +35,8 @@ void ligar_injetor(int i){
         }else{
           captura_req_fuel[i] = true;
           tempo_percorrido_inj[i] = tempo_atual;
-          // digitalWrite(injecao_pins[i], 1);
-          setPinHigh(injecao_pins[i]);
+          digitalWrite(injecao_pins[i], 1);
+          //setPinHigh(injecao_pins[i]);
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
@@ -48,15 +48,19 @@ void ligar_injetor(int i){
 }
 
 void desligar_injetor(int i){
-if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
+  tempo_atual = micros() ;
+  tempo_atual += 1200;
+  if (captura_req_fuel[i] == true && inj_acionado[i] == true){
+    if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
           captura_req_fuel[i] = false;
           if (tipo_acionamento_injetor == 1){
             for (int j = 0; j < numero_injetor; j++){
-              // digitalWrite(injecao_pins[j], LOW);
-              setPinLow(injecao_pins[j]);
+              digitalWrite(injecao_pins[j], LOW);
+              // setPinLow(injecao_pins[j]);
             }
           }
-          // digitalWrite(injecao_pins[i], LOW);
-          setPinLow(injecao_pins[i]);     
-        }    
+          digitalWrite(injecao_pins[i], LOW);
+          // setPinLow(injecao_pins[i]);     
+    }    
+  }
 }
