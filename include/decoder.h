@@ -1,3 +1,7 @@
+#define NUM_INTERVALOS_MEDIA 5
+unsigned long intervalos[NUM_INTERVALOS_MEDIA];
+static byte indice_intervalo = 0;
+static unsigned long soma_intervalos = 0;
 void decoder_roda_fonica_padrao(){//roda fonica padrao com quantidade de dente - dente faltante
  // tempo_inicial_codigo = micros(); // Registra o tempo inicial
   qtd_leitura++;
@@ -24,7 +28,7 @@ void decoder_roda_fonica_padrao(){//roda fonica padrao com quantidade de dente -
   //Serial.print(qtd_leitura);
   // if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4)))) //linha original 
 // if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante << 4))))
-if (verifica_falha < intervalo_tempo_entre_dente)
+if (intervalo_tempo_entre_dente > verifica_falha )
   {
     
     if (qtd_voltas == 1){
@@ -48,6 +52,7 @@ if (verifica_falha < intervalo_tempo_entre_dente)
    if ((qtd_leitura != (qtd_dente - qtd_dente_faltante))) {
       if(++qtd_perda_sincronia >=255){
         qtd_perda_sincronia = 0;
+        revolucoes_sincronizada = 0;
       }
     }else{
       revolucoes_sincronizada++;
@@ -63,9 +68,22 @@ if (verifica_falha < intervalo_tempo_entre_dente)
     }
 
   }else{
-    if(rpm < rpm_partida){
-    tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+    // Estimativa do tempo por grau em baixa rotação usando a média dos intervalos
+    if (rpm < rpm_partida && qtd_leitura > NUM_INTERVALOS_MEDIA) {
+      // Adiciona o intervalo atual para o cálculo da média
+      soma_intervalos -= intervalos[indice_intervalo];
+      intervalos[indice_intervalo] = intervalo_tempo_entre_dente;
+      soma_intervalos += intervalos[indice_intervalo];
+      indice_intervalo = (indice_intervalo + 1) % NUM_INTERVALOS_MEDIA;
+
+      float intervalo_medio = (float)soma_intervalos / NUM_INTERVALOS_MEDIA;
+      tempo_cada_grau = intervalo_medio / (360.0 / qtd_dente);
+    } else if (rpm >= rpm_partida && qtd_voltas == 1) {
+      tempo_cada_grau = tempo_total_volta_completa * 0.00277777778;
     }
+    // if(rpm < rpm_partida){
+    // tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+    // }
     //enviar_byte_serial(tempo_cada_grau / 1000, 1);
   }
   // posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;

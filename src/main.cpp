@@ -18,6 +18,19 @@
 #include <enriquecimento_aceleracao.h>
 
 // Função para calcular a RPM
+// void calcularRPM() {
+//   static unsigned long last_rpm_calculation_time = 0;
+//   unsigned long current_time = millis();
+//   unsigned long time_since_last_calculation = current_time - last_rpm_calculation_time;
+
+//   // Calcule o RPM somente após uma volta completa ser detectada
+//   if (qtd_voltas == 0 && tempo_total_volta_completa > 0 && time_since_last_calculation > 100) { // Adiciona um pequeno debounce
+//       // tempo_total_volta_completa está em microssegundos
+//       rpm = 60000000.0 / tempo_total_volta_completa; // Converte microssegundos por volta para RPM
+//       tempo_total_volta_completa = 0; // Reseta para a próxima volta
+//       last_rpm_calculation_time = current_time;
+//   }
+// }
 void calcularRPM() {
   unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
   qtd_revolucoes = 0;  // Reseta o contador de revoluções
