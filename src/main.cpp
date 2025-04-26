@@ -151,6 +151,10 @@ VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tp
           calcula_enriquecimento_aceleracao();
           unsigned long incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_percentual;
+          if(rpm < rpm_partida){
+            // Aplicando o acréscimo de injeção na partida
+            tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
+          }
           // tempo_injecao = round(tempo_pulso);
           
           // tempo_atual = micros();
