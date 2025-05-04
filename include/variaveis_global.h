@@ -16,6 +16,7 @@ byte grau_avanco_partida = 1; // avanço definido apenas na partida
 byte grau_entre_cada_cilindro = 360 / qtd_cilindro;
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
+volatile unsigned int qtd_leitura_media = 0;
 byte qtd_leitura = 0;
 byte referencia_leitura_ignicao = 1;//map 1 e tps 2
 byte referencia_leitura_injecao = 1;//map 1 e tps 2

@@ -1,4 +1,4 @@
-#define NUM_INTERVALOS_MEDIA 2
+#define NUM_INTERVALOS_MEDIA 5
 unsigned long intervalos[NUM_INTERVALOS_MEDIA];
 static byte indice_intervalo = 0;
 static unsigned long soma_intervalos = 0;
@@ -67,9 +67,10 @@ if (intervalo_tempo_entre_dente > verifica_falha ){
     }
 
   }else{
+    qtd_leitura_media++;
     // Detecção de um dente regular
     // Cálculo do tempo por grau baseado na média dos intervalos em baixa rotação
-    if (rpm < rpm_partida && qtd_leitura > NUM_INTERVALOS_MEDIA) {
+    if (rpm < rpm_partida && qtd_leitura_media > NUM_INTERVALOS_MEDIA) {
       soma_intervalos -= intervalos[indice_intervalo];
       intervalos[indice_intervalo] = intervalo_tempo_entre_dente;
       soma_intervalos += intervalos[indice_intervalo];
@@ -77,9 +78,7 @@ if (intervalo_tempo_entre_dente > verifica_falha ){
       float intervalo_medio = (float)soma_intervalos / NUM_INTERVALOS_MEDIA;
       tempo_cada_grau = intervalo_medio * qtd_dente / 360.0;
       
-    } else if (rpm >= rpm_partida && qtd_voltas == 1) {
-      tempo_cada_grau = tempo_total_volta_completa * 0.00277777778;
-    }
+    } 
     
     // if(rpm < rpm_partida){
     // tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
@@ -87,17 +86,7 @@ if (intervalo_tempo_entre_dente > verifica_falha ){
     // enviar_byte_serial(tempo_cada_grau / 1000, 1);
   }
   posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
-  
-    for (int i = 0; i < qtd_cilindro/2; i++)
-    {
-      tempo_atual_proxima_ignicao[i] = tempo_atual - (posicao_atual_sensor * tempo_cada_grau);
-    }
-    for (int i = 0; i > qtd_cilindro/2; i++)
-    {
-      tempo_atual_proxima_ignicao[i] = tempo_atual - (posicao_atual_sensor * tempo_cada_grau);
-    }
-    
-      
+
   // enviar_byte_serial(posicao_atual_sensor, 1);
   tempo_anterior = tempo_atual;
   // tempo_final_codigo = micros(); // Registra o tempo final
