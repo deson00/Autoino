@@ -16,6 +16,8 @@
 #include <timer.h>
 #include <timer2.h>
 #include <enriquecimento_aceleracao.h>
+#include <enriquecimento_gama.h>
+#include <enriquecimento_temperatura.h>
 
 // Função para calcular a RPM
 // void calcularRPM() {
@@ -144,13 +146,14 @@ void loop(){
       status_corte = 0;
     }
 
-VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
- //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
+          VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
           float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
           calcula_enriquecimento_aceleracao();
           unsigned long incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_percentual;
+          //calcular_tempo_enriquecimento_gama(tempo_base_injecao, correcao_aquecimento, correcao_O2, correcao_temperatura_ar, correcao_barometrica) 
+          tempo_injecao = enriquecimento_gama(tempo_injecao, enriquecimento_temperatura(temperatura_motor, temperatura_trabalho, correcao_maxima_temperatura), 100, 100, 100);   
           if(rpm < rpm_partida){
             // Aplicando o acréscimo de injeção na partida
             tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
