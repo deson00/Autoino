@@ -1,7 +1,3 @@
-#define NUM_INTERVALOS_MEDIA 5
-unsigned long intervalos[NUM_INTERVALOS_MEDIA];
-static byte indice_intervalo = 0;
-static unsigned long soma_intervalos = 0;
 void decoder_roda_fonica_padrao(){//roda fonica padrao com quantidade de dente - dente faltante
  // tempo_inicial_codigo = micros(); // Registra o tempo inicial
   qtd_leitura++;
@@ -28,7 +24,8 @@ void decoder_roda_fonica_padrao(){//roda fonica padrao com quantidade de dente -
   //Serial.print(qtd_leitura);
   // if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4)))) //linha original 
 // if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante << 4))))
-if (intervalo_tempo_entre_dente > verifica_falha ){
+if (verifica_falha < intervalo_tempo_entre_dente)
+  {
     
     if (qtd_voltas == 1){
       tempo_final_volta_completa = tempo_atual;
@@ -52,7 +49,6 @@ if (intervalo_tempo_entre_dente > verifica_falha ){
       if(++qtd_perda_sincronia >=255){
         qtd_perda_sincronia = 0;
       }
-      revolucoes_sincronizada = 0;
     }else{
       revolucoes_sincronizada++;
     }
@@ -67,27 +63,12 @@ if (intervalo_tempo_entre_dente > verifica_falha ){
     }
 
   }else{
-    qtd_leitura_media++;
-    // Detecção de um dente regular
-    // Cálculo do tempo por grau baseado na média dos intervalos em baixa rotação
-    if (rpm < rpm_partida && qtd_leitura_media > NUM_INTERVALOS_MEDIA) {
-      soma_intervalos -= intervalos[indice_intervalo];
-      intervalos[indice_intervalo] = intervalo_tempo_entre_dente;
-      soma_intervalos += intervalos[indice_intervalo];
-      indice_intervalo = (indice_intervalo + 1) % NUM_INTERVALOS_MEDIA;
-      float intervalo_medio = (float)soma_intervalos / NUM_INTERVALOS_MEDIA;
-      tempo_cada_grau = intervalo_medio * qtd_dente / 360.0;
-      
-    } 
-    
-    // if(rpm < rpm_partida){
-    // tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
-    // }
-    // enviar_byte_serial(tempo_cada_grau / 1000, 1);
+    if(rpm < rpm_partida){
+    tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+    }
+    //enviar_byte_serial(tempo_cada_grau / 1000, 1);
   }
-  posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
-
-  // enviar_byte_serial(posicao_atual_sensor, 1);
+  // posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;
   // tempo_final_codigo = micros(); // Registra o tempo final
   // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;

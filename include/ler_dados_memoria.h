@@ -1,3 +1,4 @@
+// Esta função envia os dados via serial no formato esperado
 void sendSerialString(const char* str) {
   while (*str) {
     Serial.write(*str++);
@@ -11,7 +12,11 @@ void sendSerialInt(int value) {
 }
 
 void ler_dados_memoria() {
+  // ========== PRIMEIRO: LER TODOS OS DADOS DA EEPROM ==========
+  ler_dados_eeprom(); // Esta chamada estava faltando!
+  // ========== TABELA IGNIÇÃO
   // Enviar o identificador de comando
+  // a) Vetor MAP/TPS ignição
   Serial.write(';');
   Serial.write('a');
   Serial.write(',');
@@ -19,20 +24,20 @@ void ler_dados_memoria() {
   // Enviar os valores do vetor_map_tps
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_map_tps[i]);
-    if (i < 16) {
+    
       Serial.write(',');
-    }
+    
   }
   Serial.write(';');
-
+  // b) Vetor RPM ignição 
   Serial.write('b');
   Serial.write(',');
   // vetor rpm
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_rpm[i]);
-    if (i < 16) {
+    
       Serial.write(',');
-    }
+    
   }
   Serial.write(';');
 
@@ -42,12 +47,15 @@ void ler_dados_memoria() {
   for (int i = 0; i < 16; i++) {
     for (int j = 0; j < 16; j++) {
       sendSerialInt(matriz_avanco[i][j]);
-      Serial.write(',');
+      
+        Serial.write(',');
+      
     }
   }
   Serial.write(';');
-
-  // dados configuração inicial
+  // ========== CONFIGURAÇÕES SISTEMA ==========
+    
+  // g) Configuração inicial
   Serial.write('g');
   Serial.write(',');
   sendSerialInt(tipo_ignicao);
@@ -64,7 +72,7 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
-  // dados configuração faisca
+  // j) Configuração faisca
   Serial.write('j');
   Serial.write(',');
   sendSerialInt(referencia_leitura_ignicao);
@@ -81,7 +89,7 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
-  // dados configuração dwell
+  // k) Configuração dwell
   Serial.write('k');
   Serial.write(',');
   sendSerialInt(dwell_partida);
@@ -90,7 +98,7 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
-  // dados configuração calibrate temperature sensor ctl
+  // l) Configuração sensor temperatura CLT
   Serial.write('l');
   Serial.write(','); // letra L minúsculo
   sendSerialInt(referencia_temperatura_clt1);
@@ -103,42 +111,48 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
-  //---------ve-------------//
+  // ========== TABELA VE ==========
+    
+  // d) Vetor MAP/TPS VE
   Serial.write('d');
   Serial.write(',');
   // vetor map ou tps da ve
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_map_tps_ve[i]);
-    if (i < 16) {
+    
       Serial.write(',');
-    }
+    
   }
   Serial.write(';');
-  
+
+  // e) Vetor RPM VE
   Serial.write('e');
   Serial.write(',');
   // vetor rpm da tabela ve
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_rpm_ve[i]);
-    if (i < 16) {
+    
       Serial.write(',');
-    }
+    
   }
   Serial.write(';');
   
-  // transforma matriz em vetor
+  // f) Matriz VE (como vetor linear)
   Serial.write('f');
   Serial.write(',');
   for (int i = 0; i < 16; i++) {
     for (int j = 0; j < 16; j++) {
       sendSerialInt(matriz_ve[i][j]);
-      Serial.write(',');
+      
+        Serial.write(',');
+      
     }
   }
   Serial.write(';');
-  //---------ve------------//  
-  
-  // dados configuração injeção 
+
+  // ========== CONFIGURAÇÕES INJEÇÃO E PROTEÇÃO ==========
+    
+  // m) Configuração injeção
   Serial.write('m');
   Serial.write(',');
   sendSerialInt(referencia_leitura_injecao);
@@ -169,7 +183,7 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
-  // dados configuração proteção e limites 
+  // n) Configuração proteção e limites 
   Serial.write('n');
   Serial.write(',');
   sendSerialInt(tipo_protecao);
@@ -188,7 +202,7 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
-    // Dados de configuração de enriquecimento na aceleração
+    // o) Enriquecimento na aceleração
     Serial.write('o');
     Serial.write(',');
     sendSerialInt(enriquecimento_aceleracao[0]);
@@ -227,7 +241,7 @@ void ler_dados_memoria() {
     Serial.write(',');
     Serial.write(';');
 
-  // dados configuração TPS 
+  // p) Configuração TPS
   Serial.write('p');
   Serial.write(',');
   sendSerialInt(valor_tps_minimo);
@@ -236,160 +250,15 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
+  // q) Configuração MAP
+    Serial.write('q');
+    Serial.write(',');
+    sendSerialInt(valor_map_tipo);
+    Serial.write(',');
+    sendSerialInt(valor_map_minimo);
+    Serial.write(',');
+    sendSerialInt(valor_map_maximo);
+    Serial.write(',');
+    Serial.write(';');
+
 }
-
-
-// void ler_dados_memoria(){
-//       Serial.print(";a,");
-//       // vetor map ou tps
-//       for (int  i = 0; i < 16; i++){
-//         Serial.print(vetor_map_tps[i]);
-//         Serial.print(",");
-//       }
-//       Serial.print(";");
-      
-//       Serial.print("b,");
-//       // vetor rpm
-//       for (int  i = 0; i < 16; i++){
-//         Serial.print(vetor_rpm[i]);
-//         Serial.print(",");
-//       }
-//       Serial.print(";");
-//       // transforma matriz em vetor
-//       Serial.print("c,");
-//         int k = 0;
-//         for (int i = 0; i < 16; i++){
-//           for (int j = 0; j < 16; j++){
-//             Serial.print(matriz_avanco[i][j]);
-//             Serial.print(",");
-//             k++;
-//           }
-//         }
-//         Serial.print(";");
-      
-//       // dados configuração inicial
-//       Serial.print("g,");
-//       Serial.print(tipo_ignicao);
-//       Serial.print(",");
-//       Serial.print(qtd_dente);
-//       Serial.print(",");
-//       Serial.print(local_rodafonica);
-//       Serial.print(",");
-//       Serial.print(qtd_dente_faltante);
-//       Serial.print(",");
-//       Serial.print(grau_pms);
-//       Serial.print(",");
-//       Serial.print(qtd_cilindro * local_rodafonica);
-//       Serial.print(",");
-//       Serial.print(";");
-
-//       // dados configuração faisca
-//       Serial.print("j,");
-//       Serial.print(referencia_leitura_ignicao);
-//       Serial.print(",");
-//       Serial.print(modo_ignicao);
-//       Serial.print(",");
-//       Serial.print(grau_avanco_partida);
-//       Serial.print(",");
-//       Serial.print(avanco_fixo);
-//       Serial.print(",");
-//       Serial.print(grau_avanco_fixo);
-//       Serial.print(",");
-//       Serial.print(tipo_sinal_bobina);
-//       Serial.print(",");
-//       Serial.print(";");
-
-//       // dados configuração dwell
-//       Serial.print("k,");
-//       Serial.print(dwell_partida);
-//       Serial.print(",");
-//       Serial.print(dwell_funcionamento);
-//       Serial.print(",");
-//       Serial.print(";");
-
-//       // dados configuração calibrate temperature sensor ctl
-//       Serial.print("l,");//letra L minusculo
-//       Serial.print(referencia_temperatura_clt1);
-//       Serial.print(",");
-//       Serial.print(referencia_resistencia_clt1);
-//       Serial.print(",");
-//       Serial.print(referencia_temperatura_clt2);
-//       Serial.print(",");
-//       Serial.print(referencia_resistencia_clt2);
-//       Serial.print(",");
-//       Serial.print(";");
-
-//       //---------ve-------------//
-//       Serial.print("d,");
-//       // vetor map ou tps da ve
-//       for (int  i = 0; i < 16; i++){
-//         Serial.print(vetor_map_tps_ve[i]);
-//         Serial.print(",");
-//       }
-//       Serial.print(";");
-//       Serial.print("e,");
-//       // vetor rpm da tabela ve
-//       for (int  i = 0; i < 16; i++){
-//         Serial.print(vetor_rpm_ve[i]);
-//         Serial.print(",");
-//       }
-//       Serial.print(";");
-//       // transforma matriz em vetor
-//       Serial.print("f,");
-//         k = 0;
-//         for (int i = 0; i < 16; i++){
-//           for (int j = 0; j < 16; j++){
-//             Serial.print(matriz_ve[i][j]);
-//             Serial.print(",");
-//             k++;
-//           }
-//         }
-//         Serial.print(";");
-//       //---------ve------------//  
-//       // dados configuração injeção 
-// Serial.print("m,");
-// Serial.print(referencia_leitura_injecao);
-// Serial.print(",");
-// Serial.print(tipo_motor);
-// Serial.print(",");
-// Serial.print(modo_injecao);
-// Serial.print(",");
-// Serial.print(emparelhar_injetor);
-// Serial.print(",");
-// Serial.print(deslocamento_motor);
-// Serial.print(",");
-// Serial.print(numero_cilindro_injecao);
-// Serial.print(",");
-// Serial.print(numero_injetor);
-// Serial.print(",");
-// Serial.print(numero_esguicho);
-// Serial.print(",");
-// Serial.print(tamanho_injetor);
-// Serial.print(",");
-// Serial.print(tipo_acionamento_injetor);
-// Serial.print(",");
-// Serial.print(tipo_combustivel);
-// Serial.print(",");
-// Serial.print(REQ_FUEL);
-// Serial.print(",");
-// Serial.print(dreq_fuel);
-// Serial.print(",");
-// Serial.print(";");
-// // dados configuração proteção e limites 
-// Serial.print("n,");
-// Serial.print(tipo_protecao);
-// Serial.print(",");
-// Serial.print(rpm_pre_corte);
-// Serial.print(",");
-// Serial.print(avanco_corte);
-// Serial.print(",");
-// Serial.print(tempo_corte);
-// Serial.print(",");
-// Serial.print(rpm_maximo_corte);
-// Serial.print(",");
-// Serial.print(numero_base_corte);
-// Serial.print(",");
-// Serial.print(qtd_corte);
-// Serial.print(",");
-// Serial.print(";");
-// }

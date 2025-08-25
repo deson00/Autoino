@@ -52,7 +52,7 @@ unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-unsigned int rpm_partida = 500;
+unsigned int rpm_partida = 200;
 byte ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
 // Declare as variáveis para controlar o estado do pino de saída
@@ -67,6 +67,8 @@ unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
 const int maximo_valores_recebido = 30; // tamanho máximo de dados recebido do vetor ou matriz
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
+int matriz_ve_count = 0;
+int matriz_avanco_count = 0;
 byte matriz_avanco[16][16];
 byte matriz_ve[16][16];
 byte matriz_lambda[16][16];
@@ -130,7 +132,7 @@ byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
 byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
 byte limite_injetor = 100; // 90% valor em porcentagem
-int tempo_abertura_injetor = 0;// Dead time, tempo que o injetor leva para abrir
+int tempo_abertura_injetor = 1000;// Dead time, tempo que o injetor leva para abrir
 int acrescimo_injecao_partida = 30;// valor de acrecimo da ve na partida em porcentagem 
 int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
 int REQ_FUEL = 10000; //em ms

@@ -10,7 +10,9 @@
 #include <envia_dados_tempo_real.h>
 #include <sensores.h>
 #include <protecao.h>
-#include <decoder.h>
+// #include <decoder.h>
+// #include <decoder_padrao.h>
+#include <decoder_padrao_melhorado.h>
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
@@ -50,7 +52,8 @@ void calcularRPM() {
 }
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
-  delay(1000);  
+  delay(1000);
+    
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
   pinMode(ign3, OUTPUT);
@@ -72,6 +75,18 @@ void setup(){
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
   initializeTimerOne(100);
   // initializeTimerTwo(200);
+   // Inicializa decoder melhorado
+  // inicializar_decoder_roda_fonica();
+  // inicializar_decoder_otimizado();
+  // Para começar com o original:
+// inicializar_decoder_roda_fonica();
+
+// Depois testar o otimizado:
+inicializar_decoder_otimizado();
+
+// Para alternar em tempo real:
+// usar_decoder_original();    // volta ao original
+// usar_decoder_otimizado();   // usa o melhorado
   
   sei(); // Habilita interrupções globais
   // Imprime uma mensagem dependendo do microcontrolador
