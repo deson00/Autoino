@@ -6,10 +6,10 @@ volatile uint32_t ultimo_tempo_interrupcao = 0;
 volatile uint16_t intervalo_dente_filtrado = 0;
 
 #define MIN_INTERVALO_DENTE_US 50        // Filtro anti-bounce mínimo
-#define MAX_INTERVALO_DENTE_US 50000     // Máximo para RPM muito baixo (~120 RPM)
+#define MAX_INTERVALO_DENTE_US 500000     // Máximo para RPM muito baixo (~120 RPM)
 #define FATOR_GAP_MINIMO 1.5             // Gap mínimo para detectar falha (1.5x)
 #define FATOR_GAP_MAXIMO 5.0             // Gap máximo válido (5x)
-#define MIN_SYNC_REVOLUCOES 3            // Revoluções mínimas para considerar sincronizado
+#define MIN_SYNC_REVOLUCOES 1            // Revoluções mínimas para considerar sincronizado
 #define TIMEOUT_SINCRONIA_MS 2000        // Timeout para perder sincronização
 
 // Filtro de média móvel para estabilizar intervalos

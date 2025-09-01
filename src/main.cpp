@@ -10,9 +10,8 @@
 #include <envia_dados_tempo_real.h>
 #include <sensores.h>
 #include <protecao.h>
-// #include <decoder.h>
-// #include <decoder_padrao.h>
-#include <decoder_padrao_melhorado.h>
+#include <decoder.h>
+// #include <decoder_padrao_melhorado.h>
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
@@ -34,6 +33,45 @@
 //       tempo_total_volta_completa = 0; // Reseta para a próxima volta
 //       last_rpm_calculation_time = current_time;
 //   }
+// }
+// void calcularRPM() {
+//     static unsigned long ultimo_calculo_rpm = 0;
+    
+//     // Calcula RPM em um intervalo regular, por exemplo, a cada 100ms
+//     if (micros() - ultimo_calculo_rpm > 100000) { 
+//         ultimo_calculo_rpm = micros();
+
+//         unsigned long revolucoes_local;
+//         unsigned long tempo_decorrido_local;
+        
+//         // --- TÉCNICA DE LEITURA SEGURA (SEM INTERRUPÇÕES DESLIGADAS) ---
+//         // Copia a variável 'qtd_revolucoes' até ter certeza que ela não mudou
+//         // durante a leitura. Isso evita a condição de corrida.
+//         do {
+//             revolucoes_local = qtd_revolucoes;
+//             tempo_decorrido_local = micros();
+//         } while (revolucoes_local != qtd_revolucoes);
+
+//         // Se o valor do loop foi o mesmo da interrupção, faz a cópia do tempo.
+//         tempo_decorrido_local = tempo_decorrido_local - tempo_inicial_rpm;
+//         tempo_inicial_rpm = micros();
+
+//         // Agora, com dados consistentes, faça o cálculo.
+//         if (revolucoes_local > 0) {
+//             float delta_segundos = (float)tempo_decorrido_local / 1000000.0;
+//             float rpm_calculado = (revolucoes_local * 60.0) / delta_segundos;
+            
+//             // Ajuste para roda no comando, se aplicável
+//             if (local_rodafonica == 1) {
+//                 rpm_calculado = rpm_calculado * 2; 
+//             }
+            
+//             // Filtro para estabilizar a leitura de RPM
+//             if (rpm_calculado < 10000) {
+//                  rpm = rpm_calculado;
+//             }
+//         }
+//     }
 // }
 void calcularRPM() {
   unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
@@ -82,7 +120,7 @@ void setup(){
 // inicializar_decoder_roda_fonica();
 
 // Depois testar o otimizado:
-inicializar_decoder_otimizado();
+// inicializar_decoder_otimizado();
 
 // Para alternar em tempo real:
 // usar_decoder_original();    // volta ao original
