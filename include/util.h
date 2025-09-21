@@ -83,3 +83,23 @@ void enviar_byte_serial(int valor, int tamanho) {
     Serial.write(byteAlto);
   }
 }
+
+// FUNÇÕES AUXILIARES PARA EEPROM
+void escrever_16bits_eeprom(int endereco, uint16_t valor) {
+    EEPROM.write(endereco, valor & 0xFF);        // LSB
+    EEPROM.write(endereco + 1, (valor >> 8) & 0xFF); // MSB
+}
+
+uint16_t ler_16bits_eeprom(int endereco) {
+    uint8_t lowByte = EEPROM.read(endereco);
+    uint8_t highByte = EEPROM.read(endereco + 1);
+    return (highByte << 8) | lowByte;
+}
+
+void escrever_8bits_eeprom(int endereco, uint8_t valor) {
+    EEPROM.write(endereco, valor);
+}
+
+uint8_t ler_8bits_eeprom(int endereco) {
+    return EEPROM.read(endereco);
+}

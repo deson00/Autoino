@@ -11,13 +11,68 @@
 #include <sensores.h>
 #include <protecao.h>
 #include <decoder.h>
+// #include <decoder_padrao_melhorado.h>
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
 #include <timer2.h>
 #include <enriquecimento_aceleracao.h>
+#include <enriquecimento_gama.h>
+#include <enriquecimento_temperatura.h>
 
 // Função para calcular a RPM
+// void calcularRPM() {
+//   static unsigned long last_rpm_calculation_time = 0;
+//   unsigned long current_time = millis();
+//   unsigned long time_since_last_calculation = current_time - last_rpm_calculation_time;
+
+//   // Calcule o RPM somente após uma volta completa ser detectada
+//   if (qtd_voltas == 0 && tempo_total_volta_completa > 0 && time_since_last_calculation > 100) { // Adiciona um pequeno debounce
+//       // tempo_total_volta_completa está em microssegundos
+//       rpm = 60000000.0 / tempo_total_volta_completa; // Converte microssegundos por volta para RPM
+//       tempo_total_volta_completa = 0; // Reseta para a próxima volta
+//       last_rpm_calculation_time = current_time;
+//   }
+// }
+// void calcularRPM() {
+//     static unsigned long ultimo_calculo_rpm = 0;
+    
+//     // Calcula RPM em um intervalo regular, por exemplo, a cada 100ms
+//     if (micros() - ultimo_calculo_rpm > 100000) { 
+//         ultimo_calculo_rpm = micros();
+
+//         unsigned long revolucoes_local;
+//         unsigned long tempo_decorrido_local;
+        
+//         // --- TÉCNICA DE LEITURA SEGURA (SEM INTERRUPÇÕES DESLIGADAS) ---
+//         // Copia a variável 'qtd_revolucoes' até ter certeza que ela não mudou
+//         // durante a leitura. Isso evita a condição de corrida.
+//         do {
+//             revolucoes_local = qtd_revolucoes;
+//             tempo_decorrido_local = micros();
+//         } while (revolucoes_local != qtd_revolucoes);
+
+//         // Se o valor do loop foi o mesmo da interrupção, faz a cópia do tempo.
+//         tempo_decorrido_local = tempo_decorrido_local - tempo_inicial_rpm;
+//         tempo_inicial_rpm = micros();
+
+//         // Agora, com dados consistentes, faça o cálculo.
+//         if (revolucoes_local > 0) {
+//             float delta_segundos = (float)tempo_decorrido_local / 1000000.0;
+//             float rpm_calculado = (revolucoes_local * 60.0) / delta_segundos;
+            
+//             // Ajuste para roda no comando, se aplicável
+//             if (local_rodafonica == 1) {
+//                 rpm_calculado = rpm_calculado * 2; 
+//             }
+            
+//             // Filtro para estabilizar a leitura de RPM
+//             if (rpm_calculado < 10000) {
+//                  rpm = rpm_calculado;
+//             }
+//         }
+//     }
+// }
 void calcularRPM() {
   unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
   qtd_revolucoes = 0;  // Reseta o contador de revoluções
@@ -35,7 +90,8 @@ void calcularRPM() {
 }
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
-  delay(1000);  
+  delay(1000);
+    
   pinMode(ign1, OUTPUT);
   pinMode(ign2, OUTPUT);
   pinMode(ign3, OUTPUT);
@@ -57,6 +113,18 @@ void setup(){
   // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
   initializeTimerOne(100);
   // initializeTimerTwo(200);
+   // Inicializa decoder melhorado
+  // inicializar_decoder_roda_fonica();
+  // inicializar_decoder_otimizado();
+  // Para começar com o original:
+// inicializar_decoder_roda_fonica();
+
+// Depois testar o otimizado:
+// inicializar_decoder_otimizado();
+
+// Para alternar em tempo real:
+// usar_decoder_original();    // volta ao original
+// usar_decoder_otimizado();   // usa o melhorado
   
   sei(); // Habilita interrupções globais
   // Imprime uma mensagem dependendo do microcontrolador
@@ -131,13 +199,18 @@ void loop(){
       status_corte = 0;
     }
 
-VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
- //calcular_tempo_enriquecimento_gama(valor_referencia + 100, correcao_aquecimento + 100, correcao_O2 + 100, correcao_temperatura_ar + 100, correcao_barometrica + 100);//100 equivale a sem mudanças
+          VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
           float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
           calcula_enriquecimento_aceleracao();
           unsigned long incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
           tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_percentual;
+          //calcular_tempo_enriquecimento_gama(tempo_base_injecao, correcao_aquecimento, correcao_O2, correcao_temperatura_ar, correcao_barometrica) 
+          tempo_injecao = enriquecimento_gama(tempo_injecao, enriquecimento_temperatura(temperatura_motor, temperatura_trabalho, correcao_maxima_temperatura), 100, 100, 100);   
+          if(rpm < rpm_partida){
+            // Aplicando o acréscimo de injeção na partida
+            tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
+          }
           // tempo_injecao = round(tempo_pulso);
           
           // tempo_atual = micros();

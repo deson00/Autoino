@@ -1,8 +1,10 @@
 //função de leitura dos dados na porta serial
 void leitura_entrada_dados_serial()
 {
-  if (Serial.available() > 0){
+  while (Serial.available() > 0){
     char data = Serial.read();
+    // Pequeno delay para estabilizar
+    delayMicroseconds(100);
     if (data == 'a'){//entrada de dados do vetor map ou tps
       tipo_vetor_map_tps_avanco = 1;
       indice_vetor_entrada_dados_serial = 0;
@@ -12,15 +14,22 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'c'){//entrada de dados do da matriz em vetor
       tipo_vetor_matriz_avanco = 1;
+      indice_matrix_entrada_dados_seriala = 0;
+      indice_matrix_entrada_dados_serialb = 0;
     }
     if (data == 'd'){// entrada vetor map ou tps para a tabela ve
       tipo_vetor_map_tps_ve = 1;
+      indice_vetor_entrada_dados_serial = 0;
     }
     if (data == 'e'){//entrada vetor rpm para a tabela ve
       tipo_vetor_rpm_ve = 1;
     }
     if (data == 'f'){//entrada da matriz de valores para a tabela ve
       tipo_vetor_matriz_ve = 1;  
+      indice_matrix_entrada_dados_seriala = 0;
+      indice_matrix_entrada_dados_serialb = 0;
+      // Reset do contador de valores para esta matriz específica
+      matriz_ve_count = 0;
     }
     if (data == 'g'){//grava configuração inicial
       tipo_vetor_configuracao_inicial = 1;
@@ -28,6 +37,7 @@ void leitura_entrada_dados_serial()
      if (data == 'h'){//retorna dados da ecu
         //ler_dados_eeprom();
         ler_dados_memoria();
+        // Função para verificar integridade da matriz
     }
     if (data == 'i') {
      if(status_dados_tempo_real){
@@ -92,6 +102,7 @@ void leitura_entrada_dados_serial()
         indice_matrix_entrada_dados_seriala = 0; // Índice usado para rastrear a linha atual na matriz
         indice_matrix_entrada_dados_serialb = 0; // Índice usado para rastrear a coluna atual na matriz
         tipo_vetor_matriz_avanco = 0;
+        matriz_avanco_count = 0;
       }
       if (tipo_vetor_map_tps_ve){
         // for (int i = 0; i < 16; i++){
@@ -120,6 +131,7 @@ void leitura_entrada_dados_serial()
         indice_matrix_entrada_dados_seriala = 0; // Índice usado para rastrear a linha atual na matriz
         indice_matrix_entrada_dados_serialb = 0; // Índice usado para rastrear a coluna atual na matriz
         tipo_vetor_matriz_ve = 0;
+        matriz_ve_count = 0;
       }
       if (tipo_vetor_configuracao_inicial == 1){
           tipo_ignicao = values[0];
@@ -220,57 +232,87 @@ void leitura_entrada_dados_serial()
       }
       index = 0; // reinicia índice do vetor
     }
-    else if (isdigit(data)){                                
-      buffer[strlen(buffer)] = data; // adiciona o caractere recebido no buffer temporário
-      if (strlen(buffer) >= sizeof(buffer) - 1){// verifica se o buffer está cheio
-        buffer[sizeof(buffer) - 1] = '\0'; // adiciona um terminador de string para evitar um buffer overflow
-      }
+    else if (isdigit(data) || data == '-'){// Incluído suporte a números negativos                                                             
+    int buffer_len = strlen(buffer);
+    if (buffer_len < sizeof(buffer) - 1) {
+        buffer[buffer_len] = data;
+        buffer[buffer_len + 1] = '\0';
+    } else {
+        memset(buffer, 0, sizeof(buffer));
+    }
     }
     else if ((data == ',' || data == ';') && strlen(buffer) > 0){                                 
       buffer[strlen(buffer)] = '\0';  // adiciona um terminador de string para converter o buffer em uma string válida
       //values[index++] = atoi(buffer); // adiciona ao vetor
       //Substituído por strtol
-      values[index++] = strtol(buffer, NULL, 10);
+      long valor = strtol(buffer, NULL, 10);
+      values[index++] = valor;
       //--------tabela ignção ----------//
-      if (tipo_vetor_map_tps_avanco){
-          vetor_map_tps[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+      if (tipo_vetor_map_tps_avanco && indice_vetor_entrada_dados_serial < 16){
+          vetor_map_tps[indice_vetor_entrada_dados_serial] = valor;
           indice_vetor_entrada_dados_serial++;
       }
-      if (tipo_vetor_rpm_avanco){
-        vetor_rpm[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+      if (tipo_vetor_rpm_avanco && indice_vetor_entrada_dados_serial < 16){
+        vetor_rpm[indice_vetor_entrada_dados_serial] = valor;
         indice_vetor_entrada_dados_serial++;
       }
       if (tipo_vetor_matriz_avanco){
-        if (indice_matrix_entrada_dados_seriala < 16) {
-            matriz_avanco[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
-          if (indice_matrix_entrada_dados_serialb < 15) {
-            indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
-          } else {
-            indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha
-            indice_matrix_entrada_dados_serialb = 0; // Reinicia o contador de colunas
-          }
+        if (indice_matrix_entrada_dados_seriala < 16 && indice_matrix_entrada_dados_serialb < 16) {
+            matriz_avanco[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = valor;
+            matriz_avanco_count++;
+            if (indice_matrix_entrada_dados_serialb < 15) {
+              indice_matrix_entrada_dados_serialb++;
+            } else {
+              indice_matrix_entrada_dados_seriala++;
+              indice_matrix_entrada_dados_serialb = 0;
+            }
         } 
       }
+      // if (tipo_vetor_matriz_avanco){
+      //   if (indice_matrix_entrada_dados_seriala < 16) {
+      //       matriz_avanco[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
+      //     if (indice_matrix_entrada_dados_serialb < 15) {
+      //       indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
+      //     } else {
+      //       indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha
+      //       indice_matrix_entrada_dados_serialb = 0; // Reinicia o contador de colunas
+      //     }
+      //   } 
+      // }
       //---------tabela ve --------//
-      if (tipo_vetor_map_tps_ve){
-          vetor_map_tps_ve[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+      if (tipo_vetor_map_tps_ve && indice_vetor_entrada_dados_serial < 16){
+          vetor_map_tps_ve[indice_vetor_entrada_dados_serial] = valor;
           indice_vetor_entrada_dados_serial++;
       }
-      if (tipo_vetor_rpm_ve){
-        vetor_rpm_ve[indice_vetor_entrada_dados_serial] = strtol(buffer, NULL, 10);
+      if (tipo_vetor_rpm_ve && indice_vetor_entrada_dados_serial < 16){
+        vetor_rpm_ve[indice_vetor_entrada_dados_serial] = valor;
         indice_vetor_entrada_dados_serial++;
       }
-      if (tipo_vetor_matriz_ve){
-        if (indice_matrix_entrada_dados_seriala < 16) {
-            matriz_ve[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
-          if (indice_matrix_entrada_dados_serialb < 15) {
-            indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
-          } else {
-            indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha
-            indice_matrix_entrada_dados_serialb = 0; // Reinicia o contador de colunas
-          }
+       if (tipo_vetor_matriz_ve){
+        if (indice_matrix_entrada_dados_seriala < 16 && indice_matrix_entrada_dados_serialb < 16) {
+            matriz_ve[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = valor;
+            matriz_ve_count++;
+            matriz_ve[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = valor;
+          
+            if (indice_matrix_entrada_dados_serialb < 15) {
+              indice_matrix_entrada_dados_serialb++;
+            } else {
+              indice_matrix_entrada_dados_seriala++;
+              indice_matrix_entrada_dados_serialb = 0;
+            }
         } 
       }
+      // if (tipo_vetor_matriz_ve){
+      //   if (indice_matrix_entrada_dados_seriala < 16) {
+      //       matriz_ve[indice_matrix_entrada_dados_seriala][indice_matrix_entrada_dados_serialb] = strtol(buffer, NULL, 10);
+      //     if (indice_matrix_entrada_dados_serialb < 15) {
+      //       indice_matrix_entrada_dados_serialb++; // Avança para a próxima coluna
+      //     } else {
+      //       indice_matrix_entrada_dados_seriala++; // Se chegou ao fim da linha atual, avança para a próxima linha
+      //       indice_matrix_entrada_dados_serialb = 0; // Reinicia o contador de colunas
+      //     }
+      //   } 
+      // }
       if (index >= maximo_valores_recebido){
         index = 0; // reinicia índice do vetor se estiver cheio
       }

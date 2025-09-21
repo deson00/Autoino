@@ -1,7 +1,14 @@
+#define MIN_INTERVALO_DENTE_US 50        // Filtro anti-bounce mínimo
+volatile uint32_t ultimo_tempo_interrupcao = 0;
 void decoder_roda_fonica_padrao(){//roda fonica padrao com quantidade de dente - dente faltante
  // tempo_inicial_codigo = micros(); // Registra o tempo inicial
+  uint32_t tempo_agora = micros();
+  if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
+        return; // Ignora o pulso, é ruído. Não faz nada, pois não é um pulso válido.
+    }
+  ultimo_tempo_interrupcao = tempo_agora;  
   qtd_leitura++;
-  tempo_atual = micros() ;
+  tempo_atual = tempo_agora ;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
   //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
   // verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
@@ -76,11 +83,11 @@ if (verifica_falha < intervalo_tempo_entre_dente)
 void leitor_sensor_roda_fonica()
 {
 //  tempo_inicial_codigo = micros(); // Registra o tempo inicial 
-  noInterrupts();
-   TIMSK1 &= ~_BV(TOIE1);  // Desativa a interrupção do Timer1
+  // noInterrupts();
+  //  TIMSK1 &= ~_BV(TOIE1);  // Desativa a interrupção do Timer1
  decoder_roda_fonica_padrao();
- TIMSK1 |= _BV(TOIE1);   // Reativa a interrupção do Timer1
-  interrupts();
+//  TIMSK1 |= _BV(TOIE1);   // Reativa a interrupção do Timer1
+  // interrupts();
 // tempo_final_codigo = micros(); // Registra o tempo final  
 // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;   
 }
