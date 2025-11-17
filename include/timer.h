@@ -60,9 +60,9 @@ int i = loop_timer; //provisorio para teste
   }else{
     ajuste_pms = 0;
   }
-
+  tempo_atual += i+1 * 100;// ajuste do timer para cada chamada 
+  
   if ( i < qtd_cilindro/2){
-    tempo_atual += i+1 * 100;// ajuste do timer para cada chamada 
     //colocar este dentro do if abaixo
     //tempo_final_codigo = micros(); // Registra o tempo final
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
@@ -97,7 +97,7 @@ int i = loop_timer; //provisorio para teste
           //tempo_final_codigo = tempo_atual; // Registra o tempo final  
           //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
           // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
@@ -121,7 +121,7 @@ int i = loop_timer; //provisorio para teste
   }
   // for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){//original
     if (i >= qtd_cilindro / 2){
-      tempo_atual += i+1 * 100;// ajuste do timer para cada chamada   
+      // tempo_atual += i+1 * 100;// ajuste do timer para cada chamada   
     // tempo_atual = micros() ;
     //tempo_final_codigo = micros(); // Registra o tempo final  
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
@@ -166,7 +166,7 @@ int i = loop_timer; //provisorio para teste
           //tempo_final_codigo = tempo_atual; // Registra o tempo final  
           //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
           // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
@@ -232,8 +232,12 @@ int i = loop_timer; //provisorio para teste
           
     //     }
     // }
+         unsigned long tempo_check = micros();
+         for (i = 0; i < qtd_cilindro; i++)
+         {
+         
           if (captura_req_fuel[i] == true && inj_acionado[i] == true){
-        if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao ) {
+        if (tempo_check + 100 >= tempo_percorrido_inj[i] + tempo_injecao) {
           if(tipo_acionamento_injetor == 1){
               captura_req_fuel[i] = false;
             for (int j = 0; j < numero_injetor; j++){
@@ -253,7 +257,7 @@ int i = loop_timer; //provisorio para teste
               }      
       }
           }
-    // }
+    }
   loop_timer++;
   }
 

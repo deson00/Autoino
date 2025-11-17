@@ -49,7 +49,7 @@ void ligar_injetor(int i){
 
 void desligar_injetor(int i){
   tempo_atual = micros() ;
-  tempo_atual += 1200;
+  // tempo_atual += 1200;
   if (captura_req_fuel[i] == true && inj_acionado[i] == true){
     if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
           captura_req_fuel[i] = false;
