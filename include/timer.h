@@ -72,7 +72,7 @@ int i = loop_timer; //provisorio para teste
     }
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 10){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > rpm_partida){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i], 1);
@@ -107,7 +107,7 @@ int i = loop_timer; //provisorio para teste
         //tempo_final_codigo = tempo_atual; // Registra o tempo final  
         //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
         // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-        tempo_percorrido_inj[i] = tempo_atual;
+        tempo_percorrido_inj[i] = micros();
         digitalWrite(injecao_pins[i], 1);
         // setPinHigh(injecao_pins[i]);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
@@ -130,7 +130,7 @@ int i = loop_timer; //provisorio para teste
     }
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 50){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
@@ -176,7 +176,7 @@ int i = loop_timer; //provisorio para teste
         //tempo_final_codigo = tempo_atual; // Registra o tempo final  
         //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
         // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-        tempo_percorrido_inj[i] = tempo_atual;
+        tempo_percorrido_inj[i] = micros();
         digitalWrite(injecao_pins[i - qtd_cilindro/2], 1);
         // setPinHigh(injecao_pins[i - qtd_cilindro/2]);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
@@ -232,7 +232,7 @@ int i = loop_timer; //provisorio para teste
           
     //     }
     // }
-         unsigned long tempo_check = micros();
+         tempo_check = micros();
          for (i = 0; i < qtd_cilindro; i++)
          {
          
@@ -267,22 +267,20 @@ int i = loop_timer; //provisorio para teste
 if(++loop_timer >= qtd_cilindro){
   loop_timer = 0;
 }
-  if (grau_pms <= 120) {
-    if (grau_pms < 60 || rpm > 3000) {
-        ajuste_pms = 180;
-    }else{
-      ajuste_pms = 0;
-    } 
-  }else{
-    ajuste_pms = 0;
+  if (grau_pms < 180) {
+    ajuste_pms = 180;
   }
+
 calcula_grau_injetor(i);
 calcula_grau_ignicao(i);
 iniciar_dwell(i);
 ligar_injetor(i);
 desligar_dwell(i);
-desligar_injetor(i); 
-
+tempo_check = micros();
+  for (i = 0; i < qtd_cilindro; i++)
+  {
+    desligar_injetor(i); 
+  }
 }
 
 }

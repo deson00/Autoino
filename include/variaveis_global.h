@@ -38,6 +38,7 @@ volatile unsigned long tempo_atual_proxima_ignicao[8];
 volatile unsigned long tempo_atual_proxima_injecao[8];
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 volatile unsigned long verifica_falha = 0;
+unsigned long tempo_check = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
 int qtd_revolucoes = 0;
@@ -165,4 +166,5 @@ int rpm_minimo_enriquecimento = 1000;
 int rpm_maximo_enriquecimento = 5000;
 int enriquecimento_desaceleracao = 0; // Quantidade de redução de combustível em porcentagem
 int valor_o2 = 0;
-int sonda_narrow = 0;
+int sonda_o2 = 0;
+bool tipo_sonda_o2 = 1; // 0 para narrow band e 1 para wide band
