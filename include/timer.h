@@ -66,10 +66,13 @@ int i = loop_timer; //provisorio para teste
     //colocar este dentro do if abaixo
     //tempo_final_codigo = micros(); // Registra o tempo final
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && rpm > rpm_partida){
       tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
       // enviar_byte_serial(posicao_atual_sensor/grau_entre_cada_cilindro, 1);
+      // enviar_byte_serial(10, 1);
     }
+    
+    // enviar_byte_serial(2, 1);
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
         revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > rpm_partida){
@@ -121,16 +124,17 @@ int i = loop_timer; //provisorio para teste
   }
   // for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){//original
     if (i >= qtd_cilindro / 2){
+      // enviar_byte_serial(2, 1);
       // tempo_atual += i+1 * 100;// ajuste do timer para cada chamada   
     // tempo_atual = micros() ;
     //tempo_final_codigo = micros(); // Registra o tempo final  
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && rpm > rpm_partida){
       tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     }
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 50){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > rpm_partida){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
