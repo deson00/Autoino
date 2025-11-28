@@ -38,6 +38,7 @@ volatile unsigned long tempo_atual_proxima_ignicao[8];
 volatile unsigned long tempo_atual_proxima_injecao[8];
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 volatile unsigned long verifica_falha = 0;
+unsigned long tempo_check = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
 int qtd_revolucoes = 0;
@@ -52,7 +53,7 @@ unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-unsigned int rpm_partida = 200;
+unsigned int rpm_partida = 400;
 byte ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
 // Declare as variáveis para controlar o estado do pino de saída
@@ -132,8 +133,8 @@ byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
 byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
 byte limite_injetor = 100; // 90% valor em porcentagem
-int tempo_abertura_injetor = 1000;// Dead time, tempo que o injetor leva para abrir
-int acrescimo_injecao_partida = 30;// valor de acrecimo da ve na partida em porcentagem 
+int tempo_abertura_injetor = 0;// Dead time, tempo que o injetor leva para abrir
+int acrescimo_injecao_partida = 10;// valor de acrecimo da ve na partida em porcentagem 
 int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
 int REQ_FUEL = 10000; //em ms
 int dreq_fuel = 10000;//em ms
@@ -165,4 +166,5 @@ int rpm_minimo_enriquecimento = 1000;
 int rpm_maximo_enriquecimento = 5000;
 int enriquecimento_desaceleracao = 0; // Quantidade de redução de combustível em porcentagem
 int valor_o2 = 0;
-int sonda_narrow = 0;
+int sonda_o2 = 0;
+bool tipo_sonda_o2 = 1; // 0 para narrow band e 1 para wide band

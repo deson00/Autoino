@@ -60,19 +60,22 @@ int i = loop_timer; //provisorio para teste
   }else{
     ajuste_pms = 0;
   }
-
+  tempo_atual += i+1 * 100;// ajuste do timer para cada chamada 
+  
   if ( i < qtd_cilindro/2){
-    tempo_atual += i+1 * 100;// ajuste do timer para cada chamada 
     //colocar este dentro do if abaixo
     //tempo_final_codigo = micros(); // Registra o tempo final
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && rpm > rpm_partida){
       tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
       // enviar_byte_serial(posicao_atual_sensor/grau_entre_cada_cilindro, 1);
+      // enviar_byte_serial(10, 1);
     }
+    
+    // enviar_byte_serial(2, 1);
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > 10){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > rpm_partida){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i], 1);
@@ -97,7 +100,7 @@ int i = loop_timer; //provisorio para teste
           //tempo_final_codigo = tempo_atual; // Registra o tempo final  
           //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
           // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
@@ -107,7 +110,7 @@ int i = loop_timer; //provisorio para teste
         //tempo_final_codigo = tempo_atual; // Registra o tempo final  
         //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
         // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-        tempo_percorrido_inj[i] = tempo_atual;
+        tempo_percorrido_inj[i] = micros();
         digitalWrite(injecao_pins[i], 1);
         // setPinHigh(injecao_pins[i]);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
@@ -121,16 +124,17 @@ int i = loop_timer; //provisorio para teste
   }
   // for (int i = qtd_cilindro / 2; i < qtd_cilindro; i++){//original
     if (i >= qtd_cilindro / 2){
-      tempo_atual += i+1 * 100;// ajuste do timer para cada chamada   
+      // enviar_byte_serial(2, 1);
+      // tempo_atual += i+1 * 100;// ajuste do timer para cada chamada   
     // tempo_atual = micros() ;
     //tempo_final_codigo = micros(); // Registra o tempo final  
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && rpm > rpm_partida){
       tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     }
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > rpm_partida){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
@@ -166,7 +170,7 @@ int i = loop_timer; //provisorio para teste
           //tempo_final_codigo = tempo_atual; // Registra o tempo final  
           //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
           // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
@@ -176,7 +180,7 @@ int i = loop_timer; //provisorio para teste
         //tempo_final_codigo = tempo_atual; // Registra o tempo final  
         //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
         // tempo_percorrido_inj[i] = tempo_atual - tempo_decorrido_codigo;
-        tempo_percorrido_inj[i] = tempo_atual;
+        tempo_percorrido_inj[i] = micros();
         digitalWrite(injecao_pins[i - qtd_cilindro/2], 1);
         // setPinHigh(injecao_pins[i - qtd_cilindro/2]);
         tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
@@ -232,8 +236,12 @@ int i = loop_timer; //provisorio para teste
           
     //     }
     // }
+         tempo_check = micros();
+         for (i = 0; i < qtd_cilindro; i++)
+         {
+         
           if (captura_req_fuel[i] == true && inj_acionado[i] == true){
-        if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao ) {
+        if (tempo_check + 100 >= tempo_percorrido_inj[i] + tempo_injecao) {
           if(tipo_acionamento_injetor == 1){
               captura_req_fuel[i] = false;
             for (int j = 0; j < numero_injetor; j++){
@@ -253,7 +261,7 @@ int i = loop_timer; //provisorio para teste
               }      
       }
           }
-    // }
+    }
   loop_timer++;
   }
 
@@ -263,22 +271,20 @@ int i = loop_timer; //provisorio para teste
 if(++loop_timer >= qtd_cilindro){
   loop_timer = 0;
 }
-  if (grau_pms <= 120) {
-    if (grau_pms < 60 || rpm > 3000) {
-        ajuste_pms = 180;
-    }else{
-      ajuste_pms = 0;
-    } 
-  }else{
-    ajuste_pms = 0;
+  if (grau_pms < 180) {
+    ajuste_pms = 180;
   }
+
 calcula_grau_injetor(i);
 calcula_grau_ignicao(i);
 iniciar_dwell(i);
 ligar_injetor(i);
 desligar_dwell(i);
-desligar_injetor(i); 
-
+tempo_check = micros();
+  for (i = 0; i < qtd_cilindro; i++)
+  {
+    desligar_injetor(i); 
+  }
 }
 
 }

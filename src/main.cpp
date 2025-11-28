@@ -156,8 +156,29 @@ void loop(){
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
     valor_tps_adc = analogRead(pino_sensor_tps);
     valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
-    valor_o2 = analogRead(pino_sensor_o2);
-    sonda_narrow = valor_o2 * (1000.0 / 1023.0);
+    float leitura_adc = analogRead(pino_sensor_o2);
+    float tensao_o2   = leitura_adc * (5.0 / 1023.0); 
+    // float tensao_mV   = tensao_o2 * 1000.0;
+
+    if (tipo_sonda_o2 == 0)
+    {
+        // --- Narrow Band ---
+        if (tensao_o2 < 0.45) 
+            sonda_o2 = 0;   // Pobre
+        else 
+            sonda_o2 = 1;   // Rica
+    }
+    else
+    {
+        // --- Wideband (Faixa 1: 0,59 a 1,10 Lambda) ---
+        if (tensao_o2 < 0.2) tensao_o2 = 0.2;
+        if (tensao_o2 > 4.8) tensao_o2 = 4.8;
+
+        // Conversão linear para Lambda
+        sonda_o2 = 0.59 + ( (tensao_o2 - 0.2) * (1.10 - 0.59) / (4.8 - 0.2) );
+        sonda_o2 = sonda_o2 * 1000; // Multiplica por 1000 para evitar uso de float em outras partes}
+    }
+    
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
     }else{

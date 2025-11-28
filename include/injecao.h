@@ -27,14 +27,14 @@ void ligar_injetor(int i){
           //setPinHigh(injecao_pins[j]);
           }
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
           inj_acionado[i+1] = false;
           captura_req_fuel[i+1] = false;
         }else{
           captura_req_fuel[i] = true;
-          tempo_percorrido_inj[i] = tempo_atual;
+          tempo_percorrido_inj[i] = micros();
           digitalWrite(injecao_pins[i], 1);
           //setPinHigh(injecao_pins[i]);
           tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
@@ -48,10 +48,9 @@ void ligar_injetor(int i){
 }
 
 void desligar_injetor(int i){
-  tempo_atual = micros() ;
-  tempo_atual += 1200;
   if (captura_req_fuel[i] == true && inj_acionado[i] == true){
-    if ((tempo_atual - tempo_percorrido_inj[i]) >= tempo_injecao) {
+    
+    if (tempo_check >= tempo_percorrido_inj[i] + tempo_injecao) {
           captura_req_fuel[i] = false;
           if (tipo_acionamento_injetor == 1){
             for (int j = 0; j < numero_injetor; j++){

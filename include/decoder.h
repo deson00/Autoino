@@ -60,20 +60,67 @@ if (verifica_falha < intervalo_tempo_entre_dente)
       revolucoes_sincronizada++;
     }
     qtd_leitura = 0; 
-    if(tipo_ignicao_sequencial == 0 ){    
-    tempo_atual_proxima_ignicao[0] = tempo_atual;
-    ign_acionado[0] = false;
-    captura_dwell[0] = false; 
-    tempo_atual_proxima_injecao[0] = tempo_atual;
-    inj_acionado[0] = false;
-    captura_req_fuel[0] = false; 
+    if(tipo_ignicao_sequencial == 0){
+        tempo_atual_proxima_ignicao[0] = tempo_atual;
+        ign_acionado[0] = false;
+        captura_dwell[0] = false; 
+        tempo_atual_proxima_injecao[0] = tempo_atual;
+        inj_acionado[0] = false;
+        captura_req_fuel[0] = false;
+     
     }
 
   }else{
-    if(rpm < rpm_partida){
-    tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+    posicao_atual_sensor++;
+    if(rpm < rpm_partida)
+    {
+      tempo_cada_grau = intervalo_tempo_entre_dente / (360 / qtd_dente);
+      if(local_rodafonica == 1 && tipo_ignicao_sequencial == 0)
+      {
+        if (grau_pms > 180)
+        {
+          ajuste_pms = 180;
+        }
+        else{
+          ajuste_pms = 0;
+        }
+        
+        for (int i = 0; i < qtd_cilindro; i++)
+        {
+            if ( i < qtd_cilindro/2)
+              {
+                if (posicao_atual_sensor * grau_cada_dente >= grau_pms - ajuste_pms + (grau_entre_cada_cilindro * i) && (captura_dwell[i] == false) && (ign_acionado[i] == false)) 
+                  {
+                    captura_dwell[i] = true;
+                    tempo_percorrido[i] = tempo_atual;
+                    digitalWrite(ignicao_pins[i], 1);
+                    // setPinHigh(ignicao_pins[i]);
+                    tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+                    ign_acionado[i] = true;
+                    ign_acionado[i+1] = false;
+                    captura_dwell[i+1] = false;
+                    // enviar_byte_serial(posicao_atual_sensor * grau_cada_dente, 1);
+                  }
+              }
+          if (i >= qtd_cilindro / 2)
+            {
+              if (posicao_atual_sensor * grau_cada_dente >= grau_pms - ajuste_pms + (grau_entre_cada_cilindro * i) && (captura_dwell[i] == false) && (ign_acionado[i] == false)) 
+                {
+                  captura_dwell[i] = true;
+                  tempo_percorrido[i] = tempo_atual;
+                  digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
+                  // setPinHigh(ignicao_pins[i - qtd_cilindro/2]);
+                  tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+                  ign_acionado[i] = true;
+                  ign_acionado[i+1] = false;
+                  captura_dwell[i+1] = false;
+                }
+            }
+        }
+      }
     }
     //enviar_byte_serial(tempo_cada_grau / 1000, 1);
+
   }
   // posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
   tempo_anterior = tempo_atual;
