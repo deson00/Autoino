@@ -127,14 +127,6 @@ void setup(){
 // usar_decoder_otimizado();   // usa o melhorado
   
   sei(); // Habilita interrupções globais
-  // Imprime uma mensagem dependendo do microcontrolador
-  #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
-    Serial.println("Define OK: Arduino Uno ou Nano detectado.");
-  #elif defined(__AVR_ATmega2560__)
-    Serial.println("Define OK: Arduino Mega 2560 detectado.");
-  #else
-    Serial.println("Define não reconhecido: Microcontrolador desconhecido.");
-  #endif
 }
 void loop(){
    calcularRPM();
