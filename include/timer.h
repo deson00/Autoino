@@ -240,7 +240,7 @@ int i = loop_timer; //provisorio para teste
          for (i = 0; i < qtd_cilindro; i++)
          {
          
-          if (captura_req_fuel[i] == true && inj_acionado[i] == true){
+          if (captura_req_fuel[i] == true && inj_acionado[i] == true && status_primeira_injecao == true){
         if (tempo_check + 100 >= tempo_percorrido_inj[i] + tempo_injecao) {
           if(tipo_acionamento_injetor == 1){
               captura_req_fuel[i] = false;

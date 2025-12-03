@@ -131,6 +131,7 @@ void setup(){
 void loop(){
    calcularRPM();
     qtd_loop++;
+  
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
     // if(contador_leitura >=10){
     //   // Ordena as leituras e encontra a mediana
@@ -225,6 +226,16 @@ void loop(){
             tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
           }
           // tempo_injecao = round(tempo_pulso);
+          if(status_primeira_injecao == false){ 
+            for (int j = 0; j < numero_injetor; j++){
+              digitalWrite(injecao_pins[j], 1);
+            }
+            delay(tempo_primeira_injecao);
+            for (int j = 0; j < numero_injetor; j++){
+              digitalWrite(injecao_pins[j], 0);
+            }
+            status_primeira_injecao = true;
+          }
           
           // tempo_atual = micros();
              
