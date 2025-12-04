@@ -1,5 +1,5 @@
-#define Autoino   //Descomente essa linha caso utilizar Autoino em um Arduino Mega, UNO ou Nano etc
-// #define Speeduino  //Descomente essa linha caso utilizar Autoino em uma shild Speeduino com arduino Mega 2560
+// #define Autoino   //Descomente essa linha caso utilizar Autoino em um Arduino Mega, UNO ou Nano etc
+#define Speeduino  //Descomente essa linha caso utilizar Autoino em uma shild Speeduino com arduino Mega 2560
 
 #ifdef Autoino
 #define pino_sensor_roda_fonica 2
