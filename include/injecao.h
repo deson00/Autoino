@@ -48,9 +48,9 @@ void ligar_injetor(int i){
 }
 
 void desligar_injetor(int i){
-  if (captura_req_fuel[i] == true && inj_acionado[i] == true){
+  if (captura_req_fuel[i] == true && inj_acionado[i] == true && status_primeira_injecao == true){
     
-    if (tempo_check >= tempo_percorrido_inj[i] + tempo_injecao) {
+    if (tempo_check + 100 >= tempo_percorrido_inj[i] + tempo_injecao) {
           captura_req_fuel[i] = false;
           if (tipo_acionamento_injetor == 1){
             for (int j = 0; j < numero_injetor; j++){

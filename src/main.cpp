@@ -110,22 +110,9 @@ void setup(){
 
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
-  // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
+  // Inicializa o Timer 1 para gerar uma interrupção a cada 100 microsegundo
   initializeTimerOne(100);
   // initializeTimerTwo(200);
-   // Inicializa decoder melhorado
-  // inicializar_decoder_roda_fonica();
-  // inicializar_decoder_otimizado();
-  // Para começar com o original:
-// inicializar_decoder_roda_fonica();
-
-// Depois testar o otimizado:
-// inicializar_decoder_otimizado();
-
-// Para alternar em tempo real:
-// usar_decoder_original();    // volta ao original
-// usar_decoder_otimizado();   // usa o melhorado
-  
   sei(); // Habilita interrupções globais
 }
 void loop(){
@@ -149,28 +136,14 @@ void loop(){
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
     valor_tps_adc = analogRead(pino_sensor_tps);
     valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
-    float leitura_adc = analogRead(pino_sensor_o2);
-    float tensao_o2   = leitura_adc * (5.0 / 1023.0); 
-    // float tensao_mV   = tensao_o2 * 1000.0;
+    int leitura_adc = analogRead(pino_sensor_o2);
 
-    if (tipo_sonda_o2 == 0)
-    {
-        // --- Narrow Band ---
-        if (tensao_o2 < 0.45) 
-            sonda_o2 = 0;   // Pobre
-        else 
-            sonda_o2 = 1;   // Rica
-    }
-    else
-    {
-        // --- Wideband (Faixa 1: 0,59 a 1,10 Lambda) ---
-        if (tensao_o2 < 0.2) tensao_o2 = 0.2;
-        if (tensao_o2 > 4.8) tensao_o2 = 4.8;
+    // tensão em milivolts (0 a 5000 mV)
+    int tensao_o2 = (leitura_adc * 5000) / 1023;
 
-        // Conversão linear para Lambda
-        sonda_o2 = 0.59 + ( (tensao_o2 - 0.2) * (1.10 - 0.59) / (4.8 - 0.2) );
-        sonda_o2 = sonda_o2 * 1000; // Multiplica por 1000 para evitar uso de float em outras partes}
-    }
+    // conversão para Lambda *1000
+    int lambda_x1000 = 590 + ((long)(tensao_o2 - 200) * (1100 - 590)) / (4800 - 200);
+    sonda_o2 = tensao_o2;
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   

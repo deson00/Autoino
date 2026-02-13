@@ -52,7 +52,7 @@ int i = loop_timer; //provisorio para teste
 // }
 
   if (grau_pms <= 120 && rpm > rpm_partida) {
-    if (grau_pms < 60 || rpm > 3000) {
+    if (grau_pms < 60) {
         ajuste_pms = 180;
     }else{
       ajuste_pms = 0;
@@ -273,6 +273,8 @@ if(++loop_timer >= qtd_cilindro){
 }
   if (grau_pms < 180) {
     ajuste_pms = 180;
+  }else{
+    ajuste_pms = 0;
   }
 
 calcula_grau_injetor(i);
