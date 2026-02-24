@@ -74,13 +74,17 @@
 //     }
 // }
 void calcularRPM() {
-  const unsigned long TIMEOUT_SEM_PULSO_US = 250000; // ~0 RPM abaixo de ~240 RPM (1 pulso/rev)
+  const unsigned long TIMEOUT_SEM_PULSO_MIN_US = 250000;
+  const unsigned long TIMEOUT_SEM_PULSO_MAX_US = 1500000;
   const float ALFA_FILTRO = 0.35f;                    // suavização principal
   const float LIMITE_VARIACAO_PERCENTUAL = 0.20f;     // limita variação abrupta por atualização
   const float LIMITE_VARIACAO_FIXA = 50.0f;           // margem fixa para baixa rotação
   const float RPM_MAX_VALIDO = 12000.0f;              // rejeita leituras fora de faixa
 
   static float rpm_filtrado = 0.0f;
+  static unsigned long tempo_volta_valido_us = 0;
+  static unsigned long ultimo_pulso_observado_us = 0;
+  static byte timeout_consecutivo = 0;
 
   unsigned long tempo_atual_local = micros();
   unsigned long tempo_volta_snapshot;
@@ -92,12 +96,38 @@ void calcularRPM() {
   ultimo_pulso_snapshot = ultimo_pulso_rpm_us;
   interrupts();
 
-  if ((tempo_atual_local - ultimo_pulso_snapshot) > TIMEOUT_SEM_PULSO_US) {
-    rpm_filtrado = 0.0f;
-    rpm = 0;
+  if (ultimo_pulso_snapshot != ultimo_pulso_observado_us) {
+    ultimo_pulso_observado_us = ultimo_pulso_snapshot;
+    timeout_consecutivo = 0;
+  }
+
+  if (tempo_volta_snapshot > 0 && tempo_volta_snapshot < 5000000UL) {
+    tempo_volta_valido_us = tempo_volta_snapshot;
+  }
+
+  unsigned long timeout_sem_pulso_us = TIMEOUT_SEM_PULSO_MIN_US;
+  if (tempo_volta_valido_us > 0) {
+    timeout_sem_pulso_us = tempo_volta_valido_us << 1;
+    if (timeout_sem_pulso_us < TIMEOUT_SEM_PULSO_MIN_US) {
+      timeout_sem_pulso_us = TIMEOUT_SEM_PULSO_MIN_US;
+    } else if (timeout_sem_pulso_us > TIMEOUT_SEM_PULSO_MAX_US) {
+      timeout_sem_pulso_us = TIMEOUT_SEM_PULSO_MAX_US;
+    }
+  }
+
+  if ((tempo_atual_local - ultimo_pulso_snapshot) > timeout_sem_pulso_us) {
+    if (timeout_consecutivo < 255) {
+      timeout_consecutivo++;
+    }
+    if (timeout_consecutivo >= 2) {
+      rpm_filtrado = 0.0f;
+      rpm = 0;
+    }
     tempo_inicial_rpm = tempo_atual_local;
     return;
   }
+
+  timeout_consecutivo = 0;
 
   if (tempo_volta_snapshot > 0) {
     float rpm_calculado = 60000000.0f / (float)tempo_volta_snapshot;
