@@ -24,7 +24,7 @@ byte modo_ignicao = 1; // 1 para centelha perdida e 2 para centelha unica
 byte avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
 byte grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
 byte tipo_sinal_bobina = 1 ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
-
+volatile bool referencia_posicao_sensor = false; // Variável para controlar posicionamento real da roda fonica em relação ao sinal da bobina, para evitar erro de avanço em função da oscilação do motor em baixa rotação
 volatile unsigned long tempo_anterior = 0;
 volatile unsigned long tempo_dente_anterior[2] = {0,0};
 volatile unsigned long tempo_inicio_volta_completa = 0;
@@ -41,7 +41,8 @@ volatile unsigned long verifica_falha = 0;
 unsigned long tempo_check = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
-int qtd_revolucoes = 0;
+volatile unsigned int qtd_revolucoes = 0;
+volatile unsigned long ultimo_pulso_rpm_us = 0;
 byte qtd_perda_sincronia = 0;
 int qtd_loop = 0;
 int loop_timer = 0; //variavel para ser incrementada a cada chamada da função timer
@@ -53,7 +54,7 @@ unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
-unsigned int rpm_partida = 10;
+unsigned int rpm_partida = 400;
 byte ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
 // Declare as variáveis para controlar o estado do pino de saída

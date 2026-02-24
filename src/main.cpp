@@ -74,19 +74,59 @@
 //     }
 // }
 void calcularRPM() {
-  unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
-  qtd_revolucoes = 0;  // Reseta o contador de revoluções
-  unsigned long tempo_atual_local = micros();  // Captura o valor atual de tempo
-  if (revolucoes > 0) {
-    tempo_final_rpm = tempo_atual_local;
-    volatile unsigned long delta = tempo_final_rpm - tempo_inicial_rpm;
-    if(local_rodafonica == 1){
-      rpm = (revolucoes * 60) / (float(delta) / 1000000) * 2;
-    }else{
-      rpm = (revolucoes * 60) / (float(delta) / 1000000);
-    } 
-    tempo_inicial_rpm = tempo_final_rpm;
+  const unsigned long TIMEOUT_SEM_PULSO_US = 250000; // ~0 RPM abaixo de ~240 RPM (1 pulso/rev)
+  const float ALFA_FILTRO = 0.35f;                    // suavização principal
+  const float LIMITE_VARIACAO_PERCENTUAL = 0.20f;     // limita variação abrupta por atualização
+  const float LIMITE_VARIACAO_FIXA = 50.0f;           // margem fixa para baixa rotação
+  const float RPM_MAX_VALIDO = 12000.0f;              // rejeita leituras fora de faixa
+
+  static float rpm_filtrado = 0.0f;
+
+  unsigned long tempo_atual_local = micros();
+  unsigned long tempo_volta_snapshot;
+  unsigned long ultimo_pulso_snapshot;
+
+  noInterrupts();
+  tempo_volta_snapshot = tempo_total_volta_completa;
+  tempo_total_volta_completa = 0;
+  ultimo_pulso_snapshot = ultimo_pulso_rpm_us;
+  interrupts();
+
+  if ((tempo_atual_local - ultimo_pulso_snapshot) > TIMEOUT_SEM_PULSO_US) {
+    rpm_filtrado = 0.0f;
+    rpm = 0;
+    tempo_inicial_rpm = tempo_atual_local;
+    return;
   }
+
+  if (tempo_volta_snapshot > 0) {
+    float rpm_calculado = 60000000.0f / (float)tempo_volta_snapshot;
+
+    if (local_rodafonica == 1) {
+      rpm_calculado *= 2.0f;
+    }
+
+    if (rpm_calculado > 0.0f && rpm_calculado < RPM_MAX_VALIDO) {
+      if (rpm_filtrado < 1.0f) {
+        rpm_filtrado = rpm_calculado;
+      } else {
+        float variacao_maxima = (rpm_filtrado * LIMITE_VARIACAO_PERCENTUAL) + LIMITE_VARIACAO_FIXA;
+        float diferenca = rpm_calculado - rpm_filtrado;
+
+        if (diferenca > variacao_maxima) {
+          diferenca = variacao_maxima;
+        } else if (diferenca < -variacao_maxima) {
+          diferenca = -variacao_maxima;
+        }
+
+        rpm_filtrado += (diferenca * ALFA_FILTRO);
+      }
+
+      rpm = (unsigned int)(rpm_filtrado + 0.5f);
+    }
+  }
+
+  tempo_inicial_rpm = tempo_atual_local;
 }
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
@@ -113,6 +153,8 @@ void setup(){
   // Inicializa o Timer 1 para gerar uma interrupção a cada 100 microsegundo
   initializeTimerOne(100);
   // initializeTimerTwo(200);
+  tempo_inicial_rpm = micros();
+  ultimo_pulso_rpm_us = tempo_inicial_rpm;
   sei(); // Habilita interrupções globais
 }
 void loop(){

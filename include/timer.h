@@ -66,7 +66,7 @@ int i = loop_timer; //provisorio para teste
     //colocar este dentro do if abaixo
     //tempo_final_codigo = micros(); // Registra o tempo final
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && rpm > rpm_partida){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
       tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
       // enviar_byte_serial(posicao_atual_sensor/grau_entre_cada_cilindro, 1);
       // enviar_byte_serial(10, 1);
@@ -74,8 +74,9 @@ int i = loop_timer; //provisorio para teste
     
     // enviar_byte_serial(2, 1);
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+      referencia_posicao_sensor == true &&
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > rpm_partida){
+        revolucoes_sincronizada >= 1 && status_corte == 0 ){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i], 1);
@@ -129,12 +130,13 @@ int i = loop_timer; //provisorio para teste
     // tempo_atual = micros() ;
     //tempo_final_codigo = micros(); // Registra o tempo final  
     //tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && rpm > rpm_partida){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
       tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     }
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+      referencia_posicao_sensor == true &&
         ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0 && rpm > rpm_partida){
+        revolucoes_sincronizada >= 1 && status_corte == 0 ){
         captura_dwell[i] = true;
         tempo_percorrido[i] = tempo_atual;
         digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
