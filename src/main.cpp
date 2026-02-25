@@ -181,7 +181,7 @@ void setup(){
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 100 microsegundo
-  initializeTimerOne(100);
+  initializeTimerOne(200);
   // initializeTimerTwo(200);
   tempo_inicial_rpm = micros();
   ultimo_pulso_rpm_us = tempo_inicial_rpm;
@@ -299,6 +299,22 @@ void loop(){
             }
             status_primeira_injecao = true;
           }
+
+          if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){
+            if (loop_timer2 >= qtd_cilindro) {
+              loop_timer2 = 0;
+            }
+            int i_injecao = loop_timer2;
+            loop_timer2++;
+
+            calcula_grau_injetor(i_injecao);
+            ligar_injetor(i_injecao);
+
+            tempo_check = micros();
+            for (int j = 0; j < qtd_cilindro; j++) {
+              desligar_injetor(j);
+            }
+          }
           
           // tempo_atual = micros();
              
@@ -340,6 +356,7 @@ void loop(){
 
   // Serial.println(rpm_anterior);
   }
+
   //  tempo_final_codigo = micros(); // Registra o tempo final  
   //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo; 
   //  enviar_byte_serial(tempo_decorrido_codigo, 2);
