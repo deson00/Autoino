@@ -116,6 +116,7 @@ void gravar_dados_eeprom_configuracao_injecao(){
     // dreq_fuel (16 bits)
     EEPROM.update(endereco++, (dreq_fuel & 0xFF));
     EEPROM.update(endereco++, (dreq_fuel >> 8) & 0xFF);
+    EEPROM.update(endereco++, tipo_sonda_o2 ? 1 : 0);
     
 }
 

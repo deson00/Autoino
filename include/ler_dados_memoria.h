@@ -181,6 +181,8 @@ void ler_dados_memoria() {
   Serial.write(',');
   sendSerialInt(dreq_fuel);
   Serial.write(',');
+  sendSerialInt(tipo_sonda_o2);
+  Serial.write(',');
   Serial.write(';');
 
   // n) Configuração proteção e limites 

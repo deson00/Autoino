@@ -86,6 +86,13 @@ void ler_dados_eeprom_configuracao_injecao(){
   // dreq_fuel (16 bits)
   dreq_fuel = ler_16bits_eeprom(endereco);
   endereco += 2;
+
+    byte tipo_sonda_eeprom = EEPROM.read(endereco++);
+    if (tipo_sonda_eeprom <= 1) {
+        tipo_sonda_o2 = tipo_sonda_eeprom;
+    } else {
+        tipo_sonda_o2 = 1;
+    }
 }
 
 

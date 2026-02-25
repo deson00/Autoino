@@ -182,6 +182,9 @@ void leitura_entrada_dados_serial()
           tipo_combustivel = values[10];
           REQ_FUEL = values[11];
           dreq_fuel = values[12];
+          if (index > 13) {
+            tipo_sonda_o2 = values[13] ? 1 : 0;
+          }
           gravar_dados_eeprom_configuracao_injecao();
           tipo_vetor_configuracao_injecao = 0;
       }

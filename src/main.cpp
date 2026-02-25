@@ -212,10 +212,29 @@ void loop(){
 
     // tensão em milivolts (0 a 5000 mV)
     int tensao_o2 = (leitura_adc * 5000) / 1023;
+    valor_o2 = tensao_o2;
 
-    // conversão para Lambda *1000
-    int lambda_x1000 = 590 + ((long)(tensao_o2 - 200) * (1100 - 590)) / (4800 - 200);
-    sonda_o2 = tensao_o2;
+    int lambda_x1000 = 1000;
+    if (tipo_sonda_o2) {
+      // Wideband 0.2V..4.8V -> lambda 0.59..1.10 (x1000)
+      lambda_x1000 = 590 + ((long)(tensao_o2 - 200) * (1100 - 590)) / (4800 - 200);
+      if (lambda_x1000 < 590) {
+        lambda_x1000 = 590;
+      } else if (lambda_x1000 > 1100) {
+        lambda_x1000 = 1100;
+      }
+    } else {
+      // Narrowband: aproximação para leitura de lambda em torno do estequiométrico
+      // 100mV (lean) -> 1.10, 900mV (rich) -> 0.90
+      lambda_x1000 = 1100 - ((long)(tensao_o2 - 100) * (1100 - 900)) / (900 - 100);
+      if (lambda_x1000 < 900) {
+        lambda_x1000 = 900;
+      } else if (lambda_x1000 > 1100) {
+        lambda_x1000 = 1100;
+      }
+    }
+
+    sonda_o2 = lambda_x1000;
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   

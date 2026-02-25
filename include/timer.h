@@ -273,7 +273,7 @@ int i = loop_timer; //provisorio para teste
 if(++loop_timer >= qtd_cilindro){
   loop_timer = 0;
 }
-  if (grau_pms < 180) {
+  if (grau_pms < 90 && rpm > rpm_partida) {
     ajuste_pms = 180;
   }else{
     ajuste_pms = 0;
