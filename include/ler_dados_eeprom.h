@@ -1,4 +1,30 @@
 
+bool eeprom_configuracao_inicial_valida() {
+    byte tipo_ignicao_eeprom = ler_8bits_eeprom(360);
+    byte qtd_dente_eeprom = ler_8bits_eeprom(362);
+    byte local_rodafonica_eeprom = ler_8bits_eeprom(364);
+    byte qtd_dente_faltante_eeprom = ler_8bits_eeprom(366);
+    uint16_t grau_pms_raw = ler_16bits_eeprom(368);
+    byte qtd_cilindro_eeprom = ler_8bits_eeprom(370);
+
+    if (tipo_ignicao_eeprom == 0xFF && qtd_dente_eeprom == 0xFF &&
+        local_rodafonica_eeprom == 0xFF && qtd_dente_faltante_eeprom == 0xFF &&
+        grau_pms_raw == 0xFFFF && qtd_cilindro_eeprom == 0xFF) {
+        return false;
+    }
+
+    if ((tipo_ignicao_eeprom != 1 && tipo_ignicao_eeprom != 2) ||
+        (local_rodafonica_eeprom != 1 && local_rodafonica_eeprom != 2) ||
+        qtd_dente_eeprom == 0 || qtd_dente_eeprom == 0xFF ||
+        qtd_cilindro_eeprom == 0 || qtd_cilindro_eeprom == 0xFF ||
+        qtd_dente_faltante_eeprom == 0xFF ||
+        grau_pms_raw < 360 || grau_pms_raw > 720) {
+        return false;
+    }
+
+    return true;
+}
+
 void ler_dados_eeprom_tabela_ignicao_map_rpm() {
     int endereco = 10; // Endereço base
 
@@ -171,6 +197,10 @@ void ler_dados_eeprom_configuracao_inicial() {
     grau_cada_dente = 360 / qtd_dente;
 }
 void ler_dados_eeprom(){
+    if (!eeprom_configuracao_inicial_valida()) {
+        return;
+    }
+
     ler_dados_eeprom_tabela_ignicao_map_rpm();
     ler_dados_eeprom_tabela_ve_map_rpm();
     ler_dados_eeprom_configuracao_injecao();

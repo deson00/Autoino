@@ -76,12 +76,9 @@
 void calcularRPM() {
   const unsigned long TIMEOUT_SEM_PULSO_MIN_US = 250000;
   const unsigned long TIMEOUT_SEM_PULSO_MAX_US = 1500000;
-  const float ALFA_FILTRO = 0.35f;                    // suavização principal
-  const float LIMITE_VARIACAO_PERCENTUAL = 0.20f;     // limita variação abrupta por atualização
-  const float LIMITE_VARIACAO_FIXA = 50.0f;           // margem fixa para baixa rotação
-  const float RPM_MAX_VALIDO = 12000.0f;              // rejeita leituras fora de faixa
+  const unsigned int RPM_MAX_VALIDO = 12000;          // rejeita leituras fora de faixa
 
-  static float rpm_filtrado = 0.0f;
+  static unsigned int rpm_filtrado = 0;
   static unsigned long tempo_volta_valido_us = 0;
   static unsigned long ultimo_pulso_observado_us = 0;
   static byte timeout_consecutivo = 0;
@@ -120,7 +117,7 @@ void calcularRPM() {
       timeout_consecutivo++;
     }
     if (timeout_consecutivo >= 2) {
-      rpm_filtrado = 0.0f;
+      rpm_filtrado = 0;
       rpm = 0;
     }
     tempo_inicial_rpm = tempo_atual_local;
@@ -130,29 +127,31 @@ void calcularRPM() {
   timeout_consecutivo = 0;
 
   if (tempo_volta_snapshot > 0) {
-    float rpm_calculado = 60000000.0f / (float)tempo_volta_snapshot;
+    unsigned long rpm_calculado = 60000000UL / tempo_volta_snapshot;
 
     if (local_rodafonica == 1) {
-      rpm_calculado *= 2.0f;
+      rpm_calculado <<= 1;
     }
 
-    if (rpm_calculado > 0.0f && rpm_calculado < RPM_MAX_VALIDO) {
-      if (rpm_filtrado < 1.0f) {
-        rpm_filtrado = rpm_calculado;
-      } else {
-        float variacao_maxima = (rpm_filtrado * LIMITE_VARIACAO_PERCENTUAL) + LIMITE_VARIACAO_FIXA;
-        float diferenca = rpm_calculado - rpm_filtrado;
+    if (rpm_calculado > 0 && rpm_calculado < RPM_MAX_VALIDO) {
+      unsigned int rpm_alvo = (unsigned int)rpm_calculado;
 
-        if (diferenca > variacao_maxima) {
-          diferenca = variacao_maxima;
-        } else if (diferenca < -variacao_maxima) {
-          diferenca = -variacao_maxima;
+      if (rpm_filtrado == 0) {
+        rpm_filtrado = rpm_alvo;
+      } else {
+        unsigned int variacao_maxima = (rpm_filtrado >> 2) + (rpm_filtrado >> 3) + 30; // ~37.5% + margem fixa
+        int diferenca = (int)rpm_alvo - (int)rpm_filtrado;
+
+        if (diferenca > (int)variacao_maxima) {
+          diferenca = (int)variacao_maxima;
+        } else if (diferenca < -((int)variacao_maxima)) {
+          diferenca = -((int)variacao_maxima);
         }
 
-        rpm_filtrado += (diferenca * ALFA_FILTRO);
+        rpm_filtrado = (unsigned int)((int)rpm_filtrado + ((diferenca * 5) >> 3)); // IIR ~0.625 (mais responsivo)
       }
 
-      rpm = (unsigned int)(rpm_filtrado + 0.5f);
+      rpm = rpm_filtrado;
     }
   }
 
@@ -180,8 +179,9 @@ void setup(){
 
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   Serial.begin(9600);
+  delay(200);
   // Inicializa o Timer 1 para gerar uma interrupção a cada 100 microsegundo
-  initializeTimerOne(200);
+  initializeTimerOne(100);
   // initializeTimerTwo(200);
   tempo_inicial_rpm = micros();
   ultimo_pulso_rpm_us = tempo_inicial_rpm;
@@ -300,21 +300,7 @@ void loop(){
             status_primeira_injecao = true;
           }
 
-          if(local_rodafonica == 2 && tipo_ignicao_sequencial == 0){
-            if (loop_timer2 >= qtd_cilindro) {
-              loop_timer2 = 0;
-            }
-            int i_injecao = loop_timer2;
-            loop_timer2++;
-
-            calcula_grau_injetor(i_injecao);
-            ligar_injetor(i_injecao);
-
-            tempo_check = micros();
-            for (int j = 0; j < qtd_cilindro; j++) {
-              desligar_injetor(j);
-            }
-          }
+         
           
           // tempo_atual = micros();
              
