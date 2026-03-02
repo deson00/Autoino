@@ -41,3 +41,64 @@ void desligar_dwell(int i){
     
   }  
 }
+
+void calcula_dwell_comando(int i){
+      if ( i < qtd_cilindro/2){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
+      tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    }
+  }
+    if (i >= qtd_cilindro / 2){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
+      tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+    }
+  }
+}
+
+void iniciar_dwell_comando(int i){
+      if ( i < qtd_cilindro/2){ 
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+      referencia_posicao_sensor == true &&
+        ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
+        revolucoes_sincronizada >= 1 && status_corte == 0 ){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i], 1);
+        // setPinHigh(ignicao_pins[i]);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+    }
+  }
+    if (i >= qtd_cilindro / 2){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false) && 
+      referencia_posicao_sensor == true &&
+        ((tempo_atual - tempo_atual_proxima_ignicao[i]) + dwell_bobina >= tempo_proxima_ignicao[i]) && 
+        revolucoes_sincronizada >= 1 && status_corte == 0 ){
+        captura_dwell[i] = true;
+        tempo_percorrido[i] = tempo_atual;
+        digitalWrite(ignicao_pins[i - qtd_cilindro/2], 1);
+        // setPinHigh(ignicao_pins[i - qtd_cilindro/2]);
+        tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i]; 
+        ign_acionado[i] = true;
+        ign_acionado[i+1] = false;
+        captura_dwell[i+1] = false;
+    }
+  }
+}
+
+void desligar_dwell_comando(int i){
+    if ((captura_dwell[i] == true) && (ign_acionado[i] == true)){
+        if ((tempo_atual - tempo_percorrido[i]) >= dwell_bobina ) {
+              captura_dwell[i] = false;
+              if (i < qtd_cilindro/2) {
+                digitalWrite(ignicao_pins[i], 0);
+                // setPinLow(ignicao_pins[i]);
+              }else{
+                digitalWrite(ignicao_pins[i - qtd_cilindro/2], 0);
+                // setPinLow(ignicao_pins[i - qtd_cilindro/2]);
+              }
+        }
+    }
+}
