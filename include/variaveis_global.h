@@ -64,6 +64,14 @@ volatile bool captura_req_fuel[8] = {false, false, false, false, false, false, f
 volatile bool inj_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
 volatile unsigned long tempo_percorrido_inj[8];
+volatile uint32_t timer1_overflow_count = 0;
+volatile uint32_t tick_base_sincronismo = 0;
+volatile uint32_t ignicao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile uint32_t ignicao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile uint32_t injecao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile uint32_t injecao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile bool ignicao_agendada[8] = {false, false, false, false, false, false, false, false};
+volatile bool injecao_agendada[8] = {false, false, false, false, false, false, false, false};
 //volatile bool flag_interrupcao = false;
 unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
@@ -173,3 +181,5 @@ int enriquecimento_desaceleracao = 0; // Quantidade de redução de combustível
 int valor_o2 = 0;
 int sonda_o2 = 0;
 bool tipo_sonda_o2 = 1; // 0 para narrow band e 1 para wide band
+
+void resetar_estado_agendamento_motor();

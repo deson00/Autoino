@@ -6,6 +6,8 @@ volatile uint32_t ultimo_tempo_interrupcao = 0;
 #define TEMPO_CADA_GRAU_ALPHA_DEN 4UL
 #define TEMPO_CADA_GRAU_ALPHA_NUM 1UL
 
+void agendar_eventos_motor_timer1();
+
 static inline unsigned long limita_tempo_cada_grau(unsigned long valor_us) {
   if (valor_us < TEMPO_CADA_GRAU_MIN_US) {
     return TEMPO_CADA_GRAU_MIN_US;
@@ -94,12 +96,8 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     qtd_leitura = 0;
     if (tipo_ignicao_sequencial == 0 && revolucoes_sincronizada >= 1) {
       tempo_atual_proxima_ignicao[0] = tempo_atual;
-      ign_acionado[0] = false;
-      captura_dwell[0] = false;
       tempo_atual_proxima_injecao[0] = tempo_atual;
-      inj_acionado[0] = false;
-      captura_req_fuel[0] = false;
-
+      agendar_eventos_motor_timer1();
     }
 
   } else {

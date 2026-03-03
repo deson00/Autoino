@@ -11,56 +11,55 @@ float tempo_enriquecimento_gama(float valor_referencia, float correcao_aquecimen
  
     return valor_referencia * enriquecimento_gama;
 }
+
+static inline byte indice_pino_injecao(int i) {
+  if (local_rodafonica == 1 && i >= (qtd_cilindro / 2)) {
+    return (byte)(i - (qtd_cilindro / 2));
+  }
+  return (byte)i;
+}
+
 void calcula_grau_injetor(int i){
 if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
       tempo_proxima_injecao[i] = ((ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau) - (grau_fechamento_injetor * tempo_cada_grau);
     }
 }
 void ligar_injetor(int i){
-    tempo_atual = micros();
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        (tempo_atual - tempo_atual_proxima_injecao[i] >= tempo_proxima_injecao[i] ) && 
         revolucoes_sincronizada >= 1 && status_corte == 0){
         if(tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
-          digitalWrite(injecao_pins[j], 1);
+          digitalWrite(injecao_pins[j], HIGH);
           //setPinHigh(injecao_pins[j]);
           }
           captura_req_fuel[i] = true;
           tempo_percorrido_inj[i] = micros();
-          tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
-          inj_acionado[i+1] = false;
-          captura_req_fuel[i+1] = false;
         }else{
+          byte pino = indice_pino_injecao(i);
           captura_req_fuel[i] = true;
           tempo_percorrido_inj[i] = micros();
-          digitalWrite(injecao_pins[i], 1);
+          digitalWrite(injecao_pins[pino], HIGH);
           //setPinHigh(injecao_pins[i]);
-          tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
           inj_acionado[i] = true;
-          inj_acionado[i+1] = false;
-          captura_req_fuel[i+1] = false;
         } 
-        // tempo_proxima_injecao[i+1] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i+1)) * tempo_cada_grau; 
-        
   }
 }
 
 void desligar_injetor(int i){
   if (captura_req_fuel[i] == true && inj_acionado[i] == true && status_primeira_injecao == true){
-    
-    if (tempo_check + 100 >= tempo_percorrido_inj[i] + tempo_injecao) {
           captura_req_fuel[i] = false;
+          inj_acionado[i] = false;
           if (tipo_acionamento_injetor == 1){
             for (int j = 0; j < numero_injetor; j++){
               digitalWrite(injecao_pins[j], LOW);
               // setPinLow(injecao_pins[j]);
             }
+          } else {
+            byte pino = indice_pino_injecao(i);
+            digitalWrite(injecao_pins[pino], LOW);
+            // setPinLow(injecao_pins[i]);
           }
-          digitalWrite(injecao_pins[i], LOW);
-          // setPinLow(injecao_pins[i]);     
-    }    
   }
 }
 
@@ -78,87 +77,12 @@ void calcula_grau_injetor_comando(int i){
 }
 
 void ligar_injetor_comando(int i){
-    if ( i < qtd_cilindro/2){
-    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        ((tempo_atual - tempo_atual_proxima_injecao[i]) >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0){
-        if(tipo_acionamento_injetor == 1){
-          captura_req_fuel[i] = true;
-          for (int j = 0; j < numero_injetor; j++){
-          digitalWrite(injecao_pins[j], 1);
-          // setPinHigh(injecao_pins[j]);
-          }
-          tempo_percorrido_inj[i] = micros();
-          tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
-          inj_acionado[i] = true;
-          inj_acionado[i+1] = false;
-          captura_req_fuel[i+1] = false;
-        }else{
-        captura_req_fuel[i] = true;
-        tempo_percorrido_inj[i] = micros();
-        digitalWrite(injecao_pins[i], 1);
-        // setPinHigh(injecao_pins[i]);
-        tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
-        inj_acionado[i] = true;
-        inj_acionado[i+1] = false;
-        captura_req_fuel[i+1] = false;
-        }
-    }
-  }
-    if (i >= qtd_cilindro / 2){
-    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
-        ((tempo_atual - tempo_atual_proxima_injecao[i]) >= tempo_proxima_injecao[i] - (grau_fechamento_injetor * tempo_cada_grau)) && 
-        revolucoes_sincronizada >= 1 && status_corte == 0){
-          captura_req_fuel[i] = true;
-        if(tipo_acionamento_injetor == 1){
-          for (int j = 0; j < numero_injetor; j++){
-          digitalWrite(injecao_pins[j], 1);
-          // setPinHigh(injecao_pins[j]);
-          }
-          tempo_percorrido_inj[i] = micros();
-          tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
-          inj_acionado[i] = true;
-          inj_acionado[i+1] = false;
-          captura_req_fuel[i+1] = false;
-        }else{  
-        captura_req_fuel[i] = true;
-        tempo_percorrido_inj[i] = micros();
-        digitalWrite(injecao_pins[i - qtd_cilindro/2], 1);
-        // setPinHigh(injecao_pins[i - qtd_cilindro/2]);
-        tempo_atual_proxima_injecao[i + 1] = tempo_atual_proxima_injecao[i]; 
-        inj_acionado[i] = true;
-        inj_acionado[i+1] = false;
-        captura_req_fuel[i+1] = false;
-        }      
-    }
-  }
+    ligar_injetor(i);
 }
 
 void desligar_injetor_comando(){
-           tempo_check = micros();
          for (int i = 0; i < qtd_cilindro; i++)
          {
-         
-          if (captura_req_fuel[i] == true && inj_acionado[i] == true && status_primeira_injecao == true){
-        if (tempo_check + 100 >= tempo_percorrido_inj[i] + tempo_injecao) {
-          if(tipo_acionamento_injetor == 1){
-              captura_req_fuel[i] = false;
-            for (int j = 0; j < numero_injetor; j++){
-              digitalWrite(injecao_pins[j], LOW);
-              // setPinLow(injecao_pins[j]);
-            }
-          }
-              if (i < qtd_cilindro/2) {
-                digitalWrite(injecao_pins[i], LOW);
-                // setPinLow(injecao_pins[i]);
-                captura_req_fuel[i] = false;
-              }
-              if (i >= qtd_cilindro/2){
-                digitalWrite(injecao_pins[i - qtd_cilindro/2], LOW);
-                // setPinLow(injecao_pins[i - qtd_cilindro/2]);
-                captura_req_fuel[i] = false;
-              }      
-      }
-          }
+          desligar_injetor(i);
     }
 }

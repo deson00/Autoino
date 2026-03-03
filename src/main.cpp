@@ -178,11 +178,9 @@ void setup(){
   pinMode(pino_sensor_brv, INPUT);
 
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
+  setupTimer1();
   Serial.begin(9600);
   delay(200);
-  // Inicializa o Timer 1 para gerar uma interrupção a cada 100 microsegundo
-  initializeTimerOne(100);
-  // initializeTimerTwo(200);
   tempo_inicial_rpm = micros();
   ultimo_pulso_rpm_us = tempo_inicial_rpm;
   sei(); // Habilita interrupções globais

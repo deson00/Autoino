@@ -147,6 +147,7 @@ void leitura_entrada_dados_serial()
           grau_pms = values[4];
           qtd_cilindro = values[5] / local_rodafonica;
           grau_entre_cada_cilindro = 360 / qtd_cilindro;
+          resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
       }
@@ -157,12 +158,14 @@ void leitura_entrada_dados_serial()
           avanco_fixo = values[3]; // avanço fixo 0 desligado e 1 ligado
           grau_avanco_fixo = values[4]; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
           tipo_sinal_bobina = values[5] ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
+          resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_faisca();
           tipo_vetor_configuracao_faisca = 0;
       }
       if (tipo_vetor_configuracao_dwell == 1){
           dwell_partida = values[0];
           dwell_funcionamento = values[1];
+          resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_dwell();
           tipo_vetor_configuracao_dwell = 0;
       }
