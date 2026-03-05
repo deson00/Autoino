@@ -124,6 +124,8 @@ int valor_tps_maximo = 1023;
 int valor_referencia_busca_avanco = 0;
 int valor_referencia_busca_tempo_injecao = 0;
 int ajuste_pms =  0;
+byte usar_metodo_unificado_vira = 0; // 0: usa ajuste dinâmico legado no vira, 1: usa offset fixo
+int offset_fase_vira_graus = 0; // usado quando usar_metodo_unificado_vira = 1
 int busca_avanco_linear = true;
 int referencia_temperatura_clt1 = 20;
 int referencia_resistencia_clt1 = 2500;

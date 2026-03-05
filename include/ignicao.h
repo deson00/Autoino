@@ -1,10 +1,3 @@
-struct Ignicao {
-    uint16_t tempoAlvo;
-    bool ativo;
-    uint8_t pino;
-};
-Ignicao eventos[6];
-
 static inline int normalizar_angulo_minimo_zero(int angulo) {
   while (angulo < 0) {
     angulo += 360;
@@ -29,7 +22,16 @@ void atualizar_ajuste_pms_ignicao() {
   }
 
   if (local_rodafonica == 2) {
-    ajuste_pms = (grau_pms < 90 && rpm > rpm_partida) ? 180 : 0;
+    int fase_mod_120 = grau_pms % 120;
+    if (fase_mod_120 < 0) {
+      fase_mod_120 += 120;
+    }
+
+    if (fase_mod_120 <= 3) {
+      ajuste_pms = 4;
+    } else {
+      ajuste_pms = 0;
+    }
     return;
   }
 
@@ -41,15 +43,14 @@ if((captura_dwell[i] == false) && (ign_acionado[i] == false)){
       int angulo_base_ignicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
       angulo_base_ignicao = normalizar_angulo_minimo_zero(angulo_base_ignicao);
 
-  if (local_rodafonica == 1 && angulo_base_ignicao == 0) {
-    angulo_base_ignicao = 359;
+  if (angulo_base_ignicao == 0) {
+    angulo_base_ignicao = 1;
   }
 
       unsigned long tempo_base_ignicao = (unsigned long)angulo_base_ignicao * tempo_cada_grau;
       unsigned long margem_minima = dwell_bobina + (tempo_cada_grau << 1);
       if (tempo_base_ignicao <= margem_minima) {
-        unsigned long deslocamento_seguro_graus = (local_rodafonica == 1) ? 360UL : 180UL;
-        tempo_base_ignicao += (deslocamento_seguro_graus * tempo_cada_grau);
+        tempo_base_ignicao = margem_minima + tempo_cada_grau;
       }
       tempo_proxima_ignicao[i] = tempo_base_ignicao;
     } 

@@ -43,7 +43,7 @@ static inline uint32_t ler_tick32_timer1() {
 }
 
 static inline unsigned long ajustar_tempo_evento_borda_referencia(unsigned long tempo_evento_us) {
-	if (local_rodafonica == 1 && tempo_cada_grau > 0) {
+	if (tempo_cada_grau > 0) {
 		unsigned long periodo_referencia_us = 360UL * tempo_cada_grau;
 		if (periodo_referencia_us > 0 && (tempo_evento_us % periodo_referencia_us) == 0) {
 			if (tempo_evento_us >= tempo_cada_grau) {
@@ -64,18 +64,6 @@ static inline void desabilitar_timer1_compare_b() {
 	TIMSK1 &= ~(1 << OCIE1B);
 }
 
-static inline void limpar_agendamentos_canal_ignicao() {
-	for (int i = 0; i < 8; i++) {
-		ignicao_agendada[i] = false;
-	}
-}
-
-static inline void limpar_agendamentos_canal_injecao() {
-	for (int i = 0; i < 8; i++) {
-		injecao_agendada[i] = false;
-	}
-}
-
 static void atualizar_compare_b_ligar();
 static void atualizar_compare_a_desligar();
 
@@ -94,7 +82,7 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 	unsigned long tempo_ignicao_us = ajustar_tempo_evento_borda_referencia(tempo_proxima_ignicao[i]);
 	uint32_t tick_inicio_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
-	if (local_rodafonica == 1 && tempo_cada_grau > 0) {
+	if (tempo_cada_grau > 0) {
 		uint32_t periodo_ticks = us_para_ticks_timer1(360UL * tempo_cada_grau);
 		while (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
 			tick_inicio_dwell += periodo_ticks;
@@ -119,7 +107,7 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 	unsigned long tempo_injecao_inicio_us = ajustar_tempo_evento_borda_referencia(tempo_proxima_injecao[i]);
 	uint32_t tick_inicio_injecao = tick_base_sincronismo + us_para_ticks_timer1(tempo_injecao_inicio_us);
 
-	if (local_rodafonica == 1 && tempo_cada_grau > 0) {
+	if (tempo_cada_grau > 0) {
 		uint32_t periodo_ticks = us_para_ticks_timer1(360UL * tempo_cada_grau);
 		while (tick_ja_passou(tick_atual, tick_inicio_injecao)) {
 			tick_inicio_injecao += periodo_ticks;
@@ -146,16 +134,34 @@ static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 	}
 }
 
+static inline void limpar_ligamentos_vencidos_sem_acionar(uint32_t tick_atual) {
+	for (int i = 0; i < qtd_cilindro; i++) {
+		if (ignicao_agendada[i] && !ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_ligar[i])) {
+			ignicao_agendada[i] = false;
+		}
+
+		if (injecao_agendada[i] && !inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_ligar[i])) {
+			injecao_agendada[i] = false;
+		}
+	}
+}
+
 static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 	for (int i = 0; i < qtd_cilindro; i++) {
 		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
+			if (local_rodafonica == 2 && tipo_ignicao_sequencial == 0 && revolucoes_sincronizada >= 1) {
+				agendar_ignicao_canal(i, tick_atual);
+			}
 		}
 
 		if (injecao_agendada[i] && inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
+			if (local_rodafonica == 2 && tipo_ignicao_sequencial == 0 && revolucoes_sincronizada >= 1) {
+				agendar_injecao_canal(i, tick_atual);
+			}
 		}
 	}
 }
@@ -180,8 +186,10 @@ void setupTimer1() {
 void limpar_agendamentos_timer1() {
 	uint8_t sreg = SREG;
 	cli();
-	limpar_agendamentos_canal_ignicao();
-	limpar_agendamentos_canal_injecao();
+	for (int i = 0; i < 8; i++) {
+		ignicao_agendada[i] = false;
+		injecao_agendada[i] = false;
+	}
 	TIMSK1 &= ~((1 << OCIE1A) | (1 << OCIE1B));
 	SREG = sreg;
 }
@@ -308,7 +316,6 @@ void agendar_eventos_motor_timer1() {
 	uint8_t sreg = SREG;
 	cli();
 	tick_base_sincronismo = ler_tick32_timer1();
-	processar_ligamentos_vencidos(tick_base_sincronismo);
 	processar_cortes_vencidos(tick_base_sincronismo);
 
 	for (int i = 0; i < qtd_cilindro; i++) {
@@ -343,9 +350,11 @@ ISR(TIMER1_COMPA_vect) {
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_atual);
 
-	for (int i = 0; i < qtd_cilindro; i++) {
-		agendar_ignicao_canal(i, tick_atual);
-		agendar_injecao_canal(i, tick_atual);
+	if (local_rodafonica == 1) {
+		for (int i = 0; i < qtd_cilindro; i++) {
+			agendar_ignicao_canal(i, tick_atual);
+			agendar_injecao_canal(i, tick_atual);
+		}
 	}
 
 	atualizar_compare_a_desligar();

@@ -21,7 +21,17 @@ static inline byte indice_pino_injecao(int i) {
 
 void calcula_grau_injetor(int i){
 if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = ((ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau) - (grau_fechamento_injetor * tempo_cada_grau);
+      int angulo_base_injecao = ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i) - grau_fechamento_injetor;
+      while (angulo_base_injecao < 0) {
+        angulo_base_injecao += 360;
+      }
+      if (angulo_base_injecao >= 360) {
+        angulo_base_injecao = angulo_base_injecao % 360;
+      }
+      if (angulo_base_injecao == 0) {
+        angulo_base_injecao = 1;
+      }
+      tempo_proxima_injecao[i] = (unsigned long)angulo_base_injecao * tempo_cada_grau;
     }
 }
 void ligar_injetor(int i){
