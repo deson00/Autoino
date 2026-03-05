@@ -81,14 +81,18 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 
 	unsigned long tempo_ignicao_us = ajustar_tempo_evento_borda_referencia(tempo_proxima_ignicao[i]);
 	uint32_t tick_inicio_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
+	uint32_t lead_minimo_ticks = us_para_ticks_timer1(dwell_bobina + (tempo_cada_grau << 1));
 
 	if (tempo_cada_grau > 0) {
 		uint32_t periodo_ticks = us_para_ticks_timer1(360UL * tempo_cada_grau);
 		while (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
 			tick_inicio_dwell += periodo_ticks;
 		}
+		while ((int32_t)(tick_inicio_dwell - tick_atual) <= (int32_t)lead_minimo_ticks) {
+			tick_inicio_dwell += periodo_ticks;
+		}
 	} else if (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
-		tick_inicio_dwell = tick_atual + TIMER1_MIN_DELTA_TICKS;
+		tick_inicio_dwell = tick_atual + lead_minimo_ticks;
 	}
 
 	uint32_t tick_fim_dwell = tick_inicio_dwell + us_para_ticks_timer1(dwell_bobina);
@@ -319,11 +323,15 @@ void agendar_eventos_motor_timer1() {
 	processar_cortes_vencidos(tick_base_sincronismo);
 
 	for (int i = 0; i < qtd_cilindro; i++) {
-		if (!ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
+		if (!ign_acionado[i] && !captura_dwell[i] &&
+			(!ignicao_agendada[i] || tick_ja_passou(tick_base_sincronismo, ignicao_tick_ligar[i]))) {
+			ignicao_agendada[i] = false;
 			agendar_ignicao_canal(i, tick_base_sincronismo);
 		}
 
-		if (!inj_acionado[i] && !captura_req_fuel[i] && !injecao_agendada[i]) {
+		if (!inj_acionado[i] && !captura_req_fuel[i] &&
+			(!injecao_agendada[i] || tick_ja_passou(tick_base_sincronismo, injecao_tick_ligar[i]))) {
+			injecao_agendada[i] = false;
 			agendar_injecao_canal(i, tick_base_sincronismo);
 		}
 	}

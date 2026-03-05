@@ -8,6 +8,24 @@ static inline int normalizar_angulo_minimo_zero(int angulo) {
   return angulo;
 }
 
+static inline unsigned long calcular_tempo_evento_ignicao(int angulo_alvo_graus) {
+  if (tempo_cada_grau == 0) {
+    return 1;
+  }
+
+  int angulo_normalizado = normalizar_angulo_minimo_zero(angulo_alvo_graus);
+  unsigned long periodo_360_us = 360UL * tempo_cada_grau;
+
+  unsigned long tempo_evento_us;
+  if (angulo_normalizado == 0) {
+    tempo_evento_us = periodo_360_us;
+  } else {
+    tempo_evento_us = (unsigned long)angulo_normalizado * tempo_cada_grau;
+  }
+
+  return tempo_evento_us;
+}
+
 static inline byte indice_pino_ignicao(int i) {
   if (local_rodafonica == 1 && i >= (qtd_cilindro / 2)) {
     return (byte)(i - (qtd_cilindro / 2));
@@ -42,17 +60,7 @@ void calcula_grau_ignicao(int i){
 if((captura_dwell[i] == false) && (ign_acionado[i] == false)){
       int angulo_base_ignicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
       angulo_base_ignicao = normalizar_angulo_minimo_zero(angulo_base_ignicao);
-
-  if (angulo_base_ignicao == 0) {
-    angulo_base_ignicao = 1;
-  }
-
-      unsigned long tempo_base_ignicao = (unsigned long)angulo_base_ignicao * tempo_cada_grau;
-      unsigned long margem_minima = dwell_bobina + (tempo_cada_grau << 1);
-      if (tempo_base_ignicao <= margem_minima) {
-        tempo_base_ignicao = margem_minima + tempo_cada_grau;
-      }
-      tempo_proxima_ignicao[i] = tempo_base_ignicao;
+  tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo_base_ignicao);
     } 
 }
 void iniciar_dwell(int i){
@@ -81,12 +89,14 @@ void desligar_dwell(int i){
 void calcula_dwell_comando(int i){
       if ( i < qtd_cilindro/2){
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
-      tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+      int angulo_base_ignicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+      tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo_base_ignicao);
     }
   }
     if (i >= qtd_cilindro / 2){
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
-      tempo_proxima_ignicao[i] = (ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+      int angulo_base_ignicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+      tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo_base_ignicao);
     }
   }
 }

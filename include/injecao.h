@@ -57,7 +57,7 @@ void ligar_injetor(int i){
 }
 
 void desligar_injetor(int i){
-  if (captura_req_fuel[i] == true && inj_acionado[i] == true && status_primeira_injecao == true){
+  if (captura_req_fuel[i] == true && inj_acionado[i] == true){
           captura_req_fuel[i] = false;
           inj_acionado[i] = false;
           if (tipo_acionamento_injetor == 1){
