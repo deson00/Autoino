@@ -14,14 +14,10 @@ static inline unsigned long calcular_tempo_evento_ignicao(int angulo_alvo_graus)
   }
 
   int angulo_normalizado = normalizar_angulo_minimo_zero(angulo_alvo_graus);
-  unsigned long periodo_360_us = 360UL * tempo_cada_grau;
 
-  unsigned long tempo_evento_us;
-  if (angulo_normalizado == 0) {
-    tempo_evento_us = periodo_360_us;
-  } else {
-    tempo_evento_us = (unsigned long)angulo_normalizado * tempo_cada_grau;
-  }
+  // Se o ângulo é 0, o tempo deve ser 0 para disparar imediatamente no sincronismo.
+  // Mapear 0 para 360 causava colisão fatal no ciclo de agendamento (BUG DOS 120 GRAUS).
+  unsigned long tempo_evento_us = (unsigned long)angulo_normalizado * tempo_cada_grau;
 
   return tempo_evento_us;
 }
@@ -40,16 +36,7 @@ void atualizar_ajuste_pms_ignicao() {
   }
 
   if (local_rodafonica == 2) {
-    int fase_mod_120 = grau_pms % 120;
-    if (fase_mod_120 < 0) {
-      fase_mod_120 += 120;
-    }
-
-    if (fase_mod_120 <= 3) {
-      ajuste_pms = 4;
-    } else {
-      ajuste_pms = 0;
-    }
+    ajuste_pms = 0;
     return;
   }
 

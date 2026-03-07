@@ -1,4 +1,25 @@
 //função de leitura dos dados na porta serial
+static inline byte normalizar_qtd_cilindro_ignicao(int cilindros_recebidos, byte local_rodafonica_recebida) {
+  if (cilindros_recebidos < 1) {
+    return 1;
+  }
+
+  int canais_ignicao = cilindros_recebidos;
+  if (local_rodafonica_recebida == 2) {
+    if (cilindros_recebidos > 4) {
+      canais_ignicao = cilindros_recebidos / 2;
+    }
+  }
+
+  if (canais_ignicao < 1) {
+    canais_ignicao = 1;
+  } else if (canais_ignicao > 8) {
+    canais_ignicao = 8;
+  }
+
+  return (byte)canais_ignicao;
+}
+
 void leitura_entrada_dados_serial()
 {
   while (Serial.available() > 0){
@@ -145,7 +166,7 @@ void leitura_entrada_dados_serial()
           local_rodafonica = values[2]; // 2 para virabrequinho e 1 para comando
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
-          qtd_cilindro = values[5] / local_rodafonica;
+          qtd_cilindro = normalizar_qtd_cilindro_ignicao(values[5], local_rodafonica);
           grau_entre_cada_cilindro = 360 / qtd_cilindro;
           resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_inicial();

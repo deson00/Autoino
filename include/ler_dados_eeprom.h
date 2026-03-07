@@ -192,6 +192,17 @@ void ler_dados_eeprom_configuracao_inicial() {
     qtd_dente_faltante = ler_8bits_eeprom(366);
     grau_pms = ler_16bits_eeprom(368) - 360; // Simplesmente remove offset
     qtd_cilindro = ler_8bits_eeprom(370);
+
+    if (qtd_cilindro < 1 || qtd_cilindro > 8) {
+        qtd_cilindro = 1;
+    }
+
+    if (local_rodafonica == 2 && qtd_cilindro == 1 && numero_cilindro_injecao >= 4) {
+        byte canais_estimados = (byte)(numero_cilindro_injecao / 2);
+        if (canais_estimados >= 2 && canais_estimados <= 8) {
+            qtd_cilindro = canais_estimados;
+        }
+    }
     
     grau_entre_cada_cilindro = 360 / qtd_cilindro;
     grau_cada_dente = 360 / qtd_dente;

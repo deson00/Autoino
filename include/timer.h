@@ -79,23 +79,29 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 
 	calcula_grau_ignicao(i);
 
-	unsigned long tempo_ignicao_us = ajustar_tempo_evento_borda_referencia(tempo_proxima_ignicao[i]);
+	// Removido ajustar_tempo_evento_borda_referencia, usando o valor exato limpo
+	unsigned long tempo_ignicao_us = tempo_proxima_ignicao[i];
 	uint32_t tick_inicio_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
-	uint32_t lead_minimo_ticks = us_para_ticks_timer1(dwell_bobina + (tempo_cada_grau << 1));
 
+	// Se for zero/360 exato ou já tiver passado, adiciona rigidamente 1 volta no futuro
 	if (tempo_cada_grau > 0) {
-		uint32_t periodo_ticks = us_para_ticks_timer1(360UL * tempo_cada_grau);
-		while (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
-			tick_inicio_dwell += periodo_ticks;
+		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
+		
+		// Força a garantir que o tick de inicio não seja exatamente o atual sem um offset fisico mínimo
+		if (tick_inicio_dwell == tick_atual) {
+			tick_inicio_dwell += TIMER1_MIN_DELTA_TICKS;
 		}
-		while ((int32_t)(tick_inicio_dwell - tick_atual) <= (int32_t)lead_minimo_ticks) {
-			tick_inicio_dwell += periodo_ticks;
+
+		// Se o tick estiver no passado comparado com hoje, joga pra frente 360 graus
+		while (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
+			tick_inicio_dwell += periodo_ticks_360;
 		}
 	} else if (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
-		tick_inicio_dwell = tick_atual + lead_minimo_ticks;
+		tick_inicio_dwell = tick_atual + TIMER1_MIN_DELTA_TICKS;
 	}
 
 	uint32_t tick_fim_dwell = tick_inicio_dwell + us_para_ticks_timer1(dwell_bobina);
+
 	ignicao_tick_ligar[i] = tick_inicio_dwell;
 	ignicao_tick_desligar[i] = tick_fim_dwell;
 	ignicao_agendada[i] = true;
@@ -108,13 +114,18 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 
 	calcula_grau_injetor(i);
 
-	unsigned long tempo_injecao_inicio_us = ajustar_tempo_evento_borda_referencia(tempo_proxima_injecao[i]);
+	unsigned long tempo_injecao_inicio_us = tempo_proxima_injecao[i];
 	uint32_t tick_inicio_injecao = tick_base_sincronismo + us_para_ticks_timer1(tempo_injecao_inicio_us);
 
 	if (tempo_cada_grau > 0) {
-		uint32_t periodo_ticks = us_para_ticks_timer1(360UL * tempo_cada_grau);
+		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
+		
+		if (tick_inicio_injecao == tick_atual) {
+			tick_inicio_injecao += TIMER1_MIN_DELTA_TICKS;
+		}
+
 		while (tick_ja_passou(tick_atual, tick_inicio_injecao)) {
-			tick_inicio_injecao += periodo_ticks;
+			tick_inicio_injecao += periodo_ticks_360;
 		}
 	} else if (tick_ja_passou(tick_atual, tick_inicio_injecao)) {
 		tick_inicio_injecao = tick_atual + TIMER1_MIN_DELTA_TICKS;
@@ -155,7 +166,8 @@ static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
-			if (local_rodafonica == 2 && tipo_ignicao_sequencial == 0 && revolucoes_sincronizada >= 1) {
+			// Re-agendar imediatamente se perdeu o ciclo do sincronismo
+			if (local_rodafonica == 2 && revolucoes_sincronizada >= 1) {
 				agendar_ignicao_canal(i, tick_atual);
 			}
 		}
@@ -163,7 +175,8 @@ static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 		if (injecao_agendada[i] && inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
-			if (local_rodafonica == 2 && tipo_ignicao_sequencial == 0 && revolucoes_sincronizada >= 1) {
+			// Re-agendar imediatamente se perdeu o ciclo do sincronismo
+			if (local_rodafonica == 2 && revolucoes_sincronizada >= 1) {
 				agendar_injecao_canal(i, tick_atual);
 			}
 		}
@@ -226,87 +239,106 @@ void resetar_estado_agendamento_motor() {
 }
 
 static void atualizar_compare_b_ligar() {
-	uint32_t agora = ler_tick32_timer1();
-	bool encontrado = false;
-	uint32_t menor_delta = 0xFFFFFFFFUL;
-	uint32_t proximo_tick = 0;
+	while (true) {
+		uint32_t agora = ler_tick32_timer1();
+		bool encontrado = false;
+		uint32_t menor_delta = 0xFFFFFFFFUL;
+		uint32_t proximo_tick = 0;
 
-	for (int i = 0; i < qtd_cilindro; i++) {
-		if (ignicao_agendada[i] && !ign_acionado[i]) {
-			uint32_t alvo = ignicao_tick_ligar[i];
-			uint32_t delta = delta_tick_evento(agora, alvo);
-			if (!encontrado || delta < menor_delta) {
-				encontrado = true;
-				menor_delta = delta;
-				proximo_tick = alvo;
+		for (int i = 0; i < qtd_cilindro; i++) {
+			if (ignicao_agendada[i] && !ign_acionado[i]) {
+				uint32_t alvo = ignicao_tick_ligar[i];
+				uint32_t delta = delta_tick_evento(agora, alvo);
+				if (!encontrado || delta < menor_delta) {
+					encontrado = true;
+					menor_delta = delta;
+					proximo_tick = alvo;
+				}
+			}
+
+			if (injecao_agendada[i] && !inj_acionado[i]) {
+				uint32_t alvo = injecao_tick_ligar[i];
+				uint32_t delta = delta_tick_evento(agora, alvo);
+				if (!encontrado || delta < menor_delta) {
+					encontrado = true;
+					menor_delta = delta;
+					proximo_tick = alvo;
+				}
 			}
 		}
 
-		if (injecao_agendada[i] && !inj_acionado[i]) {
-			uint32_t alvo = injecao_tick_ligar[i];
-			uint32_t delta = delta_tick_evento(agora, alvo);
-			if (!encontrado || delta < menor_delta) {
-				encontrado = true;
-				menor_delta = delta;
-				proximo_tick = alvo;
-			}
+		if (!encontrado) {
+			desabilitar_timer1_compare_b();
+			break;
 		}
-	}
 
-	if (!encontrado) {
-		desabilitar_timer1_compare_b();
-		return;
-	}
+		// Prevenção de deadlock do comparador de hardware (evento muito próximo ou já ficou pro passado):
+		if (menor_delta < 20) {
+			processar_ligamentos_vencidos(agora + menor_delta);
+			continue; // O evento acabou de ser consumido, recalcula o próximo!
+		}
 
-	if (menor_delta < TIMER1_MIN_DELTA_TICKS) {
-		proximo_tick = agora + TIMER1_MIN_DELTA_TICKS;
-	}
+		OCR1B = (uint16_t)proximo_tick;
+		TIFR1 = (1 << OCF1B);
+		TIMSK1 |= (1 << OCIE1B);
 
-	OCR1B = (uint16_t)proximo_tick;
-	TIFR1 = (1 << OCF1B);
-	TIMSK1 |= (1 << OCIE1B);
+		// Dupla checagem: Se o comparador girou e passou do valor DURANTE o bloco acima
+		if (tick_ja_passou(ler_tick32_timer1(), proximo_tick)) {
+			continue;
+		}
+		break; // Agendado com sucesso e margem de folga de hardware!
+	}
 }
 
 static void atualizar_compare_a_desligar() {
-	uint32_t agora = ler_tick32_timer1();
-	bool encontrado = false;
-	uint32_t menor_delta = 0xFFFFFFFFUL;
-	uint32_t proximo_tick = 0;
+	while (true) {
+		uint32_t agora = ler_tick32_timer1();
+		bool encontrado = false;
+		uint32_t menor_delta = 0xFFFFFFFFUL;
+		uint32_t proximo_tick = 0;
 
-	for (int i = 0; i < qtd_cilindro; i++) {
-		if (ignicao_agendada[i] && ign_acionado[i]) {
-			uint32_t alvo = ignicao_tick_desligar[i];
-			uint32_t delta = delta_tick_evento(agora, alvo);
-			if (!encontrado || delta < menor_delta) {
-				encontrado = true;
-				menor_delta = delta;
-				proximo_tick = alvo;
+		for (int i = 0; i < qtd_cilindro; i++) {
+			if (ignicao_agendada[i] && ign_acionado[i]) {
+				uint32_t alvo = ignicao_tick_desligar[i];
+				uint32_t delta = delta_tick_evento(agora, alvo);
+				if (!encontrado || delta < menor_delta) {
+					encontrado = true;
+					menor_delta = delta;
+					proximo_tick = alvo;
+				}
+			}
+
+			if (injecao_agendada[i] && inj_acionado[i]) {
+				uint32_t alvo = injecao_tick_desligar[i];
+				uint32_t delta = delta_tick_evento(agora, alvo);
+				if (!encontrado || delta < menor_delta) {
+					encontrado = true;
+					menor_delta = delta;
+					proximo_tick = alvo;
+				}
 			}
 		}
 
-		if (injecao_agendada[i] && inj_acionado[i]) {
-			uint32_t alvo = injecao_tick_desligar[i];
-			uint32_t delta = delta_tick_evento(agora, alvo);
-			if (!encontrado || delta < menor_delta) {
-				encontrado = true;
-				menor_delta = delta;
-				proximo_tick = alvo;
-			}
+		if (!encontrado) {
+			desabilitar_timer1_compare_a();
+			break;
 		}
-	}
 
-	if (!encontrado) {
-		desabilitar_timer1_compare_a();
-		return;
-	}
+		// Prevenção de deadlock pro desligamento de bobina/bico:
+		if (menor_delta < 20) {
+			processar_cortes_vencidos(agora + menor_delta);
+			continue;
+		}
 
-	if (menor_delta < TIMER1_MIN_DELTA_TICKS) {
-		proximo_tick = agora + TIMER1_MIN_DELTA_TICKS;
-	}
+		OCR1A = (uint16_t)proximo_tick;
+		TIFR1 = (1 << OCF1A);
+		TIMSK1 |= (1 << OCIE1A);
 
-	OCR1A = (uint16_t)proximo_tick;
-	TIFR1 = (1 << OCF1A);
-	TIMSK1 |= (1 << OCIE1A);
+		if (tick_ja_passou(ler_tick32_timer1(), proximo_tick)) {
+			continue;
+		}
+		break;
+	}
 }
 
 void agendar_eventos_motor_timer1() {
@@ -323,15 +355,11 @@ void agendar_eventos_motor_timer1() {
 	processar_cortes_vencidos(tick_base_sincronismo);
 
 	for (int i = 0; i < qtd_cilindro; i++) {
-		if (!ign_acionado[i] && !captura_dwell[i] &&
-			(!ignicao_agendada[i] || tick_ja_passou(tick_base_sincronismo, ignicao_tick_ligar[i]))) {
-			ignicao_agendada[i] = false;
+		if (!ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
 			agendar_ignicao_canal(i, tick_base_sincronismo);
 		}
 
-		if (!inj_acionado[i] && !captura_req_fuel[i] &&
-			(!injecao_agendada[i] || tick_ja_passou(tick_base_sincronismo, injecao_tick_ligar[i]))) {
-			injecao_agendada[i] = false;
+		if (!inj_acionado[i] && !captura_req_fuel[i] && !injecao_agendada[i]) {
 			agendar_injecao_canal(i, tick_base_sincronismo);
 		}
 	}
