@@ -2,7 +2,7 @@ byte tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
 byte qtd_dente = 12; //60 
 byte qtd_dente_faltante = 1; //2
 byte local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
-byte qtd_cilindro = 6 / local_rodafonica;
+byte qtd_cilindro = 4; // Removido calculo magico. Default absoluto agora é 4 cilindros.
 int grau_pms = 60;
 volatile unsigned long dwell_bobina = 3;
 int dwell_partida = 4;
@@ -13,7 +13,7 @@ volatile unsigned int qtd_voltas = 0;
 byte grau_cada_dente = 360 / qtd_dente;
 byte grau_avanco = 0;
 byte grau_avanco_partida = 1; // avanço definido apenas na partida
-byte grau_entre_cada_cilindro = 360 / qtd_cilindro;
+byte grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura_media = 0;

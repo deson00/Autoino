@@ -68,7 +68,7 @@ void ler_dados_memoria() {
   Serial.write(',');
   sendSerialInt(grau_pms);
   Serial.write(',');
-  sendSerialInt(qtd_cilindro * local_rodafonica);
+  sendSerialInt(qtd_cilindro); // Removida a multiplicação corrompida 
   Serial.write(',');
   Serial.write(';');
 

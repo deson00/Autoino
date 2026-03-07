@@ -13,9 +13,17 @@ float tempo_enriquecimento_gama(float valor_referencia, float correcao_aquecimen
 }
 
 static inline byte indice_pino_injecao(int i) {
+  // Mesmo sistema Wasted Spark da ignição, só que para injeção (Semi-Sequencial no Vira)
+  // Faz mapear o índice cíclico matemático para dentro dos injetores fisicamente instalados.
+  if (local_rodafonica == 2 && modo_injecao == 2) { // modo_injecao 2 = Semi-sequencial
+      return (byte)(i % (qtd_cilindro / 2));
+  }
+
+  // Comportamento do fase/comando que era antigo
   if (local_rodafonica == 1 && i >= (qtd_cilindro / 2)) {
     return (byte)(i - (qtd_cilindro / 2));
   }
+  
   return (byte)i;
 }
 

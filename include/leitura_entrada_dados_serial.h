@@ -166,8 +166,8 @@ void leitura_entrada_dados_serial()
           local_rodafonica = values[2]; // 2 para virabrequinho e 1 para comando
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
-          qtd_cilindro = normalizar_qtd_cilindro_ignicao(values[5], local_rodafonica);
-          grau_entre_cada_cilindro = 360 / qtd_cilindro;
+          qtd_cilindro = values[5]; // <<< Usa o valor bruto vindo da tela! Não tenta normalizar/adivinhar canais de bobina.
+          grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
           resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;

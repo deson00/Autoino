@@ -23,6 +23,14 @@ static inline unsigned long calcular_tempo_evento_ignicao(int angulo_alvo_graus)
 }
 
 static inline byte indice_pino_ignicao(int i) {
+  // Se estiver lendo virabrequim (2 voltas), as saídas espelham-se pela metade!
+  // No caso de 4 cilindros em Wasted Spark (centelha perdida no Vira), i=0 e i=2 vão para bobina A (indice 0);
+  // i=1 e i=3 vão para bobina B (indice 1). Não passa do limite e não pisca a IGN3.
+  if (local_rodafonica == 2 && modo_ignicao == 1) { // 1 = centelha perdida
+    return (byte)(i % (qtd_cilindro / 2));
+  }
+
+  // Comportamento do fase/comando que era antigo (ignições emparelhadas)
   if (local_rodafonica == 1 && i >= (qtd_cilindro / 2)) {
     return (byte)(i - (qtd_cilindro / 2));
   }
