@@ -43,9 +43,9 @@ if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
     }
 }
 void ligar_injetor(int i){
-    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) && 
+    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) &&
         revolucoes_sincronizada >= 1 && status_corte == 0){
-        if(tipo_acionamento_injetor == 1){
+        if(modo_injecao == 1 || tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], HIGH);
           //setPinHigh(injecao_pins[j]);
@@ -68,7 +68,7 @@ void desligar_injetor(int i){
   if (captura_req_fuel[i] == true && inj_acionado[i] == true){
           captura_req_fuel[i] = false;
           inj_acionado[i] = false;
-          if (tipo_acionamento_injetor == 1){
+          if (modo_injecao == 1 || tipo_acionamento_injetor == 1){
             for (int j = 0; j < numero_injetor; j++){
               digitalWrite(injecao_pins[j], LOW);
               // setPinLow(injecao_pins[j]);
