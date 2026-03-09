@@ -263,4 +263,17 @@ void ler_dados_memoria() {
     Serial.write(',');
     Serial.write(';');
 
+  // r) Enriquecimento de injeção por temperatura (5 pontos)
+  Serial.write('r');
+  Serial.write(',');
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_temperatura_injecao[i]);
+    Serial.write(',');
+  }
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_enriquecimento_temperatura[i]);
+    Serial.write(',');
+  }
+  Serial.write(';');
+
 }

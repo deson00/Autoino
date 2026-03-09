@@ -97,6 +97,9 @@ void leitura_entrada_dados_serial()
     if (data == 'q') {// configuração MAP
       tipo_vetor_configuracao_map = 1;
     }
+    if (data == 'r') {// configuração injeção por temperatura
+      tipo_vetor_enriquecimento_temperatura = 1;
+    }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
        gravar_dados_eeprom_tabela_ve_map_rpm();
@@ -262,6 +265,36 @@ void leitura_entrada_dados_serial()
           valor_map_maximo = values[2];
           gravar_dados_eeprom_configuracao_map();
           tipo_vetor_configuracao_map = 0;
+      }
+      if (tipo_vetor_enriquecimento_temperatura == 1){
+          for (int i = 0; i < 5; i++) {
+            int temperatura = values[i];
+            if (temperatura < 0) {
+              temperatura = 0;
+            } else if (temperatura > 150) {
+              temperatura = 150;
+            }
+            vetor_temperatura_injecao[i] = (byte)temperatura;
+          }
+
+          for (int i = 1; i < 5; i++) {
+            if (vetor_temperatura_injecao[i] < vetor_temperatura_injecao[i - 1]) {
+              vetor_temperatura_injecao[i] = vetor_temperatura_injecao[i - 1];
+            }
+          }
+
+          for (int i = 0; i < 5; i++) {
+            int enriquecimento = values[i + 5];
+            if (enriquecimento < 0) {
+              enriquecimento = 0;
+            } else if (enriquecimento > 250) {
+              enriquecimento = 250;
+            }
+            vetor_enriquecimento_temperatura[i] = (byte)enriquecimento;
+          }
+
+          gravar_dados_eeprom_enriquecimento_temperatura();
+          tipo_vetor_enriquecimento_temperatura = 0;
       }
       index = 0; // reinicia índice do vetor
     }

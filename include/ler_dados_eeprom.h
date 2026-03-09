@@ -185,6 +185,52 @@ void ler_dados_eeprom_configuracao_map() {
     endereco += 2;
 }
 
+void ler_dados_eeprom_enriquecimento_temperatura() {
+    int endereco = 1020;
+
+    byte temperaturas_local[5];
+    byte enriquecimento_local[5];
+
+    for (int i = 0; i < 5; i++) {
+        temperaturas_local[i] = EEPROM.read(endereco++);
+    }
+    for (int i = 0; i < 5; i++) {
+        enriquecimento_local[i] = EEPROM.read(endereco++);
+    }
+
+    // Valida bloco vazio (EEPROM sem gravação).
+    bool bloco_vazio = true;
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] != 0xFF || enriquecimento_local[i] != 0xFF) {
+            bloco_vazio = false;
+            break;
+        }
+    }
+    if (bloco_vazio) {
+        return;
+    }
+
+    // Aplica limites e monotonicidade mínima das temperaturas.
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] > 150) {
+            temperaturas_local[i] = 150;
+        }
+        if (enriquecimento_local[i] > 250) {
+            enriquecimento_local[i] = 250;
+        }
+    }
+    for (int i = 1; i < 5; i++) {
+        if (temperaturas_local[i] < temperaturas_local[i - 1]) {
+            temperaturas_local[i] = temperaturas_local[i - 1];
+        }
+    }
+
+    for (int i = 0; i < 5; i++) {
+        vetor_temperatura_injecao[i] = temperaturas_local[i];
+        vetor_enriquecimento_temperatura[i] = enriquecimento_local[i];
+    }
+}
+
 void ler_dados_eeprom_configuracao_inicial() {
     tipo_ignicao = ler_8bits_eeprom(360);
     qtd_dente = ler_8bits_eeprom(362);
@@ -213,6 +259,7 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_enriquecimento_aceleracao();
     leitura_dados_eeprom_configuracao_tps();
     ler_dados_eeprom_configuracao_map();
+    ler_dados_eeprom_enriquecimento_temperatura();
     ler_dados_eeprom_configuracao_inicial();    
     
     // Leitura dos dados de configurações de faisca 

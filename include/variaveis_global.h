@@ -107,6 +107,7 @@ byte tipo_vetor_configuracao_clt = 0;
 byte tipo_vetor_configuracao_injecao = 0;
 byte tipo_vetor_protecao = 0;
 byte tipo_vetor_enriquecimento_aceleracao = 0;
+byte tipo_vetor_enriquecimento_temperatura = 0;
 byte tipo_vetor_configuracao_tps = 0;
 byte tipo_vetor_configuracao_map = 0;
 bool status_dados_tempo_real = false;
@@ -156,6 +157,8 @@ int GammaE = 100;
 unsigned long tempo_injecao = 0;
 byte temperatura_trabalho = 70;
 byte correcao_maxima_temperatura = 50; // % de enriquecimento a 0 graus
+byte vetor_temperatura_injecao[5] = {0, 20, 40, 60, 80};
+byte vetor_enriquecimento_temperatura[5] = {140, 130, 120, 110, 100}; // 100 = sem correcao, maximo 250
 int tipo_protecao = 1; // 0 desligado, 1 apenas ignição, 2 apenas injeção e 3 ignição e injeção
 int rpm_pre_corte = 6000;
 int avanco_corte = 20; //graus

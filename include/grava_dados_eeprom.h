@@ -186,3 +186,14 @@ void gravar_dados_eeprom_configuracao_map() {
     EEPROM.update(endereco++, valor_map_maximo & 0xFF);        // Byte menos significativo
     EEPROM.update(endereco++, (valor_map_maximo >> 8) & 0xFF); // Byte mais significativo
 }
+
+void gravar_dados_eeprom_enriquecimento_temperatura() {
+    int endereco = 1020;
+
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_temperatura_injecao[i] & 0xFF);
+    }
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_enriquecimento_temperatura[i] & 0xFF);
+    }
+}
