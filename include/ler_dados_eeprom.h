@@ -231,6 +231,50 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
     }
 }
 
+void ler_dados_eeprom_avanco_temperatura() {
+    int endereco = 1030;
+
+    byte temperaturas_local[5];
+    byte avanco_local[5];
+
+    for (int i = 0; i < 5; i++) {
+        temperaturas_local[i] = EEPROM.read(endereco++);
+    }
+    for (int i = 0; i < 5; i++) {
+        avanco_local[i] = EEPROM.read(endereco++);
+    }
+
+    bool bloco_vazio = true;
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] != 0xFF || avanco_local[i] != 0xFF) {
+            bloco_vazio = false;
+            break;
+        }
+    }
+    if (bloco_vazio) {
+        return;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] > 150) {
+            temperaturas_local[i] = 150;
+        }
+        if (avanco_local[i] > 10) {
+            avanco_local[i] = 10;
+        }
+    }
+    for (int i = 1; i < 5; i++) {
+        if (temperaturas_local[i] < temperaturas_local[i - 1]) {
+            temperaturas_local[i] = temperaturas_local[i - 1];
+        }
+    }
+
+    for (int i = 0; i < 5; i++) {
+        vetor_temperatura[i] = temperaturas_local[i];
+        vetor_avanco_temperatura[i] = avanco_local[i];
+    }
+}
+
 void ler_dados_eeprom_configuracao_inicial() {
     tipo_ignicao = ler_8bits_eeprom(360);
     qtd_dente = ler_8bits_eeprom(362);
@@ -260,6 +304,7 @@ void ler_dados_eeprom(){
     leitura_dados_eeprom_configuracao_tps();
     ler_dados_eeprom_configuracao_map();
     ler_dados_eeprom_enriquecimento_temperatura();
+    ler_dados_eeprom_avanco_temperatura();
     ler_dados_eeprom_configuracao_inicial();    
     
     // Leitura dos dados de configurações de faisca 

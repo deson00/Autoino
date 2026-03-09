@@ -276,4 +276,17 @@ void ler_dados_memoria() {
   }
   Serial.write(';');
 
+  // s) Avanco por temperatura (5 pontos)
+  Serial.write('s');
+  Serial.write(',');
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_temperatura[i]);
+    Serial.write(',');
+  }
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_avanco_temperatura[i]);
+    Serial.write(',');
+  }
+  Serial.write(';');
+
 }

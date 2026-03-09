@@ -19,6 +19,7 @@
 #include <enriquecimento_aceleracao.h>
 #include <enriquecimento_gama.h>
 #include <enriquecimento_temperatura.h>
+#include <avanco_temperatura.h>
 
 // Função para calcular a RPM
 // void calcularRPM() {
@@ -273,6 +274,15 @@ void loop(){
       grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
+    }
+
+    if (status_corte == 0) {
+      byte correcao_avanco_temp = avanco_por_temperatura((float)temperatura_motor);
+      unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
+      if (grau_corrigido > 120U) {
+        grau_corrigido = 120U;
+      }
+      grau_avanco = (byte)grau_corrigido;
     }
 
           VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];

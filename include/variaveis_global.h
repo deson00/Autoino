@@ -86,8 +86,8 @@ int vetor_map_tps[16];
 int vetor_rpm[16];
 int vetor_map_tps_ve[16];
 int vetor_rpm_ve[16];
-byte vetor_avanco_temperatura[5];
-byte vetor_temperatura[5];
+byte vetor_avanco_temperatura[5] = {10, 8, 6, 3, 0};
+byte vetor_temperatura[5] = {0, 20, 40, 60, 80};
 int indice_vetor_entrada_dados_serial = 0;
 int indice_matrix_entrada_dados_seriala = 0; // Índice usado para rastrear a linha atual na matriz
 int indice_matrix_entrada_dados_serialb = 0; // Índice usado para rastrear a coluna atual na matriz
@@ -108,6 +108,7 @@ byte tipo_vetor_configuracao_injecao = 0;
 byte tipo_vetor_protecao = 0;
 byte tipo_vetor_enriquecimento_aceleracao = 0;
 byte tipo_vetor_enriquecimento_temperatura = 0;
+byte tipo_vetor_avanco_temperatura = 0;
 byte tipo_vetor_configuracao_tps = 0;
 byte tipo_vetor_configuracao_map = 0;
 bool status_dados_tempo_real = false;

@@ -197,3 +197,14 @@ void gravar_dados_eeprom_enriquecimento_temperatura() {
         EEPROM.update(endereco++, vetor_enriquecimento_temperatura[i] & 0xFF);
     }
 }
+
+void gravar_dados_eeprom_avanco_temperatura() {
+    int endereco = 1030;
+
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_temperatura[i] & 0xFF);
+    }
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_avanco_temperatura[i] & 0xFF);
+    }
+}
