@@ -1,8 +1,15 @@
 #define MIN_INTERVALO_DENTE_US 50        // Filtro anti-bounce mínimo
 volatile uint32_t ultimo_tempo_interrupcao = 0;
+volatile uint32_t intervalo_dente_referencia_us = 0;
+volatile byte amostras_intervalo_validas = 0;
+
+#define GAP_FATOR_MIN_FUNC_X10 15UL   // 1.5x em funcionamento
+#define GAP_FATOR_MIN_PARTIDA_X10 14UL // 1.4x em partida para tolerar sweep/aceleracao
+#define GAP_FATOR_MAX_MARGEM_X 4UL    // limite superior para rejeitar outliers
+#define FATOR_RUIDO_DENTE_CURTO_NUM 3UL // Rejeita pulso menor que 1/3 do dente de referencia
 
 #define TEMPO_CADA_GRAU_MIN_US 1UL
-#define TEMPO_CADA_GRAU_MAX_US 2000UL
+#define TEMPO_CADA_GRAU_MAX_US 10000UL // Suporta partida lenta com rodas de poucos dentes (ex.: 4-1)
 #define TEMPO_CADA_GRAU_ALPHA_DEN 4UL
 #define TEMPO_CADA_GRAU_ALPHA_NUM 1UL
 
@@ -37,31 +44,70 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
     return; // Ignora o pulso, é ruído. Não faz nada, pois não é um pulso válido.
   }
+
+  // Primeiro pulso valido: inicializa base de tempo e evita usar intervalo lixo.
+  if (inicia_tempo_sensor_roda_fonica) {
+    ultimo_tempo_interrupcao = tempo_agora;
+    ultimo_pulso_rpm_us = tempo_agora;
+    tempo_anterior = tempo_agora;
+    tempo_atual = tempo_agora;
+    intervalo_tempo_entre_dente = 0;
+    tempo_dente_anterior[0] = 0;
+    tempo_dente_anterior[1] = 0;
+    intervalo_dente_referencia_us = 0;
+    amostras_intervalo_validas = 0;
+    leitura = 0;
+    qtd_leitura = 0;
+    verifica_falha = 0;
+    inicia_tempo_sensor_roda_fonica = 0;
+    return;
+  }
+
+  // Filtro adaptativo: rejeita dente espurio muito curto em relacao ao ultimo dente valido.
+  unsigned long intervalo_candidato = (tempo_agora - tempo_anterior);
+  if (intervalo_dente_referencia_us > 0 &&
+      (intervalo_candidato * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
+    return;
+  }
+
   ultimo_tempo_interrupcao = tempo_agora;
   ultimo_pulso_rpm_us = tempo_agora;
+
   qtd_leitura++;
   tempo_atual = tempo_agora;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
-  //verifica_falha = (tempo_dente_anterior[leitura] / 2) + tempo_dente_anterior[leitura];
-  // verifica_falha = (tempo_dente_anterior[leitura] / 2) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
-  // verifica_falha = (tempo_dente_anterior[leitura] >> 1) + (tempo_dente_anterior[leitura] * qtd_dente_faltante);
-  verifica_falha = (tempo_dente_anterior[leitura] >> 1) + tempo_dente_anterior[leitura];
-  if (inicia_tempo_sensor_roda_fonica) {
-    tempo_anterior = tempo_atual;
-    tempo_dente_anterior[0] = tempo_anterior;
-    inicia_tempo_sensor_roda_fonica = 0;
+
+  unsigned long fator_gap_min_x10 = (rpm < rpm_partida) ? GAP_FATOR_MIN_PARTIDA_X10 : GAP_FATOR_MIN_FUNC_X10;
+  unsigned long gap_minimo_us = 0;
+  unsigned long gap_maximo_us = 0xFFFFFFFFUL;
+
+  if (intervalo_dente_referencia_us > 0) {
+    gap_minimo_us = (intervalo_dente_referencia_us * fator_gap_min_x10) / 10UL;
+    gap_maximo_us = intervalo_dente_referencia_us * ((unsigned long)(qtd_dente_faltante + GAP_FATOR_MAX_MARGEM_X));
   }
-  if (leitura == 0) {
-    leitura = 1;
-    tempo_dente_anterior[0] = intervalo_tempo_entre_dente;
-  } else {
-    leitura = 0;
-    tempo_dente_anterior[1] = intervalo_tempo_entre_dente;
-  }
+
+  verifica_falha = gap_minimo_us;
+  bool gap_detectado = (amostras_intervalo_validas >= 3) &&
+                       (intervalo_dente_referencia_us > 0) &&
+                       (intervalo_tempo_entre_dente > gap_minimo_us) &&
+                       (intervalo_tempo_entre_dente < gap_maximo_us);
+
+  // Mantem histórico simples para diagnostico/telemetria.
+  tempo_dente_anterior[1] = tempo_dente_anterior[0];
+  tempo_dente_anterior[0] = intervalo_tempo_entre_dente;
   //Serial.print("|");
   //Serial.print(qtd_leitura);
-  // if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante * 4)))) //linha original 
-  if (verifica_falha < intervalo_tempo_entre_dente && (intervalo_tempo_entre_dente < (tempo_dente_anterior[leitura] * (qtd_dente_faltante << 2))))
+
+  // Re-arme automatico: se o gap deixar de ser reconhecido por muitos dentes seguidos,
+  // limpa o estado para evitar ficar preso sem recuperar sincronismo.
+  if (qtd_leitura > ((uint16_t)qtd_dente << 1)) {
+    revolucoes_sincronizada = 0;
+    qtd_leitura = 0;
+    intervalo_dente_referencia_us = 0;
+    amostras_intervalo_validas = 0;
+  }
+
+  if (gap_detectado)
     // if (verifica_falha < intervalo_tempo_entre_dente)
   {
 
@@ -85,7 +131,12 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 
     // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
     posicao_atual_sensor = 0;
-    if ((qtd_leitura != (qtd_dente - qtd_dente_faltante))) {
+    uint16_t dentes_esperados = (uint16_t)(qtd_dente - qtd_dente_faltante);
+    uint16_t tolerancia_dentes = (rpm < rpm_partida) ? 1U : 0U;
+    bool contagem_valida = (qtd_leitura + tolerancia_dentes >= dentes_esperados) &&
+                           (qtd_leitura <= dentes_esperados + tolerancia_dentes);
+
+    if (!contagem_valida) {
       revolucoes_sincronizada = 0;
       if (++qtd_perda_sincronia >= 255) {
         qtd_perda_sincronia = 0;
@@ -94,6 +145,8 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       revolucoes_sincronizada++;
     }
     qtd_leitura = 0;
+    intervalo_dente_referencia_us = 0;
+    amostras_intervalo_validas = 0;
     if (tipo_ignicao_sequencial == 0 && revolucoes_sincronizada >= 1) {
       tempo_atual_proxima_ignicao[0] = tempo_atual;
       tempo_atual_proxima_injecao[0] = tempo_atual;
@@ -157,6 +210,10 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 
   }
   // posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
+  intervalo_dente_referencia_us = intervalo_tempo_entre_dente;
+  if (amostras_intervalo_validas < 255) {
+    amostras_intervalo_validas++;
+  }
   tempo_anterior = tempo_atual;
   // tempo_final_codigo = micros(); // Registra o tempo final
   // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
