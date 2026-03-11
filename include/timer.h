@@ -1,5 +1,6 @@
 static const uint16_t TIMER1_TICK_US = 4;
 static const uint16_t TIMER1_MIN_DELTA_TICKS = 2;
+static const uint8_t TIMER1_MAX_REPLAN_LOOPS = 32;
 
 static inline uint32_t us_para_ticks_timer1(unsigned long tempo_us) {
 	if (tempo_us == 0) {
@@ -22,6 +23,20 @@ static inline uint32_t delta_tick_evento(uint32_t tick_atual, uint32_t tick_even
 		return 0;
 	}
 	return tick_evento - tick_atual;
+}
+
+static inline uint32_t alinhar_tick_para_futuro(uint32_t tick_evento, uint32_t tick_atual, uint32_t periodo_ticks) {
+	if (periodo_ticks == 0) {
+		return tick_atual + TIMER1_MIN_DELTA_TICKS;
+	}
+
+	if (!tick_ja_passou(tick_atual, tick_evento)) {
+		return tick_evento;
+	}
+
+	uint32_t atraso = tick_atual - tick_evento;
+	uint32_t saltos = (atraso / periodo_ticks) + 1;
+	return tick_evento + (saltos * periodo_ticks);
 }
 
 static inline uint32_t ler_tick32_timer1() {
@@ -92,10 +107,8 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 			tick_inicio_dwell += TIMER1_MIN_DELTA_TICKS;
 		}
 
-		// Se o tick estiver no passado comparado com hoje, joga pra frente 360 graus
-		while (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
-			tick_inicio_dwell += periodo_ticks_360;
-		}
+		// Alinha para o próximo ciclo sem laço potencialmente longo.
+		tick_inicio_dwell = alinhar_tick_para_futuro(tick_inicio_dwell, tick_atual, periodo_ticks_360);
 	} else if (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
 		tick_inicio_dwell = tick_atual + TIMER1_MIN_DELTA_TICKS;
 	}
@@ -124,9 +137,7 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 			tick_inicio_injecao += TIMER1_MIN_DELTA_TICKS;
 		}
 
-		while (tick_ja_passou(tick_atual, tick_inicio_injecao)) {
-			tick_inicio_injecao += periodo_ticks_360;
-		}
+		tick_inicio_injecao = alinhar_tick_para_futuro(tick_inicio_injecao, tick_atual, periodo_ticks_360);
 	} else if (tick_ja_passou(tick_atual, tick_inicio_injecao)) {
 		tick_inicio_injecao = tick_atual + TIMER1_MIN_DELTA_TICKS;
 	}
@@ -239,7 +250,13 @@ void resetar_estado_agendamento_motor() {
 }
 
 static void atualizar_compare_b_ligar() {
+	uint8_t tentativas = 0;
 	while (true) {
+		if (tentativas++ >= TIMER1_MAX_REPLAN_LOOPS) {
+			desabilitar_timer1_compare_b();
+			break;
+		}
+
 		uint32_t agora = ler_tick32_timer1();
 		bool encontrado = false;
 		uint32_t menor_delta = 0xFFFFFFFFUL;
@@ -291,7 +308,13 @@ static void atualizar_compare_b_ligar() {
 }
 
 static void atualizar_compare_a_desligar() {
+	uint8_t tentativas = 0;
 	while (true) {
+		if (tentativas++ >= TIMER1_MAX_REPLAN_LOOPS) {
+			desabilitar_timer1_compare_a();
+			break;
+		}
+
 		uint32_t agora = ler_tick32_timer1();
 		bool encontrado = false;
 		uint32_t menor_delta = 0xFFFFFFFFUL;

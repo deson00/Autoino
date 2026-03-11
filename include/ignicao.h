@@ -53,7 +53,9 @@ void atualizar_ajuste_pms_ignicao() {
 
 void calcula_grau_ignicao(int i){
 if((captura_dwell[i] == false) && (ign_acionado[i] == false)){
-      int angulo_base_ignicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+  int grau_pms_referencia = graus_virabrequim_para_referencia_sensor(grau_pms);
+  int grau_avanco_referencia = graus_virabrequim_para_referencia_sensor(grau_avanco);
+  int angulo_base_ignicao = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
       angulo_base_ignicao = normalizar_angulo_minimo_zero(angulo_base_ignicao);
   tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo_base_ignicao);
     } 
@@ -84,13 +86,17 @@ void desligar_dwell(int i){
 void calcula_dwell_comando(int i){
       if ( i < qtd_cilindro/2){
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
-      int angulo_base_ignicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+      int grau_pms_referencia = graus_virabrequim_para_referencia_sensor(grau_pms);
+      int grau_avanco_referencia = graus_virabrequim_para_referencia_sensor(grau_avanco);
+      int angulo_base_ignicao = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
       tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo_base_ignicao);
     }
   }
     if (i >= qtd_cilindro / 2){
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
-      int angulo_base_ignicao = ajuste_pms + grau_pms - grau_avanco + (grau_entre_cada_cilindro * i);
+      int grau_pms_referencia = graus_virabrequim_para_referencia_sensor(grau_pms);
+      int grau_avanco_referencia = graus_virabrequim_para_referencia_sensor(grau_avanco);
+      int angulo_base_ignicao = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
       tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo_base_ignicao);
     }
   }

@@ -10,6 +10,7 @@ void protege_ignicao_injecao(){
     digitalWrite(injecao_pins[2],0);
     digitalWrite(injecao_pins[3],0);
     revolucoes_sincronizada = 0;
+    falhas_sync_consecutivas = 0;
   }
 }
 

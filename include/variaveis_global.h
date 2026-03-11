@@ -41,6 +41,7 @@ volatile unsigned long verifica_falha = 0;
 unsigned long tempo_check = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
+volatile byte falhas_sync_consecutivas = 0;
 volatile unsigned int qtd_revolucoes = 0;
 volatile unsigned long ultimo_pulso_rpm_us = 0;
 byte qtd_perda_sincronia = 0;

@@ -22,6 +22,15 @@ int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo,
   int grau = proporcao * (grau_maximo - grau_minimo) + grau_minimo; 
   return grau;
 }
+
+static inline int graus_virabrequim_para_referencia_sensor(int graus_virabrequim) {
+  // Quando a roda esta no comando, 360 graus do sensor equivalem a 720 no virabrequim.
+  if (local_rodafonica == 1) {
+    return graus_virabrequim / 2;
+  }
+  return graus_virabrequim;
+}
+
 float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
   float T1 = ntcTemperature1 + 273.15;   // converte a temperatura em Celsius para Kelvin
   float T2 = ntcTemperature2 + 273.15;

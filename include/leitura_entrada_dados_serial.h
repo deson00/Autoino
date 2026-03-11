@@ -56,15 +56,7 @@ void leitura_entrada_dados_serial()
       tipo_vetor_configuracao_inicial = 1;
     }
      if (data == 'h'){//retorna dados da ecu
-        uint8_t timer1_habilitado = TIMSK1 & _BV(TOIE1);
-        if (timer1_habilitado) {
-          TIMSK1 &= ~_BV(TOIE1);
-        }
         ler_dados_memoria();
-        Serial.flush();
-        if (timer1_habilitado) {
-          TIMSK1 |= _BV(TOIE1);
-        }
     }
     if (data == 'i') {
      if(status_dados_tempo_real){
