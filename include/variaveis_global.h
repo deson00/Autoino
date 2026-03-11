@@ -2,7 +2,7 @@ byte tipo_ignicao = 1;//1 roda fonica e 2 distribuidor
 byte qtd_dente = 12; //60 
 byte qtd_dente_faltante = 1; //2
 byte local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
-byte qtd_cilindro = 6 / local_rodafonica;
+byte qtd_cilindro = 4; // Removido calculo magico. Default absoluto agora é 4 cilindros.
 int grau_pms = 60;
 volatile unsigned long dwell_bobina = 3;
 int dwell_partida = 4;
@@ -13,18 +13,18 @@ volatile unsigned int qtd_voltas = 0;
 byte grau_cada_dente = 360 / qtd_dente;
 byte grau_avanco = 0;
 byte grau_avanco_partida = 1; // avanço definido apenas na partida
-byte grau_entre_cada_cilindro = 360 / qtd_cilindro;
+byte grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura_media = 0;
-byte qtd_leitura = 0;
+volatile uint16_t qtd_leitura = 0;
 byte referencia_leitura_ignicao = 1;//map 1 e tps 2
 byte referencia_leitura_injecao = 1;//map 1 e tps 2
 byte modo_ignicao = 1; // 1 para centelha perdida e 2 para centelha unica  
 byte avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
 byte grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
 byte tipo_sinal_bobina = 1 ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
-
+volatile bool referencia_posicao_sensor = false; // Variável para controlar posicionamento real da roda fonica em relação ao sinal da bobina, para evitar erro de avanço em função da oscilação do motor em baixa rotação
 volatile unsigned long tempo_anterior = 0;
 volatile unsigned long tempo_dente_anterior[2] = {0,0};
 volatile unsigned long tempo_inicio_volta_completa = 0;
@@ -41,7 +41,8 @@ volatile unsigned long verifica_falha = 0;
 unsigned long tempo_check = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
-int qtd_revolucoes = 0;
+volatile unsigned int qtd_revolucoes = 0;
+volatile unsigned long ultimo_pulso_rpm_us = 0;
 byte qtd_perda_sincronia = 0;
 int qtd_loop = 0;
 int loop_timer = 0; //variavel para ser incrementada a cada chamada da função timer
@@ -63,6 +64,14 @@ volatile bool captura_req_fuel[8] = {false, false, false, false, false, false, f
 volatile bool inj_acionado[8] = {false, false, false, false, false, false, false, false};
 volatile unsigned long tempo_percorrido[8];
 volatile unsigned long tempo_percorrido_inj[8];
+volatile uint32_t timer1_overflow_count = 0;
+volatile uint32_t tick_base_sincronismo = 0;
+volatile uint32_t ignicao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile uint32_t ignicao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile uint32_t injecao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile uint32_t injecao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+volatile bool ignicao_agendada[8] = {false, false, false, false, false, false, false, false};
+volatile bool injecao_agendada[8] = {false, false, false, false, false, false, false, false};
 //volatile bool flag_interrupcao = false;
 unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
@@ -77,8 +86,8 @@ int vetor_map_tps[16];
 int vetor_rpm[16];
 int vetor_map_tps_ve[16];
 int vetor_rpm_ve[16];
-byte vetor_avanco_temperatura[5];
-byte vetor_temperatura[5];
+byte vetor_avanco_temperatura[5] = {10, 8, 6, 3, 0};
+byte vetor_temperatura[5] = {0, 20, 40, 60, 80};
 int indice_vetor_entrada_dados_serial = 0;
 int indice_matrix_entrada_dados_seriala = 0; // Índice usado para rastrear a linha atual na matriz
 int indice_matrix_entrada_dados_serialb = 0; // Índice usado para rastrear a coluna atual na matriz
@@ -98,6 +107,8 @@ byte tipo_vetor_configuracao_clt = 0;
 byte tipo_vetor_configuracao_injecao = 0;
 byte tipo_vetor_protecao = 0;
 byte tipo_vetor_enriquecimento_aceleracao = 0;
+byte tipo_vetor_enriquecimento_temperatura = 0;
+byte tipo_vetor_avanco_temperatura = 0;
 byte tipo_vetor_configuracao_tps = 0;
 byte tipo_vetor_configuracao_map = 0;
 bool status_dados_tempo_real = false;
@@ -115,6 +126,8 @@ int valor_tps_maximo = 1023;
 int valor_referencia_busca_avanco = 0;
 int valor_referencia_busca_tempo_injecao = 0;
 int ajuste_pms =  0;
+byte usar_metodo_unificado_vira = 0; // 0: usa ajuste dinâmico legado no vira, 1: usa offset fixo
+int offset_fase_vira_graus = 0; // usado quando usar_metodo_unificado_vira = 1
 int busca_avanco_linear = true;
 int referencia_temperatura_clt1 = 20;
 int referencia_resistencia_clt1 = 2500;
@@ -134,15 +147,19 @@ byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
 byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
 byte limite_injetor = 100; // 90% valor em porcentagem
 int tempo_abertura_injetor = 0;// Dead time, tempo que o injetor leva para abrir
-int acrescimo_injecao_partida = 10;// valor de acrecimo da ve na partida em porcentagem 
-int acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
+byte acrescimo_injecao_partida = 50;// valor de acrecimo da ve na partida em porcentagem 
+byte acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
+int tempo_primeira_injecao = 10;//em ms
+bool status_primeira_injecao = false;
 int REQ_FUEL = 10000; //em ms
 int dreq_fuel = 10000;//em ms
 int VE = 0;
 int GammaE = 100;
 unsigned long tempo_injecao = 0;
-int temperatura_trabalho = 80;
-int correcao_maxima_temperatura = 100; // % de enriquecimento a 0 graus
+byte temperatura_trabalho = 70;
+byte correcao_maxima_temperatura = 50; // % de enriquecimento a 0 graus
+byte vetor_temperatura_injecao[5] = {0, 20, 40, 60, 80};
+byte vetor_enriquecimento_temperatura[5] = {140, 130, 120, 110, 100}; // 100 = sem correcao, maximo 250
 int tipo_protecao = 1; // 0 desligado, 1 apenas ignição, 2 apenas injeção e 3 ignição e injeção
 int rpm_pre_corte = 6000;
 int avanco_corte = 20; //graus
@@ -159,6 +176,8 @@ unsigned long tempo_anterior_aceleracao = 0;  // Variável para armazenar o temp
 unsigned long tempo_ultima_mudanca = 0; // Tempo da última mudança significativa no TPS
 float tps_dot_porcentagem_aceleracao = 0;
 float tps_dot_porcentagem_desaceleracao = 0;
+unsigned long incremento_aceleracao = 0;
+unsigned long decremento_desaceleracao = 0;
 float tps_mudanca_minima = 5; // Threshold para detectar mudança significativa no TPS
 byte enriquecimento_aceleracao[5] = {50, 100, 150, 200, 250}; // Quantidade de enriquecimento de combustível em porcentagem
 int tps_dot_escala[5] = {200, 400, 600, 800, 1000}; //escala de velocidade no acionamento do tps 
@@ -168,3 +187,5 @@ int enriquecimento_desaceleracao = 0; // Quantidade de redução de combustível
 int valor_o2 = 0;
 int sonda_o2 = 0;
 bool tipo_sonda_o2 = 1; // 0 para narrow band e 1 para wide band
+
+void resetar_estado_agendamento_motor();

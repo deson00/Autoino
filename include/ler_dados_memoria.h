@@ -68,7 +68,7 @@ void ler_dados_memoria() {
   Serial.write(',');
   sendSerialInt(grau_pms);
   Serial.write(',');
-  sendSerialInt(qtd_cilindro * local_rodafonica);
+  sendSerialInt(qtd_cilindro); // Removida a multiplicação corrompida 
   Serial.write(',');
   Serial.write(';');
 
@@ -181,6 +181,8 @@ void ler_dados_memoria() {
   Serial.write(',');
   sendSerialInt(dreq_fuel);
   Serial.write(',');
+  sendSerialInt(tipo_sonda_o2);
+  Serial.write(',');
   Serial.write(';');
 
   // n) Configuração proteção e limites 
@@ -260,5 +262,31 @@ void ler_dados_memoria() {
     sendSerialInt(valor_map_maximo);
     Serial.write(',');
     Serial.write(';');
+
+  // r) Enriquecimento de injeção por temperatura (5 pontos)
+  Serial.write('r');
+  Serial.write(',');
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_temperatura_injecao[i]);
+    Serial.write(',');
+  }
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_enriquecimento_temperatura[i]);
+    Serial.write(',');
+  }
+  Serial.write(';');
+
+  // s) Avanco por temperatura (5 pontos)
+  Serial.write('s');
+  Serial.write(',');
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_temperatura[i]);
+    Serial.write(',');
+  }
+  for (int i = 0; i < 5; i++) {
+    sendSerialInt(vetor_avanco_temperatura[i]);
+    Serial.write(',');
+  }
+  Serial.write(';');
 
 }

@@ -19,6 +19,7 @@
 #include <enriquecimento_aceleracao.h>
 #include <enriquecimento_gama.h>
 #include <enriquecimento_temperatura.h>
+#include <avanco_temperatura.h>
 
 // Função para calcular a RPM
 // void calcularRPM() {
@@ -74,19 +75,88 @@
 //     }
 // }
 void calcularRPM() {
-  unsigned long revolucoes = qtd_revolucoes;  // Captura o valor atual de revoluções
-  qtd_revolucoes = 0;  // Reseta o contador de revoluções
-  unsigned long tempo_atual_local = micros();  // Captura o valor atual de tempo
-  if (revolucoes > 0) {
-    tempo_final_rpm = tempo_atual_local;
-    volatile unsigned long delta = tempo_final_rpm - tempo_inicial_rpm;
-    if(local_rodafonica == 1){
-      rpm = (revolucoes * 60) / (float(delta) / 1000000) * 2;
-    }else{
-      rpm = (revolucoes * 60) / (float(delta) / 1000000);
-    } 
-    tempo_inicial_rpm = tempo_final_rpm;
+  const unsigned long TIMEOUT_SEM_PULSO_MIN_US = 250000;
+  const unsigned long TIMEOUT_SEM_PULSO_MAX_US = 1500000;
+  const unsigned int RPM_MAX_VALIDO = 12000;          // rejeita leituras fora de faixa
+
+  static unsigned int rpm_filtrado = 0;
+  static unsigned long tempo_volta_valido_us = 0;
+  static unsigned long ultimo_pulso_observado_us = 0;
+  static byte timeout_consecutivo = 0;
+
+  unsigned long tempo_atual_local = micros();
+  unsigned long tempo_volta_snapshot;
+  unsigned long ultimo_pulso_snapshot;
+
+  noInterrupts();
+  tempo_volta_snapshot = tempo_total_volta_completa;
+  tempo_total_volta_completa = 0;
+  ultimo_pulso_snapshot = ultimo_pulso_rpm_us;
+  interrupts();
+
+  if (ultimo_pulso_snapshot != ultimo_pulso_observado_us) {
+    ultimo_pulso_observado_us = ultimo_pulso_snapshot;
+    timeout_consecutivo = 0;
   }
+
+  if (tempo_volta_snapshot > 0 && tempo_volta_snapshot < 5000000UL) {
+    tempo_volta_valido_us = tempo_volta_snapshot;
+  }
+
+  unsigned long timeout_sem_pulso_us = TIMEOUT_SEM_PULSO_MIN_US;
+  if (tempo_volta_valido_us > 0) {
+    timeout_sem_pulso_us = tempo_volta_valido_us << 1;
+    if (timeout_sem_pulso_us < TIMEOUT_SEM_PULSO_MIN_US) {
+      timeout_sem_pulso_us = TIMEOUT_SEM_PULSO_MIN_US;
+    } else if (timeout_sem_pulso_us > TIMEOUT_SEM_PULSO_MAX_US) {
+      timeout_sem_pulso_us = TIMEOUT_SEM_PULSO_MAX_US;
+    }
+  }
+
+  if ((tempo_atual_local - ultimo_pulso_snapshot) > timeout_sem_pulso_us) {
+    if (timeout_consecutivo < 255) {
+      timeout_consecutivo++;
+    }
+    if (timeout_consecutivo >= 2) {
+      rpm_filtrado = 0;
+      rpm = 0;
+    }
+    tempo_inicial_rpm = tempo_atual_local;
+    return;
+  }
+
+  timeout_consecutivo = 0;
+
+  if (tempo_volta_snapshot > 0) {
+    unsigned long rpm_calculado = 60000000UL / tempo_volta_snapshot;
+
+    if (local_rodafonica == 1) {
+      rpm_calculado <<= 1;
+    }
+
+    if (rpm_calculado > 0 && rpm_calculado < RPM_MAX_VALIDO) {
+      unsigned int rpm_alvo = (unsigned int)rpm_calculado;
+
+      if (rpm_filtrado == 0) {
+        rpm_filtrado = rpm_alvo;
+      } else {
+        unsigned int variacao_maxima = (rpm_filtrado >> 2) + (rpm_filtrado >> 3) + 30; // ~37.5% + margem fixa
+        int diferenca = (int)rpm_alvo - (int)rpm_filtrado;
+
+        if (diferenca > (int)variacao_maxima) {
+          diferenca = (int)variacao_maxima;
+        } else if (diferenca < -((int)variacao_maxima)) {
+          diferenca = -((int)variacao_maxima);
+        }
+
+        rpm_filtrado = (unsigned int)((int)rpm_filtrado + ((diferenca * 5) >> 3)); // IIR ~0.625 (mais responsivo)
+      }
+
+      rpm = rpm_filtrado;
+    }
+  }
+
+  tempo_inicial_rpm = tempo_atual_local;
 }
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
@@ -109,36 +179,17 @@ void setup(){
   pinMode(pino_sensor_brv, INPUT);
 
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
+  setupTimer1();
   Serial.begin(9600);
-  // Inicializa o Timer 1 para gerar uma interrupção a cada 1 microsegundo
-  initializeTimerOne(100);
-  // initializeTimerTwo(200);
-   // Inicializa decoder melhorado
-  // inicializar_decoder_roda_fonica();
-  // inicializar_decoder_otimizado();
-  // Para começar com o original:
-// inicializar_decoder_roda_fonica();
-
-// Depois testar o otimizado:
-// inicializar_decoder_otimizado();
-
-// Para alternar em tempo real:
-// usar_decoder_original();    // volta ao original
-// usar_decoder_otimizado();   // usa o melhorado
-  
+  delay(200);
+  tempo_inicial_rpm = micros();
+  ultimo_pulso_rpm_us = tempo_inicial_rpm;
   sei(); // Habilita interrupções globais
-  // Imprime uma mensagem dependendo do microcontrolador
-  #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__)
-    Serial.println("Define OK: Arduino Uno ou Nano detectado.");
-  #elif defined(__AVR_ATmega2560__)
-    Serial.println("Define OK: Arduino Mega 2560 detectado.");
-  #else
-    Serial.println("Define não reconhecido: Microcontrolador desconhecido.");
-  #endif
 }
 void loop(){
    calcularRPM();
     qtd_loop++;
+  
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
     // if(contador_leitura >=10){
     //   // Ordena as leituras e encontra a mediana
@@ -156,28 +207,33 @@ void loop(){
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
     valor_tps_adc = analogRead(pino_sensor_tps);
     valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
-    float leitura_adc = analogRead(pino_sensor_o2);
-    float tensao_o2   = leitura_adc * (5.0 / 1023.0); 
-    // float tensao_mV   = tensao_o2 * 1000.0;
+    int leitura_adc = analogRead(pino_sensor_o2);
 
-    if (tipo_sonda_o2 == 0)
-    {
-        // --- Narrow Band ---
-        if (tensao_o2 < 0.45) 
-            sonda_o2 = 0;   // Pobre
-        else 
-            sonda_o2 = 1;   // Rica
-    }
-    else
-    {
-        // --- Wideband (Faixa 1: 0,59 a 1,10 Lambda) ---
-        if (tensao_o2 < 0.2) tensao_o2 = 0.2;
-        if (tensao_o2 > 4.8) tensao_o2 = 4.8;
+    // tensão em milivolts (0 a 5000 mV)
+    int tensao_o2 = (leitura_adc * 5000) / 1023;
+    valor_o2 = tensao_o2;
 
-        // Conversão linear para Lambda
-        sonda_o2 = 0.59 + ( (tensao_o2 - 0.2) * (1.10 - 0.59) / (4.8 - 0.2) );
-        sonda_o2 = sonda_o2 * 1000; // Multiplica por 1000 para evitar uso de float em outras partes}
+    int lambda_x1000 = 1000;
+    if (tipo_sonda_o2) {
+      // Wideband 0.2V..4.8V -> lambda 0.59..1.10 (x1000)
+      lambda_x1000 = 590 + ((long)(tensao_o2 - 200) * (1100 - 590)) / (4800 - 200);
+      if (lambda_x1000 < 590) {
+        lambda_x1000 = 590;
+      } else if (lambda_x1000 > 1100) {
+        lambda_x1000 = 1100;
+      }
+    } else {
+      // Narrowband: aproximação para leitura de lambda em torno do estequiométrico
+      // 100mV (lean) -> 1.10, 900mV (rich) -> 0.90
+      lambda_x1000 = 1100 - ((long)(tensao_o2 - 100) * (1100 - 900)) / (900 - 100);
+      if (lambda_x1000 < 900) {
+        lambda_x1000 = 900;
+      } else if (lambda_x1000 > 1100) {
+        lambda_x1000 = 1100;
+      }
     }
+
+    sonda_o2 = lambda_x1000;
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
@@ -220,19 +276,39 @@ void loop(){
       status_corte = 0;
     }
 
+    if (status_corte == 0) {
+      byte correcao_avanco_temp = avanco_por_temperatura((float)temperatura_motor);
+      unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
+      if (grau_corrigido > 120U) {
+        grau_corrigido = 120U;
+      }
+      grau_avanco = (byte)grau_corrigido;
+    }
+
           VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
           float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
-          calcula_enriquecimento_aceleracao();
-          unsigned long incremento_percentual = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
-          tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_percentual;
-          //calcular_tempo_enriquecimento_gama(tempo_base_injecao, correcao_aquecimento, correcao_O2, correcao_temperatura_ar, correcao_barometrica) 
-          tempo_injecao = enriquecimento_gama(tempo_injecao, enriquecimento_temperatura(temperatura_motor, temperatura_trabalho, correcao_maxima_temperatura), 100, 100, 100);   
+          //exemplo de entrada calcular_tempo_enriquecimento_gama(tempo_base_injecao, correcao_aquecimento, correcao_O2, correcao_temperatura_ar, correcao_barometrica) 
+          tempo_injecao = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura(temperatura_motor), 100, 100, 100);   
+          calcula_enriquecimento_aceleracao(tempo_pulso);
+          tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
           if(rpm < rpm_partida){
             // Aplicando o acréscimo de injeção na partida
             tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
           }
           // tempo_injecao = round(tempo_pulso);
+          if(status_primeira_injecao == false){ 
+            for (int j = 0; j < numero_injetor; j++){
+              digitalWrite(injecao_pins[j], 1);
+            }
+            delay(tempo_primeira_injecao);
+            for (int j = 0; j < numero_injetor; j++){
+              digitalWrite(injecao_pins[j], 0);
+            }
+            status_primeira_injecao = true;
+          }
+
+         
           
           // tempo_atual = micros();
              
@@ -274,6 +350,7 @@ void loop(){
 
   // Serial.println(rpm_anterior);
   }
+
   //  tempo_final_codigo = micros(); // Registra o tempo final  
   //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo; 
   //  enviar_byte_serial(tempo_decorrido_codigo, 2);

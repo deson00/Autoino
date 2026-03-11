@@ -1,4 +1,30 @@
 
+bool eeprom_configuracao_inicial_valida() {
+    byte tipo_ignicao_eeprom = ler_8bits_eeprom(360);
+    byte qtd_dente_eeprom = ler_8bits_eeprom(362);
+    byte local_rodafonica_eeprom = ler_8bits_eeprom(364);
+    byte qtd_dente_faltante_eeprom = ler_8bits_eeprom(366);
+    uint16_t grau_pms_raw = ler_16bits_eeprom(368);
+    byte qtd_cilindro_eeprom = ler_8bits_eeprom(370);
+
+    if (tipo_ignicao_eeprom == 0xFF && qtd_dente_eeprom == 0xFF &&
+        local_rodafonica_eeprom == 0xFF && qtd_dente_faltante_eeprom == 0xFF &&
+        grau_pms_raw == 0xFFFF && qtd_cilindro_eeprom == 0xFF) {
+        return false;
+    }
+
+    if ((tipo_ignicao_eeprom != 1 && tipo_ignicao_eeprom != 2) ||
+        (local_rodafonica_eeprom != 1 && local_rodafonica_eeprom != 2) ||
+        qtd_dente_eeprom == 0 || qtd_dente_eeprom == 0xFF ||
+        qtd_cilindro_eeprom == 0 || qtd_cilindro_eeprom == 0xFF ||
+        qtd_dente_faltante_eeprom == 0xFF ||
+        grau_pms_raw < 360 || grau_pms_raw > 720) {
+        return false;
+    }
+
+    return true;
+}
+
 void ler_dados_eeprom_tabela_ignicao_map_rpm() {
     int endereco = 10; // Endereço base
 
@@ -86,6 +112,13 @@ void ler_dados_eeprom_configuracao_injecao(){
   // dreq_fuel (16 bits)
   dreq_fuel = ler_16bits_eeprom(endereco);
   endereco += 2;
+
+    byte tipo_sonda_eeprom = EEPROM.read(endereco++);
+    if (tipo_sonda_eeprom <= 1) {
+        tipo_sonda_o2 = tipo_sonda_eeprom;
+    } else {
+        tipo_sonda_o2 = 1;
+    }
 }
 
 
@@ -152,6 +185,96 @@ void ler_dados_eeprom_configuracao_map() {
     endereco += 2;
 }
 
+void ler_dados_eeprom_enriquecimento_temperatura() {
+    int endereco = 1020;
+
+    byte temperaturas_local[5];
+    byte enriquecimento_local[5];
+
+    for (int i = 0; i < 5; i++) {
+        temperaturas_local[i] = EEPROM.read(endereco++);
+    }
+    for (int i = 0; i < 5; i++) {
+        enriquecimento_local[i] = EEPROM.read(endereco++);
+    }
+
+    // Valida bloco vazio (EEPROM sem gravação).
+    bool bloco_vazio = true;
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] != 0xFF || enriquecimento_local[i] != 0xFF) {
+            bloco_vazio = false;
+            break;
+        }
+    }
+    if (bloco_vazio) {
+        return;
+    }
+
+    // Aplica limites e monotonicidade mínima das temperaturas.
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] > 150) {
+            temperaturas_local[i] = 150;
+        }
+        if (enriquecimento_local[i] > 250) {
+            enriquecimento_local[i] = 250;
+        }
+    }
+    for (int i = 1; i < 5; i++) {
+        if (temperaturas_local[i] < temperaturas_local[i - 1]) {
+            temperaturas_local[i] = temperaturas_local[i - 1];
+        }
+    }
+
+    for (int i = 0; i < 5; i++) {
+        vetor_temperatura_injecao[i] = temperaturas_local[i];
+        vetor_enriquecimento_temperatura[i] = enriquecimento_local[i];
+    }
+}
+
+void ler_dados_eeprom_avanco_temperatura() {
+    int endereco = 1030;
+
+    byte temperaturas_local[5];
+    byte avanco_local[5];
+
+    for (int i = 0; i < 5; i++) {
+        temperaturas_local[i] = EEPROM.read(endereco++);
+    }
+    for (int i = 0; i < 5; i++) {
+        avanco_local[i] = EEPROM.read(endereco++);
+    }
+
+    bool bloco_vazio = true;
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] != 0xFF || avanco_local[i] != 0xFF) {
+            bloco_vazio = false;
+            break;
+        }
+    }
+    if (bloco_vazio) {
+        return;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        if (temperaturas_local[i] > 150) {
+            temperaturas_local[i] = 150;
+        }
+        if (avanco_local[i] > 10) {
+            avanco_local[i] = 10;
+        }
+    }
+    for (int i = 1; i < 5; i++) {
+        if (temperaturas_local[i] < temperaturas_local[i - 1]) {
+            temperaturas_local[i] = temperaturas_local[i - 1];
+        }
+    }
+
+    for (int i = 0; i < 5; i++) {
+        vetor_temperatura[i] = temperaturas_local[i];
+        vetor_avanco_temperatura[i] = avanco_local[i];
+    }
+}
+
 void ler_dados_eeprom_configuracao_inicial() {
     tipo_ignicao = ler_8bits_eeprom(360);
     qtd_dente = ler_8bits_eeprom(362);
@@ -159,11 +282,20 @@ void ler_dados_eeprom_configuracao_inicial() {
     qtd_dente_faltante = ler_8bits_eeprom(366);
     grau_pms = ler_16bits_eeprom(368) - 360; // Simplesmente remove offset
     qtd_cilindro = ler_8bits_eeprom(370);
+
+    if (qtd_cilindro < 1 || qtd_cilindro > 8) {
+        qtd_cilindro = 1; // Fallback caso memoria corrompa
+    }
     
-    grau_entre_cada_cilindro = 360 / qtd_cilindro;
+    // Removidas as predições forçadas. O valor da tela sobrevive fielmente.
+    grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
     grau_cada_dente = 360 / qtd_dente;
 }
 void ler_dados_eeprom(){
+    if (!eeprom_configuracao_inicial_valida()) {
+        return;
+    }
+
     ler_dados_eeprom_tabela_ignicao_map_rpm();
     ler_dados_eeprom_tabela_ve_map_rpm();
     ler_dados_eeprom_configuracao_injecao();
@@ -171,6 +303,8 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_enriquecimento_aceleracao();
     leitura_dados_eeprom_configuracao_tps();
     ler_dados_eeprom_configuracao_map();
+    ler_dados_eeprom_enriquecimento_temperatura();
+    ler_dados_eeprom_avanco_temperatura();
     ler_dados_eeprom_configuracao_inicial();    
     
     // Leitura dos dados de configurações de faisca 

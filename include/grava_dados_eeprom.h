@@ -116,6 +116,7 @@ void gravar_dados_eeprom_configuracao_injecao(){
     // dreq_fuel (16 bits)
     EEPROM.update(endereco++, (dreq_fuel & 0xFF));
     EEPROM.update(endereco++, (dreq_fuel >> 8) & 0xFF);
+    EEPROM.update(endereco++, tipo_sonda_o2 ? 1 : 0);
     
 }
 
@@ -184,4 +185,26 @@ void gravar_dados_eeprom_configuracao_map() {
     // Gravar o valor máximo do MAP (2 bytes)
     EEPROM.update(endereco++, valor_map_maximo & 0xFF);        // Byte menos significativo
     EEPROM.update(endereco++, (valor_map_maximo >> 8) & 0xFF); // Byte mais significativo
+}
+
+void gravar_dados_eeprom_enriquecimento_temperatura() {
+    int endereco = 1020;
+
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_temperatura_injecao[i] & 0xFF);
+    }
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_enriquecimento_temperatura[i] & 0xFF);
+    }
+}
+
+void gravar_dados_eeprom_avanco_temperatura() {
+    int endereco = 1030;
+
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_temperatura[i] & 0xFF);
+    }
+    for (int i = 0; i < 5; i++) {
+        EEPROM.update(endereco++, vetor_avanco_temperatura[i] & 0xFF);
+    }
 }

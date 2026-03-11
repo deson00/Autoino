@@ -1,4 +1,25 @@
 //função de leitura dos dados na porta serial
+static inline byte normalizar_qtd_cilindro_ignicao(int cilindros_recebidos, byte local_rodafonica_recebida) {
+  if (cilindros_recebidos < 1) {
+    return 1;
+  }
+
+  int canais_ignicao = cilindros_recebidos;
+  if (local_rodafonica_recebida == 2) {
+    if (cilindros_recebidos > 4) {
+      canais_ignicao = cilindros_recebidos / 2;
+    }
+  }
+
+  if (canais_ignicao < 1) {
+    canais_ignicao = 1;
+  } else if (canais_ignicao > 8) {
+    canais_ignicao = 8;
+  }
+
+  return (byte)canais_ignicao;
+}
+
 void leitura_entrada_dados_serial()
 {
   while (Serial.available() > 0){
@@ -35,9 +56,15 @@ void leitura_entrada_dados_serial()
       tipo_vetor_configuracao_inicial = 1;
     }
      if (data == 'h'){//retorna dados da ecu
-        //ler_dados_eeprom();
+        uint8_t timer1_habilitado = TIMSK1 & _BV(TOIE1);
+        if (timer1_habilitado) {
+          TIMSK1 &= ~_BV(TOIE1);
+        }
         ler_dados_memoria();
-        // Função para verificar integridade da matriz
+        Serial.flush();
+        if (timer1_habilitado) {
+          TIMSK1 |= _BV(TOIE1);
+        }
     }
     if (data == 'i') {
      if(status_dados_tempo_real){
@@ -69,6 +96,12 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'q') {// configuração MAP
       tipo_vetor_configuracao_map = 1;
+    }
+    if (data == 'r') {// configuração injeção por temperatura
+      tipo_vetor_enriquecimento_temperatura = 1;
+    }
+    if (data == 's') {// configuração avanço por temperatura
+      tipo_vetor_avanco_temperatura = 1;
     }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
@@ -139,8 +172,9 @@ void leitura_entrada_dados_serial()
           local_rodafonica = values[2]; // 2 para virabrequinho e 1 para comando
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
-          qtd_cilindro = values[5] / local_rodafonica;
-          grau_entre_cada_cilindro = 360 / qtd_cilindro;
+          qtd_cilindro = values[5]; // <<< Usa o valor bruto vindo da tela! Não tenta normalizar/adivinhar canais de bobina.
+          grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
+          resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
       }
@@ -151,12 +185,14 @@ void leitura_entrada_dados_serial()
           avanco_fixo = values[3]; // avanço fixo 0 desligado e 1 ligado
           grau_avanco_fixo = values[4]; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
           tipo_sinal_bobina = values[5] ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
+          resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_faisca();
           tipo_vetor_configuracao_faisca = 0;
       }
       if (tipo_vetor_configuracao_dwell == 1){
           dwell_partida = values[0];
           dwell_funcionamento = values[1];
+          resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_dwell();
           tipo_vetor_configuracao_dwell = 0;
       }
@@ -182,6 +218,9 @@ void leitura_entrada_dados_serial()
           tipo_combustivel = values[10];
           REQ_FUEL = values[11];
           dreq_fuel = values[12];
+          if (index > 13) {
+            tipo_sonda_o2 = values[13] ? 1 : 0;
+          }
           gravar_dados_eeprom_configuracao_injecao();
           tipo_vetor_configuracao_injecao = 0;
       }
@@ -229,6 +268,66 @@ void leitura_entrada_dados_serial()
           valor_map_maximo = values[2];
           gravar_dados_eeprom_configuracao_map();
           tipo_vetor_configuracao_map = 0;
+      }
+      if (tipo_vetor_enriquecimento_temperatura == 1){
+          for (int i = 0; i < 5; i++) {
+            int temperatura = values[i];
+            if (temperatura < 0) {
+              temperatura = 0;
+            } else if (temperatura > 150) {
+              temperatura = 150;
+            }
+            vetor_temperatura_injecao[i] = (byte)temperatura;
+          }
+
+          for (int i = 1; i < 5; i++) {
+            if (vetor_temperatura_injecao[i] < vetor_temperatura_injecao[i - 1]) {
+              vetor_temperatura_injecao[i] = vetor_temperatura_injecao[i - 1];
+            }
+          }
+
+          for (int i = 0; i < 5; i++) {
+            int enriquecimento = values[i + 5];
+            if (enriquecimento < 0) {
+              enriquecimento = 0;
+            } else if (enriquecimento > 250) {
+              enriquecimento = 250;
+            }
+            vetor_enriquecimento_temperatura[i] = (byte)enriquecimento;
+          }
+
+          gravar_dados_eeprom_enriquecimento_temperatura();
+          tipo_vetor_enriquecimento_temperatura = 0;
+      }
+      if (tipo_vetor_avanco_temperatura == 1){
+          for (int i = 0; i < 5; i++) {
+            int temperatura = values[i];
+            if (temperatura < 0) {
+              temperatura = 0;
+            } else if (temperatura > 150) {
+              temperatura = 150;
+            }
+            vetor_temperatura[i] = (byte)temperatura;
+          }
+
+          for (int i = 1; i < 5; i++) {
+            if (vetor_temperatura[i] < vetor_temperatura[i - 1]) {
+              vetor_temperatura[i] = vetor_temperatura[i - 1];
+            }
+          }
+
+          for (int i = 0; i < 5; i++) {
+            int avanco = values[i + 5];
+            if (avanco < 0) {
+              avanco = 0;
+            } else if (avanco > 10) {
+              avanco = 10;
+            }
+            vetor_avanco_temperatura[i] = (byte)avanco;
+          }
+
+          gravar_dados_eeprom_avanco_temperatura();
+          tipo_vetor_avanco_temperatura = 0;
       }
       index = 0; // reinicia índice do vetor
     }

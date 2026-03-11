@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Upload Nano COM12 (old bootloader)",
+      "type": "shell",
+      "command": "C:/Users/byllt/.platformio/penv/Scripts/platformio.exe",
+      "args": [
+        "run",
+        "--target",
+        "upload",
+        "--environment",
+        "nanoatmega328_old",
+        "--upload-port",
+        "COM12"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build Nano (old bootloader)",
+      "type": "shell",
+      "command": "C:/Users/byllt/.platformio/penv/Scripts/platformio.exe",
+      "args": [
+        "run",
+        "--environment",
+        "nanoatmega328_old"
+      ],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
