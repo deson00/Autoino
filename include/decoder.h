@@ -180,43 +180,15 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       }
     }
     // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
-    if (rpm < rpm_partida && revolucoes_sincronizada >= 1) {
+    if (rpm < rpm_limite_referencia_baixa_rotacao() && revolucoes_sincronizada >= 1) {
       if (local_rodafonica == 1 && tipo_ignicao_sequencial == 0) {
-        int grau_pms_referencia = graus_virabrequim_para_referencia_sensor(grau_pms);
         ajuste_pms = 0;
         bool referencia_valida = false;
         for (int i = 0; i < qtd_cilindro; i++) {
-          if (i < qtd_cilindro / 2) {
-            if (posicao_atual_sensor * grau_cada_dente >= grau_pms_referencia - grau_cada_dente + ajuste_pms + (grau_entre_cada_cilindro * i) && (captura_dwell[i] == false) && (ign_acionado[i] == false)) {
-              // delay((grau_pms - (posicao_atual_sensor * grau_cada_dente)) * tempo_cada_grau);
-              // captura_dwell[i] = true;
-              // tempo_percorrido[i] = tempo_atual;
-              // digitalWrite(ignicao_pins[i], 1);
-              // // setPinHigh(ignicao_pins[i]);
-              // tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i];
-              // ign_acionado[i] = true;
-              // ign_acionado[i + 1] = false;
-              // captura_dwell[i + 1] = false;
-              // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
-              // enviar_byte_serial(posicao_atual_sensor * grau_cada_dente, 1);
-              referencia_valida = true;
-            }
-          }
-          if (i >= qtd_cilindro / 2) {
-            if (posicao_atual_sensor * grau_cada_dente >= grau_pms_referencia - grau_cada_dente + ajuste_pms + (grau_entre_cada_cilindro * i) && (captura_dwell[i] == false) && (ign_acionado[i] == false)) {
-              // delay((grau_pms - (posicao_atual_sensor * grau_cada_dente)) * tempo_cada_grau);
-              // captura_dwell[i] = true;
-              // tempo_percorrido[i] = tempo_atual;
-              // digitalWrite(ignicao_pins[i - qtd_cilindro / 2], 1);
-              // // setPinHigh(ignicao_pins[i - qtd_cilindro/2]);
-              // tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i];
-              // ign_acionado[i] = true;
-              // ign_acionado[i + 1] = false;
-              // captura_dwell[i + 1] = false;
-              // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
-              // enviar_byte_serial(posicao_atual_sensor * grau_cada_dente, 1);
-              referencia_valida = true;
-            }
+          if ((captura_dwell[i] == false) && (ign_acionado[i] == false) &&
+              angulo_referencia_ignicao_valido(i, grau_avanco)) {
+            referencia_valida = true;
+            break;
           }
         }
         referencia_posicao_sensor = referencia_valida; // mantém true se ao menos uma referência válida foi encontrada neste ciclo

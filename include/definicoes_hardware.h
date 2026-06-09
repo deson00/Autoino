@@ -1,8 +1,8 @@
 // Se nenhum perfil for definido manualmente, escolhe um padrao por MCU para evitar
 // pinagem incorreta ao trocar de placa no PlatformIO.
 // Para forcar manualmente:
-// #define Autoino
-#define Speeduino
+#define Autoino
+// #define Speeduino
 #if !defined(Autoino) && !defined(Speeduino)
 	#if defined(__AVR_ATmega2560__)
 		#define Speeduino

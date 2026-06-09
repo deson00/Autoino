@@ -31,6 +31,52 @@ static inline int graus_virabrequim_para_referencia_sensor(int graus_virabrequim
   return graus_virabrequim;
 }
 
+static inline int normalizar_angulo_minimo_zero(int angulo) {
+  while (angulo < 0) {
+    angulo += 360;
+  }
+  if (angulo >= 360) {
+    angulo = angulo % 360;
+  }
+  return angulo;
+}
+
+static inline unsigned int rpm_limite_referencia_baixa_rotacao() {
+  return rpm_partida + 800U;
+}
+
+static inline bool referencia_ignicao_ativa_baixa_rotacao() {
+  return rpm < rpm_limite_referencia_baixa_rotacao() &&
+         local_rodafonica == 1 &&
+         tipo_ignicao_sequencial == 0;
+}
+
+static inline bool angulo_referencia_ignicao_valido(int i, int avanco_virabrequim) {
+  if (!referencia_ignicao_ativa_baixa_rotacao() || grau_cada_dente == 0) {
+    return true;
+  }
+
+  int grau_pms_referencia = graus_virabrequim_para_referencia_sensor(grau_pms);
+  int grau_avanco_referencia = graus_virabrequim_para_referencia_sensor(avanco_virabrequim);
+  int angulo_alvo = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
+  angulo_alvo = normalizar_angulo_minimo_zero(angulo_alvo);
+
+  int angulo_sensor_atual = normalizar_angulo_minimo_zero(posicao_atual_sensor * grau_cada_dente);
+  int limite_minimo = angulo_alvo;
+
+  int distancia_desde_limite = angulo_sensor_atual - limite_minimo;
+  if (distancia_desde_limite < 0) {
+    distancia_desde_limite += 360;
+  }
+
+  int limite_validacao = 180;
+  if (angulo_alvo >= (360 - ((int)grau_cada_dente * 3))) {
+    limite_validacao = 270;
+  }
+
+  return distancia_desde_limite < limite_validacao;
+}
+
 float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
   float T1 = ntcTemperature1 + 273.15;   // converte a temperatura em Celsius para Kelvin
   float T2 = ntcTemperature2 + 273.15;

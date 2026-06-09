@@ -98,20 +98,7 @@ static inline void desabilitar_timer1_compare_b() {
 static void atualizar_compare_b_ligar();
 static void atualizar_compare_a_desligar();
 
-static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
-	if (status_corte != 0) {
-		ignicao_agendada[i] = false;
-		return;
-	}
-
-	if (ign_acionado[i] || captura_dwell[i] || ignicao_agendada[i]) {
-		return;
-	}
-
-	calcula_grau_ignicao(i);
-
-	unsigned long tempo_ignicao_us = tempo_proxima_ignicao[i];
-	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
+static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks) {
 	uint32_t tick_fim_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
 	if (tempo_cada_grau > 0) {
@@ -125,6 +112,23 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 	} else if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
 		tick_fim_dwell = tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS;
 	}
+
+	return tick_fim_dwell;
+}
+
+static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
+	if (status_corte != 0) {
+		ignicao_agendada[i] = false;
+		return;
+	}
+
+	if (ign_acionado[i] || captura_dwell[i] || ignicao_agendada[i]) {
+		return;
+	}
+
+	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
+	calcula_grau_ignicao(i);
+	uint32_t tick_fim_dwell = calcular_tick_fim_dwell_futuro(tempo_proxima_ignicao[i], tick_atual, dwell_ticks);
 
 	uint32_t tick_inicio_dwell = tick_fim_dwell - dwell_ticks;
 
@@ -185,9 +189,24 @@ static inline void limpar_ligamentos_vencidos_sem_acionar(uint32_t tick_atual) {
 	}
 }
 
+static inline void adiar_desligamento_ignicao_por_referencia(int i, uint32_t tick_atual) {
+	uint32_t atraso_ticks = TIMER1_MIN_DELTA_TICKS;
+	if (tempo_cada_grau > 0) {
+		atraso_ticks = us_para_ticks_timer1(tempo_cada_grau);
+	}
+	if (atraso_ticks < 20) {
+		atraso_ticks = 20;
+	}
+	ignicao_tick_desligar[i] = tick_atual + atraso_ticks;
+}
+
 static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 	for (int i = 0; i < qtd_cilindro; i++) {
 		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
+			if (!referencia_ignicao_valida_baixa_rotacao(i)) {
+				adiar_desligamento_ignicao_por_referencia(i, tick_atual);
+				continue;
+			}
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
 			// Re-agendar imediatamente se perdeu o ciclo do sincronismo
