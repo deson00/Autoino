@@ -15,19 +15,33 @@ static inline unsigned long calcular_tempo_evento_ignicao(int angulo_alvo_graus)
 
   int angulo_normalizado = normalizar_angulo_minimo_zero(angulo_alvo_graus);
 
-  // Se o ângulo é 0, o tempo deve ser 0 para disparar imediatamente no sincronismo.
-  // Mapear 0 para 360 causava colisão fatal no ciclo de agendamento (BUG DOS 120 GRAUS).
+  // Evita colar a faisca de 360 graus exatamente na borda do gap.
+  if (angulo_normalizado == 0) {
+    return 359UL * tempo_cada_grau;
+  }
+
   unsigned long tempo_evento_us = (unsigned long)angulo_normalizado * tempo_cada_grau;
 
   return tempo_evento_us;
+}
+
+static inline byte quantidade_canais_ignicao_fisicos() {
+  if (modo_ignicao == 1 && qtd_cilindro > 1) {
+    byte canais = qtd_cilindro / 2;
+    if (canais < 1) {
+      canais = 1;
+    }
+    return canais;
+  }
+  return qtd_cilindro;
 }
 
 static inline byte indice_pino_ignicao(int i) {
   // Se estiver lendo virabrequim (2 voltas), as saídas espelham-se pela metade!
   // No caso de 4 cilindros em Wasted Spark (centelha perdida no Vira), i=0 e i=2 vão para bobina A (indice 0);
   // i=1 e i=3 vão para bobina B (indice 1). Não passa do limite e não pisca a IGN3.
-  if (local_rodafonica == 2 && modo_ignicao == 1) { // 1 = centelha perdida
-    return (byte)(i % (qtd_cilindro / 2));
+  if (modo_ignicao == 1) { // 1 = centelha perdida
+    return (byte)(i % quantidade_canais_ignicao_fisicos());
   }
 
   // Comportamento do fase/comando que era antigo (ignições emparelhadas)

@@ -39,6 +39,22 @@ static inline uint32_t alinhar_tick_para_futuro(uint32_t tick_evento, uint32_t t
 	return tick_evento + (saltos * periodo_ticks);
 }
 
+static inline uint32_t alinhar_tick_para_futuro_com_margem(uint32_t tick_evento, uint32_t tick_atual, uint32_t periodo_ticks, uint32_t margem_ticks) {
+	uint32_t limite = tick_atual + margem_ticks;
+
+	if (periodo_ticks == 0) {
+		return limite + TIMER1_MIN_DELTA_TICKS;
+	}
+
+	if (!tick_ja_passou(limite, tick_evento)) {
+		return tick_evento;
+	}
+
+	uint32_t atraso = limite - tick_evento;
+	uint32_t saltos = (atraso / periodo_ticks) + 1;
+	return tick_evento + (saltos * periodo_ticks);
+}
+
 static inline uint32_t ler_tick32_timer1() {
 	uint32_t overflow_snapshot;
 	uint16_t contador_snapshot;
@@ -94,26 +110,23 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 
 	calcula_grau_ignicao(i);
 
-	// Removido ajustar_tempo_evento_borda_referencia, usando o valor exato limpo
 	unsigned long tempo_ignicao_us = tempo_proxima_ignicao[i];
-	uint32_t tick_inicio_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
+	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
+	uint32_t tick_fim_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
-	// Se for zero/360 exato ou já tiver passado, adiciona rigidamente 1 volta no futuro
 	if (tempo_cada_grau > 0) {
 		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
 		
-		// Força a garantir que o tick de inicio não seja exatamente o atual sem um offset fisico mínimo
-		if (tick_inicio_dwell == tick_atual) {
-			tick_inicio_dwell += TIMER1_MIN_DELTA_TICKS;
+		if (tick_fim_dwell == tick_atual) {
+			tick_fim_dwell += TIMER1_MIN_DELTA_TICKS;
 		}
 
-		// Alinha para o próximo ciclo sem laço potencialmente longo.
-		tick_inicio_dwell = alinhar_tick_para_futuro(tick_inicio_dwell, tick_atual, periodo_ticks_360);
-	} else if (tick_ja_passou(tick_atual, tick_inicio_dwell)) {
-		tick_inicio_dwell = tick_atual + TIMER1_MIN_DELTA_TICKS;
+		tick_fim_dwell = alinhar_tick_para_futuro_com_margem(tick_fim_dwell, tick_atual, periodo_ticks_360, dwell_ticks + TIMER1_MIN_DELTA_TICKS);
+	} else if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
+		tick_fim_dwell = tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS;
 	}
 
-	uint32_t tick_fim_dwell = tick_inicio_dwell + us_para_ticks_timer1(dwell_bobina);
+	uint32_t tick_inicio_dwell = tick_fim_dwell - dwell_ticks;
 
 	ignicao_tick_ligar[i] = tick_inicio_dwell;
 	ignicao_tick_desligar[i] = tick_fim_dwell;
@@ -408,13 +421,6 @@ ISR(TIMER1_COMPB_vect) {
 ISR(TIMER1_COMPA_vect) {
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_atual);
-
-	if (local_rodafonica == 1) {
-		for (int i = 0; i < qtd_cilindro; i++) {
-			agendar_ignicao_canal(i, tick_atual);
-			agendar_injecao_canal(i, tick_atual);
-		}
-	}
 
 	atualizar_compare_a_desligar();
 	atualizar_compare_b_ligar();
