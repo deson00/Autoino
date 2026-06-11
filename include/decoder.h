@@ -131,8 +131,8 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       tempo_cada_grau = limita_tempo_cada_grau(tempo_total_volta_completa / 360UL);
     }
 
-    // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
-    posicao_atual_sensor = 0;
+    // Mantem a posicao de fim de volta ate processar os cortes vencidos.
+    // O evento final da centelha perdida no comando pode cair junto da falha.
     uint16_t dentes_esperados = (uint16_t)(qtd_dente - qtd_dente_faltante);
     // Em partida a velocidade do motor oscila bastante por compressao/bateria, entao aceita
     // uma janela maior de dentes para nao bloquear sincronismo inicial.
@@ -170,6 +170,8 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       tempo_atual_proxima_injecao[0] = tempo_atual;
       agendar_eventos_motor_timer1();
     }
+
+    posicao_atual_sensor = 0;
 
   } else {
     posicao_atual_sensor++;

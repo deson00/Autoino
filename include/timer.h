@@ -166,11 +166,14 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 }
 
 static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
-	for (int i = 0; i < qtd_cilindro; i++) {
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
 		if (ignicao_agendada[i] && !ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_ligar[i])) {
 			iniciar_dwell(i);
 		}
+	}
 
+	for (int i = 0; i < qtd_cilindro; i++) {
 		if (injecao_agendada[i] && !inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_ligar[i])) {
 			ligar_injetor(i);
 		}
@@ -178,11 +181,14 @@ static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 }
 
 static inline void limpar_ligamentos_vencidos_sem_acionar(uint32_t tick_atual) {
-	for (int i = 0; i < qtd_cilindro; i++) {
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
 		if (ignicao_agendada[i] && !ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_ligar[i])) {
 			ignicao_agendada[i] = false;
 		}
+	}
 
+	for (int i = 0; i < qtd_cilindro; i++) {
 		if (injecao_agendada[i] && !inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_ligar[i])) {
 			injecao_agendada[i] = false;
 		}
@@ -201,7 +207,8 @@ static inline void adiar_desligamento_ignicao_por_referencia(int i, uint32_t tic
 }
 
 static inline void processar_cortes_vencidos(uint32_t tick_atual) {
-	for (int i = 0; i < qtd_cilindro; i++) {
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
 		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
 			if (!referencia_ignicao_valida_baixa_rotacao(i)) {
 				adiar_desligamento_ignicao_por_referencia(i, tick_atual);
@@ -214,7 +221,9 @@ static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 				agendar_ignicao_canal(i, tick_atual);
 			}
 		}
+	}
 
+	for (int i = 0; i < qtd_cilindro; i++) {
 		if (injecao_agendada[i] && inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
@@ -275,9 +284,9 @@ void resetar_estado_agendamento_motor() {
 	for (int i = 0; i < numero_injetor; i++) {
 		digitalWrite(injecao_pins[i], LOW);
 	}
-	for (int i = 0; i < qtd_cilindro; i++) {
-		byte pino = ignicao_pins[(local_rodafonica == 1 && i >= (qtd_cilindro / 2)) ? (i - (qtd_cilindro / 2)) : i];
-		digitalWrite(pino, LOW);
+	byte canais_ignicao = quantidade_canais_ignicao_fisicos();
+	for (int i = 0; i < canais_ignicao; i++) {
+		digitalWrite(ignicao_pins[i], LOW);
 	}
 }
 
@@ -294,7 +303,8 @@ static void atualizar_compare_b_ligar() {
 		uint32_t menor_delta = 0xFFFFFFFFUL;
 		uint32_t proximo_tick = 0;
 
-		for (int i = 0; i < qtd_cilindro; i++) {
+		byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+		for (int i = 0; i < eventos_ignicao; i++) {
 			if (ignicao_agendada[i] && !ign_acionado[i]) {
 				uint32_t alvo = ignicao_tick_ligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
@@ -304,7 +314,9 @@ static void atualizar_compare_b_ligar() {
 					proximo_tick = alvo;
 				}
 			}
+		}
 
+		for (int i = 0; i < qtd_cilindro; i++) {
 			if (injecao_agendada[i] && !inj_acionado[i]) {
 				uint32_t alvo = injecao_tick_ligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
@@ -352,7 +364,8 @@ static void atualizar_compare_a_desligar() {
 		uint32_t menor_delta = 0xFFFFFFFFUL;
 		uint32_t proximo_tick = 0;
 
-		for (int i = 0; i < qtd_cilindro; i++) {
+		byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+		for (int i = 0; i < eventos_ignicao; i++) {
 			if (ignicao_agendada[i] && ign_acionado[i]) {
 				uint32_t alvo = ignicao_tick_desligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
@@ -362,7 +375,9 @@ static void atualizar_compare_a_desligar() {
 					proximo_tick = alvo;
 				}
 			}
+		}
 
+		for (int i = 0; i < qtd_cilindro; i++) {
 			if (injecao_agendada[i] && inj_acionado[i]) {
 				uint32_t alvo = injecao_tick_desligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
@@ -409,11 +424,14 @@ void agendar_eventos_motor_timer1() {
 	tick_base_sincronismo = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_base_sincronismo);
 
-	for (int i = 0; i < qtd_cilindro; i++) {
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
 		if (!ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
 			agendar_ignicao_canal(i, tick_base_sincronismo);
 		}
+	}
 
+	for (int i = 0; i < qtd_cilindro; i++) {
 		if (!inj_acionado[i] && !captura_req_fuel[i] && !injecao_agendada[i]) {
 			agendar_injecao_canal(i, tick_base_sincronismo);
 		}

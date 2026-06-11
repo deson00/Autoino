@@ -4,6 +4,13 @@ static inline unsigned long calcular_tempo_evento_ignicao(int angulo_alvo_graus)
   }
 
   int angulo_normalizado = normalizar_angulo_minimo_zero(angulo_alvo_graus);
+  if (angulo_normalizado == 0 && angulo_alvo_graus > 0) {
+    if (local_rodafonica == 1) {
+      angulo_normalizado = 360 - MARGEM_IGNICAO_FIM_CICLO_GRAUS;
+    } else {
+      angulo_normalizado = 360;
+    }
+  }
 
   // Em baixa rotacao e partida, atraso pequeno e mais seguro que adiantar antes do PMS.
   if (angulo_normalizado == 0) {
@@ -26,12 +33,23 @@ static inline byte quantidade_canais_ignicao_fisicos() {
   return qtd_cilindro;
 }
 
+static inline byte quantidade_eventos_ignicao_por_ciclo_sensor() {
+  if (modo_ignicao == 1 && local_rodafonica == 2) {
+    return quantidade_canais_ignicao_fisicos();
+  }
+  return qtd_cilindro;
+}
+
 static inline byte indice_pino_ignicao(int i) {
   // Se estiver lendo virabrequim (2 voltas), as saídas espelham-se pela metade!
   // No caso de 4 cilindros em Wasted Spark (centelha perdida no Vira), i=0 e i=2 vão para bobina A (indice 0);
   // i=1 e i=3 vão para bobina B (indice 1). Não passa do limite e não pisca a IGN3.
   if (modo_ignicao == 1) { // 1 = centelha perdida
-    return (byte)(i % quantidade_canais_ignicao_fisicos());
+    byte canais = quantidade_canais_ignicao_fisicos();
+    if (local_rodafonica == 1 && i >= canais) {
+      return (byte)(i - canais);
+    }
+    return (byte)(i % canais);
   }
 
   // Comportamento do fase/comando que era antigo (ignições emparelhadas)
@@ -63,10 +81,13 @@ void atualizar_ajuste_pms_ignicao() {
 }
 
 static inline unsigned long calcular_tempo_ignicao_indice(int i) {
-  int grau_pms_referencia = graus_virabrequim_para_referencia_sensor(grau_pms);
-  int grau_avanco_referencia = graus_virabrequim_para_referencia_sensor(grau_avanco);
-  int angulo_base_ignicao = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
-  angulo_base_ignicao = normalizar_angulo_minimo_zero(angulo_base_ignicao);
+  int grau_pms_referencia = grau_pms;
+  int grau_avanco_referencia = graus_avanco_para_referencia_sensor(grau_avanco);
+  int separacao_eventos = grau_entre_cada_cilindro;
+  if (modo_ignicao == 1 && local_rodafonica == 2) {
+    separacao_eventos = 360 / quantidade_canais_ignicao_fisicos();
+  }
+  int angulo_base_ignicao = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (separacao_eventos * i);
   return calcular_tempo_evento_ignicao(angulo_base_ignicao);
 }
 

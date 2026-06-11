@@ -23,7 +23,9 @@ int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo,
   return grau;
 }
 
-static inline int graus_virabrequim_para_referencia_sensor(int graus_virabrequim) {
+static const int MARGEM_IGNICAO_FIM_CICLO_GRAUS = 1;
+
+static inline int graus_avanco_para_referencia_sensor(int graus_virabrequim) {
   // Quando a roda esta no comando, 360 graus do sensor equivalem a 720 no virabrequim.
   if (local_rodafonica == 1) {
     return graus_virabrequim / 2;
@@ -56,12 +58,19 @@ static inline bool angulo_referencia_ignicao_valido(int i, int avanco_virabrequi
     return true;
   }
 
-  int grau_pms_referencia = graus_virabrequim_para_referencia_sensor(grau_pms);
-  int grau_avanco_referencia = graus_virabrequim_para_referencia_sensor(avanco_virabrequim);
-  int angulo_alvo = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
-  angulo_alvo = normalizar_angulo_minimo_zero(angulo_alvo);
+  int grau_pms_referencia = grau_pms;
+  int grau_avanco_referencia = graus_avanco_para_referencia_sensor(avanco_virabrequim);
+  int angulo_alvo_bruto = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
+  int angulo_alvo = normalizar_angulo_minimo_zero(angulo_alvo_bruto);
+  bool alvo_fim_ciclo = angulo_alvo_bruto > 0 &&
+                         (angulo_alvo == 0 || angulo_alvo >= (360 - MARGEM_IGNICAO_FIM_CICLO_GRAUS));
 
-  int angulo_sensor_atual = normalizar_angulo_minimo_zero(posicao_atual_sensor * grau_cada_dente);
+  int angulo_sensor_atual = posicao_atual_sensor * grau_cada_dente;
+  if (alvo_fim_ciclo && angulo_sensor_atual >= (360 - ((int)grau_cada_dente * 2))) {
+    return true;
+  }
+
+  angulo_sensor_atual = normalizar_angulo_minimo_zero(angulo_sensor_atual);
   int limite_minimo = angulo_alvo;
 
   int distancia_desde_limite = angulo_sensor_atual - limite_minimo;
