@@ -44,7 +44,7 @@ static inline int normalizar_angulo_minimo_zero(int angulo) {
 }
 
 static inline unsigned int rpm_limite_referencia_baixa_rotacao() {
-  return rpm_partida + 800U;
+  return rpm_partida + 200U;
 }
 
 static inline bool referencia_ignicao_ativa_baixa_rotacao() {
