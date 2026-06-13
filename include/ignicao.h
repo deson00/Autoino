@@ -80,15 +80,18 @@ void atualizar_ajuste_pms_ignicao() {
   ajuste_pms = 0;
 }
 
-static inline unsigned long calcular_tempo_ignicao_indice(int i) {
+static inline int calcular_angulo_ignicao_indice(int i) {
   int grau_pms_referencia = grau_pms;
   int grau_avanco_referencia = graus_avanco_para_referencia_sensor(grau_avanco);
   int separacao_eventos = grau_entre_cada_cilindro;
   if (modo_ignicao == 1 && local_rodafonica == 2) {
     separacao_eventos = 360 / quantidade_canais_ignicao_fisicos();
   }
-  int angulo_base_ignicao = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (separacao_eventos * i);
-  return calcular_tempo_evento_ignicao(angulo_base_ignicao);
+  return ajuste_pms + grau_pms_referencia - offset_referencia_roda_fonica_graus() - grau_avanco_referencia + (separacao_eventos * i);
+}
+
+static inline unsigned long calcular_tempo_ignicao_indice(int i) {
+  return calcular_tempo_evento_ignicao(calcular_angulo_ignicao_indice(i));
 }
 
 void calcula_grau_ignicao(int i){

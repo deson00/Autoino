@@ -137,6 +137,51 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 	ignicao_agendada[i] = true;
 }
 
+static inline void recalcular_ignicao_canal_por_dente(int i, uint32_t tick_atual) {
+	if (status_corte != 0 || tempo_cada_grau == 0 || grau_cada_dente == 0) {
+		return;
+	}
+
+	if (!ignicao_agendada[i] || ign_acionado[i] || captura_dwell[i]) {
+		return;
+	}
+
+	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
+	int angulo_alvo = normalizar_angulo_minimo_zero(calcular_angulo_ignicao_indice(i));
+	int angulo_sensor_atual = normalizar_angulo_minimo_zero(posicao_atual_sensor * (int)grau_cada_dente);
+	int graus_ate_evento = angulo_alvo - angulo_sensor_atual;
+	if (graus_ate_evento <= 0) {
+		graus_ate_evento += 360;
+	}
+
+	uint32_t ticks_ate_fim = us_para_ticks_timer1((unsigned long)graus_ate_evento * tempo_cada_grau);
+	uint32_t tick_fim_dwell = tick_atual + ticks_ate_fim;
+	if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
+		return;
+	}
+
+	ignicao_tick_ligar[i] = tick_fim_dwell - dwell_ticks;
+	ignicao_tick_desligar[i] = tick_fim_dwell;
+}
+
+void atualizar_agendamentos_ignicao_por_dente() {
+	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 ||
+	    local_rodafonica != 1 || tempo_cada_grau == 0) {
+		return;
+	}
+
+	uint8_t sreg = SREG;
+	cli();
+	uint32_t tick_atual = ler_tick32_timer1();
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
+		recalcular_ignicao_canal_por_dente(i, tick_atual);
+	}
+	atualizar_compare_b_ligar();
+	atualizar_compare_a_desligar();
+	SREG = sreg;
+}
+
 static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 	if (inj_acionado[i] || captura_req_fuel[i] || injecao_agendada[i]) {
 		return;

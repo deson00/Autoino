@@ -43,8 +43,15 @@ static inline int normalizar_angulo_minimo_zero(int angulo) {
   return angulo;
 }
 
+static inline int offset_referencia_roda_fonica_graus() {
+  if (local_rodafonica == 1 && grau_cada_dente > 0) {
+    return ((int)qtd_dente_faltante + 1) * (int)grau_cada_dente;
+  }
+  return 0;
+}
+
 static inline unsigned int rpm_limite_referencia_baixa_rotacao() {
-  return rpm_partida + 200U;
+  return rpm_partida + 100U;
 }
 
 static inline bool referencia_ignicao_ativa_baixa_rotacao() {
@@ -60,7 +67,7 @@ static inline bool angulo_referencia_ignicao_valido(int i, int avanco_virabrequi
 
   int grau_pms_referencia = grau_pms;
   int grau_avanco_referencia = graus_avanco_para_referencia_sensor(avanco_virabrequim);
-  int angulo_alvo_bruto = ajuste_pms + grau_pms_referencia - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
+  int angulo_alvo_bruto = ajuste_pms + grau_pms_referencia - offset_referencia_roda_fonica_graus() - grau_avanco_referencia + (grau_entre_cada_cilindro * i);
   int angulo_alvo = normalizar_angulo_minimo_zero(angulo_alvo_bruto);
   bool alvo_fim_ciclo = angulo_alvo_bruto > 0 &&
                          (angulo_alvo == 0 || angulo_alvo >= (360 - MARGEM_IGNICAO_FIM_CICLO_GRAUS));

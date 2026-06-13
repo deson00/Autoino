@@ -15,6 +15,7 @@ volatile byte amostras_intervalo_validas = 0;
 #define TEMPO_CADA_GRAU_ALPHA_NUM 1UL
 
 void agendar_eventos_motor_timer1();
+void atualizar_agendamentos_ignicao_por_dente();
 
 static inline unsigned long limita_tempo_cada_grau(unsigned long valor_us) {
   if (valor_us < TEMPO_CADA_GRAU_MIN_US) {
@@ -127,7 +128,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     //Serial.print(posicao_atual_sensor); 
     qtd_revolucoes++;
     // Fallback por média da volta: usado apenas quando ainda não há atualização válida por dente.
-    if (tempo_cada_grau == 0 && tempo_total_volta_completa > 0) {
+    if (rpm >= rpm_partida && tempo_cada_grau == 0 && tempo_total_volta_completa > 0) {
       tempo_cada_grau = limita_tempo_cada_grau(tempo_total_volta_completa / 360UL);
     }
 
@@ -179,6 +180,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       unsigned long tempo_instante_grau = intervalo_tempo_entre_dente / grau_cada_dente;
       if (tempo_instante_grau > 0) {
         tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
+        atualizar_agendamentos_ignicao_por_dente();
       }
     }
     // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);

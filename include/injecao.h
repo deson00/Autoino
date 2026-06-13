@@ -29,7 +29,7 @@ static inline byte indice_pino_injecao(int i) {
 
 void calcula_grau_injetor(int i){
 if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      int angulo_base_injecao = ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i) - grau_fechamento_injetor;
+      int angulo_base_injecao = ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i) - grau_fechamento_injetor;
       while (angulo_base_injecao < 0) {
         angulo_base_injecao += 360;
       }
@@ -84,12 +84,12 @@ void desligar_injetor(int i){
 void calcula_grau_injetor_comando(int i){
     if ( i < qtd_cilindro/2){
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+      tempo_proxima_injecao[i] = normalizar_angulo_minimo_zero(ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     }
   }
     if (i >= qtd_cilindro / 2){
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = (ajuste_pms + grau_pms + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
+      tempo_proxima_injecao[i] = normalizar_angulo_minimo_zero(ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
     }
   }
 }
