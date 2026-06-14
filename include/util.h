@@ -44,7 +44,7 @@ static inline int normalizar_angulo_minimo_zero(int angulo) {
 }
 
 static inline int offset_referencia_roda_fonica_graus() {
-  if (local_rodafonica == 1 && grau_cada_dente > 0) {
+  if ((local_rodafonica == 1 || local_rodafonica == 2) && grau_cada_dente > 0) {
     return ((int)qtd_dente_faltante + 1) * (int)grau_cada_dente;
   }
   return 0;

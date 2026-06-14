@@ -166,7 +166,7 @@ static inline void recalcular_ignicao_canal_por_dente(int i, uint32_t tick_atual
 
 void atualizar_agendamentos_ignicao_por_dente() {
 	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 ||
-	    local_rodafonica != 1 || tempo_cada_grau == 0) {
+	    (local_rodafonica != 1 && local_rodafonica != 2) || tempo_cada_grau == 0) {
 		return;
 	}
 
@@ -261,10 +261,6 @@ static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 			}
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
-			// Re-agendar imediatamente se perdeu o ciclo do sincronismo
-			if (local_rodafonica == 2 && revolucoes_sincronizada >= 1) {
-				agendar_ignicao_canal(i, tick_atual);
-			}
 		}
 	}
 

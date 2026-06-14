@@ -139,10 +139,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     // uma janela maior de dentes para nao bloquear sincronismo inicial.
     uint16_t tolerancia_dentes = 1U;
     if (rpm < rpm_partida) {
-      tolerancia_dentes = (uint16_t)qtd_dente_faltante + 3U;
-      if (tolerancia_dentes < 3U) {
-        tolerancia_dentes = 3U;
-      }
+      tolerancia_dentes = 2U;
     } else if (rpm < (rpm_partida + 800U)) {
       tolerancia_dentes = 2U;
     }

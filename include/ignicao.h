@@ -5,10 +5,10 @@ static inline unsigned long calcular_tempo_evento_ignicao(int angulo_alvo_graus)
 
   int angulo_normalizado = normalizar_angulo_minimo_zero(angulo_alvo_graus);
   if (angulo_normalizado == 0 && angulo_alvo_graus > 0) {
-    if (local_rodafonica == 1) {
-      angulo_normalizado = 360 - MARGEM_IGNICAO_FIM_CICLO_GRAUS;
+    if (local_rodafonica == 2) {
+      angulo_normalizado = MARGEM_IGNICAO_FIM_CICLO_GRAUS;
     } else {
-      angulo_normalizado = 360;
+      angulo_normalizado = 360 - MARGEM_IGNICAO_FIM_CICLO_GRAUS;
     }
   }
 
