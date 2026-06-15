@@ -207,6 +207,7 @@ void atualizar_agendamentos_ignicao_por_dente() {
 	for (int i = 0; i < eventos_injecao; i++) {
 		recalcular_injecao_canal_por_dente(i, tick_atual);
 	}
+	processar_cortes_vencidos(tick_atual);
 	atualizar_compare_b_ligar();
 	atualizar_compare_a_desligar();
 	SREG = sreg;
@@ -436,7 +437,9 @@ static void atualizar_compare_b_ligar() {
 
 		// Prevenção de deadlock do comparador de hardware (evento muito próximo ou já ficou pro passado):
 		if (menor_delta < 20) {
-			processar_ligamentos_vencidos(agora + menor_delta);
+			uint32_t tick_evento = agora + menor_delta;
+			processar_ligamentos_vencidos(tick_evento);
+			processar_cortes_vencidos(tick_evento);
 			continue; // O evento acabou de ser consumido, recalcula o próximo!
 		}
 
