@@ -59,13 +59,6 @@ static inline byte indice_pino_ignicao(int i) {
   return (byte)i;
 }
 
-static inline bool referencia_ignicao_valida_baixa_rotacao(int i) {
-  bool valido = angulo_referencia_ignicao_valido(i, grau_avanco);
-
-  referencia_posicao_sensor = valido;
-  return valido;
-}
-
 void atualizar_ajuste_pms_ignicao() {
   if (local_rodafonica == 1) {
     ajuste_pms = 0;
@@ -124,12 +117,12 @@ void desligar_dwell(int i){
 
 void calcula_dwell_comando(int i){
       if ( i < qtd_cilindro/2){
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
       tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
     }
   }
     if (i >= qtd_cilindro / 2){
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false && referencia_posicao_sensor == true)){
+    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
       tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
     }
   }

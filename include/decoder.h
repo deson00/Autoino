@@ -181,23 +181,6 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       }
     }
     // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
-    if (rpm < rpm_limite_referencia_baixa_rotacao() && revolucoes_sincronizada >= 1) {
-      if (local_rodafonica == 1 && tipo_ignicao_sequencial == 0) {
-        ajuste_pms = 0;
-        bool referencia_valida = false;
-        for (int i = 0; i < qtd_cilindro; i++) {
-          if ((captura_dwell[i] == false) && (ign_acionado[i] == false) &&
-              angulo_referencia_ignicao_valido(i, grau_avanco)) {
-            referencia_valida = true;
-            break;
-          }
-        }
-        referencia_posicao_sensor = referencia_valida; // mantém true se ao menos uma referência válida foi encontrada neste ciclo
-      }
-    }
-    else {
-      referencia_posicao_sensor = true; // Reseta a referência de posição do sensor quando o rpm estiver acima do rpm de partida, para permitir o ajuste normal do avanço
-    }
     //enviar_byte_serial(tempo_cada_grau / 1000, 1);
 
   }

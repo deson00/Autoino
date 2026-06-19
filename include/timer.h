@@ -303,25 +303,10 @@ static inline void limpar_ligamentos_vencidos_sem_acionar(uint32_t tick_atual) {
 	}
 }
 
-static inline void adiar_desligamento_ignicao_por_referencia(int i, uint32_t tick_atual) {
-	uint32_t atraso_ticks = TIMER1_MIN_DELTA_TICKS;
-	if (tempo_cada_grau > 0) {
-		atraso_ticks = us_para_ticks_timer1(tempo_cada_grau);
-	}
-	if (atraso_ticks < 20) {
-		atraso_ticks = 20;
-	}
-	ignicao_tick_desligar[i] = tick_atual + atraso_ticks;
-}
-
 static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
 		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
-			if (!referencia_ignicao_valida_baixa_rotacao(i)) {
-				adiar_desligamento_ignicao_por_referencia(i, tick_atual);
-				continue;
-			}
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
 		}
