@@ -129,6 +129,7 @@ int ajuste_pms =  0;
 byte usar_metodo_unificado_vira = 0; // 0: usa ajuste dinâmico legado no vira, 1: usa offset fixo
 int offset_fase_vira_graus = 0; // usado quando usar_metodo_unificado_vira = 1
 int busca_avanco_linear = true;
+byte usar_avanco_temperatura = 0; // 0 desativado, 1 aplica correcao somente sobre o avanco da tabela
 int referencia_temperatura_clt1 = 20;
 int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;

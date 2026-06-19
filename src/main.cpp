@@ -246,6 +246,8 @@ void loop(){
       valor_referencia_busca_tempo_injecao = valor_tps;
     }
          
+    bool avanco_baseado_em_tabela = false;
+
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida * 1000ul; 
@@ -267,16 +269,18 @@ void loop(){
       int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
+      avanco_baseado_em_tabela = true;
       dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
     }
     else{
       grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      avanco_baseado_em_tabela = true;
       dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
     }
 
-    if (status_corte == 0) {
+    if (usar_avanco_temperatura == 1 && avanco_baseado_em_tabela && status_corte == 0) {
       byte correcao_avanco_temp = avanco_por_temperatura((float)temperatura_motor);
       unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
       if (grau_corrigido > 120U) {
