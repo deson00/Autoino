@@ -188,6 +188,9 @@ void ler_dados_eeprom_configuracao_map() {
 void ler_dados_eeprom_enriquecimento_temperatura() {
     int endereco = 1020;
 
+    // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
+    usar_injecao_temperatura = EEPROM.read(1015) == 1 ? 1 : 0;
+
     byte temperaturas_local[5];
     byte enriquecimento_local[5];
 
@@ -233,6 +236,9 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
 
 void ler_dados_eeprom_avanco_temperatura() {
     int endereco = 1030;
+
+    // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
+    usar_avanco_temperatura = EEPROM.read(1016) == 1 ? 1 : 0;
 
     byte temperaturas_local[5];
     byte avanco_local[5];

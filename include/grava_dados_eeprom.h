@@ -196,6 +196,9 @@ void gravar_dados_eeprom_enriquecimento_temperatura() {
     for (int i = 0; i < 5; i++) {
         EEPROM.update(endereco++, vetor_enriquecimento_temperatura[i] & 0xFF);
     }
+
+    // Endereco livre entre a configuracao do MAP (1010-1014) e os vetores.
+    EEPROM.update(1015, usar_injecao_temperatura ? 1 : 0);
 }
 
 void gravar_dados_eeprom_avanco_temperatura() {
@@ -207,4 +210,7 @@ void gravar_dados_eeprom_avanco_temperatura() {
     for (int i = 0; i < 5; i++) {
         EEPROM.update(endereco++, vetor_avanco_temperatura[i] & 0xFF);
     }
+
+    // Segundo endereco livre reservado para a flag de avanco.
+    EEPROM.update(1016, usar_avanco_temperatura ? 1 : 0);
 }

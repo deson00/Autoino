@@ -274,6 +274,8 @@ void ler_dados_memoria() {
     sendSerialInt(vetor_enriquecimento_temperatura[i]);
     Serial.write(',');
   }
+  sendSerialInt(usar_injecao_temperatura);
+  Serial.write(',');
   Serial.write(';');
 
   // s) Avanco por temperatura (5 pontos)
@@ -287,6 +289,8 @@ void ler_dados_memoria() {
     sendSerialInt(vetor_avanco_temperatura[i]);
     Serial.write(',');
   }
+  sendSerialInt(usar_avanco_temperatura);
+  Serial.write(',');
   Serial.write(';');
 
 }

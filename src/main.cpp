@@ -292,10 +292,12 @@ void loop(){
           VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
           float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
-          //exemplo de entrada calcular_tempo_enriquecimento_gama(tempo_base_injecao, correcao_aquecimento, correcao_O2, correcao_temperatura_ar, correcao_barometrica) 
-          tempo_injecao = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura(temperatura_motor), 100, 100, 100);   
+          float tempo_pulso_corrigido = tempo_pulso;
+          if (usar_injecao_temperatura == 1) {
+            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura(temperatura_motor), 100, 100, 100);
+          }
           calcula_enriquecimento_aceleracao(tempo_pulso);
-          tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
+          tempo_injecao = tempo_pulso_corrigido + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
           if(rpm < rpm_partida){
             // Aplicando o acréscimo de injeção na partida
             tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));

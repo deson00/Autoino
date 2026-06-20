@@ -288,6 +288,9 @@ void leitura_entrada_dados_serial()
             vetor_enriquecimento_temperatura[i] = (byte)enriquecimento;
           }
 
+          // Ultimo valor do comando r: 0 desativa e qualquer outro valor ativa.
+          usar_injecao_temperatura = values[10] ? 1 : 0;
+
           gravar_dados_eeprom_enriquecimento_temperatura();
           tipo_vetor_enriquecimento_temperatura = 0;
       }
@@ -317,6 +320,9 @@ void leitura_entrada_dados_serial()
             }
             vetor_avanco_temperatura[i] = (byte)avanco;
           }
+
+          // Ultimo valor do comando s: 0 desativa e qualquer outro valor ativa.
+          usar_avanco_temperatura = values[10] ? 1 : 0;
 
           gravar_dados_eeprom_avanco_temperatura();
           tipo_vetor_avanco_temperatura = 0;
