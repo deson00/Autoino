@@ -1,5 +1,15 @@
-#define Autoino   //Descomente essa linha caso utilizar Autoino em um Arduino Mega, UNO ou Nano etc
-// #define Speeduino  //Descomente essa linha caso utilizar Autoino em uma shild Speeduino com arduino Mega 2560
+// Se nenhum perfil for definido manualmente, escolhe um padrao por MCU para evitar
+// pinagem incorreta ao trocar de placa no PlatformIO.
+// Para forcar manualmente:
+#define Autoino
+//#define Speeduino
+#if !defined(Autoino) && !defined(Speeduino)
+	#if defined(__AVR_ATmega2560__)
+		#define Speeduino
+	#else
+		#define Autoino
+	#endif
+#endif
 
 #ifdef Autoino
 #define pino_sensor_roda_fonica 2

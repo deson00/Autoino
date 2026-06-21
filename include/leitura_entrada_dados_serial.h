@@ -56,15 +56,7 @@ void leitura_entrada_dados_serial()
       tipo_vetor_configuracao_inicial = 1;
     }
      if (data == 'h'){//retorna dados da ecu
-        uint8_t timer1_habilitado = TIMSK1 & _BV(TOIE1);
-        if (timer1_habilitado) {
-          TIMSK1 &= ~_BV(TOIE1);
-        }
         ler_dados_memoria();
-        Serial.flush();
-        if (timer1_habilitado) {
-          TIMSK1 |= _BV(TOIE1);
-        }
     }
     if (data == 'i') {
      if(status_dados_tempo_real){
@@ -81,6 +73,9 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'l') {// configuração sensor temperatura clt
       tipo_vetor_configuracao_clt = 1;
+    }
+    if (data == 'u') {// configuração sensor temperatura do ar iat
+      tipo_vetor_configuracao_iat = 1;
     }
     if (data == 'm') {// configuração sensor temperatura clt
       tipo_vetor_configuracao_injecao = 1;
@@ -102,6 +97,9 @@ void leitura_entrada_dados_serial()
     }
     if (data == 's') {// configuração avanço por temperatura
       tipo_vetor_avanco_temperatura = 1;
+    }
+    if (data == 't') {// parametros do injetor
+      tipo_vetor_parametros_injetor = 1;
     }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
@@ -204,6 +202,14 @@ void leitura_entrada_dados_serial()
           gravar_dados_eeprom_configuracao_clt();
           tipo_vetor_configuracao_clt = 0;
       }
+      if (tipo_vetor_configuracao_iat == 1){
+          referencia_temperatura_iat1 = values[0];
+          referencia_resistencia_iat1 = values[1];
+          referencia_temperatura_iat2 = values[2];
+          referencia_resistencia_iat2 = values[3];
+          gravar_dados_eeprom_configuracao_iat();
+          tipo_vetor_configuracao_iat = 0;
+      }
       if (tipo_vetor_configuracao_injecao == 1){
           referencia_leitura_injecao = values[0];//1 map 2 tps
           tipo_motor = values[1];//4 para motor 4 tempo e 2 para 2 tempo
@@ -296,6 +302,9 @@ void leitura_entrada_dados_serial()
             vetor_enriquecimento_temperatura[i] = (byte)enriquecimento;
           }
 
+          // Ultimo valor do comando r: 0 desativa e qualquer outro valor ativa.
+          usar_injecao_temperatura = values[10] ? 1 : 0;
+
           gravar_dados_eeprom_enriquecimento_temperatura();
           tipo_vetor_enriquecimento_temperatura = 0;
       }
@@ -326,8 +335,27 @@ void leitura_entrada_dados_serial()
             vetor_avanco_temperatura[i] = (byte)avanco;
           }
 
+          // Ultimo valor do comando s: 0 desativa e qualquer outro valor ativa.
+          usar_avanco_temperatura = values[10] ? 1 : 0;
+
           gravar_dados_eeprom_avanco_temperatura();
           tipo_vetor_avanco_temperatura = 0;
+      }
+      if (tipo_vetor_parametros_injetor == 1){
+          int limite = values[0];
+          int dead_time = values[1];
+          int angulo_fechamento = values[2];
+          int acrescimo_partida = values[3];
+          int acrescimo_funcionamento = values[4];
+
+          limite_injetor = (byte)constrain(limite, 0, 100);
+          tempo_abertura_injetor = constrain(dead_time, 0, 5000);
+          grau_fechamento_injetor = constrain(angulo_fechamento, 0, 360);
+          acrescimo_injecao_partida = (byte)constrain(acrescimo_partida, 0, 100);
+          acrescimo_injecao_funcionamento = (byte)constrain(acrescimo_funcionamento, 0, 100);
+
+          gravar_dados_eeprom_parametros_injetor();
+          tipo_vetor_parametros_injetor = 0;
       }
       index = 0; // reinicia índice do vetor
     }

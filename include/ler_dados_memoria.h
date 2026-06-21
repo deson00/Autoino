@@ -111,6 +111,19 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
+  // u) Configuração sensor temperatura do ar IAT
+  Serial.write('u');
+  Serial.write(',');
+  sendSerialInt(referencia_temperatura_iat1);
+  Serial.write(',');
+  sendSerialInt(referencia_resistencia_iat1);
+  Serial.write(',');
+  sendSerialInt(referencia_temperatura_iat2);
+  Serial.write(',');
+  sendSerialInt(referencia_resistencia_iat2);
+  Serial.write(',');
+  Serial.write(';');
+
   // ========== TABELA VE ==========
     
   // d) Vetor MAP/TPS VE
@@ -182,6 +195,21 @@ void ler_dados_memoria() {
   sendSerialInt(dreq_fuel);
   Serial.write(',');
   sendSerialInt(tipo_sonda_o2);
+  Serial.write(',');
+  Serial.write(';');
+
+  // t) Parametros do injetor
+  Serial.write('t');
+  Serial.write(',');
+  sendSerialInt(limite_injetor);
+  Serial.write(',');
+  sendSerialInt(tempo_abertura_injetor);
+  Serial.write(',');
+  sendSerialInt(grau_fechamento_injetor);
+  Serial.write(',');
+  sendSerialInt(acrescimo_injecao_partida);
+  Serial.write(',');
+  sendSerialInt(acrescimo_injecao_funcionamento);
   Serial.write(',');
   Serial.write(';');
 
@@ -274,6 +302,8 @@ void ler_dados_memoria() {
     sendSerialInt(vetor_enriquecimento_temperatura[i]);
     Serial.write(',');
   }
+  sendSerialInt(usar_injecao_temperatura);
+  Serial.write(',');
   Serial.write(';');
 
   // s) Avanco por temperatura (5 pontos)
@@ -287,6 +317,8 @@ void ler_dados_memoria() {
     sendSerialInt(vetor_avanco_temperatura[i]);
     Serial.write(',');
   }
+  sendSerialInt(usar_avanco_temperatura);
+  Serial.write(',');
   Serial.write(';');
 
 }

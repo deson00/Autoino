@@ -121,6 +121,33 @@ void ler_dados_eeprom_configuracao_injecao(){
     }
 }
 
+void ler_dados_eeprom_parametros_injetor() {
+    int endereco = 920;
+
+    if (EEPROM.read(927) != 0xA5) {
+        return;
+    }
+
+    limite_injetor = (byte)constrain(EEPROM.read(endereco++), 0, 100);
+    tempo_abertura_injetor = constrain(ler_16bits_eeprom(endereco), 0, 5000);
+    endereco += 2;
+    grau_fechamento_injetor = constrain(ler_16bits_eeprom(endereco), 0, 360);
+    endereco += 2;
+    acrescimo_injecao_partida = (byte)constrain(EEPROM.read(endereco++), 0, 100);
+    acrescimo_injecao_funcionamento = (byte)constrain(EEPROM.read(endereco++), 0, 100);
+}
+
+void ler_dados_eeprom_configuracao_iat() {
+    if (EEPROM.read(428) != 0xA5) {
+        return;
+    }
+
+    referencia_temperatura_iat1 = ler_8bits_eeprom(420);
+    referencia_resistencia_iat1 = ler_16bits_eeprom(422);
+    referencia_temperatura_iat2 = ler_8bits_eeprom(424);
+    referencia_resistencia_iat2 = ler_16bits_eeprom(426);
+}
+
 
 void ler_dados_eeprom_configuracao_protecao(){
   int endereco =  950; // Inicializa o endereço de memória
@@ -188,6 +215,9 @@ void ler_dados_eeprom_configuracao_map() {
 void ler_dados_eeprom_enriquecimento_temperatura() {
     int endereco = 1020;
 
+    // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
+    usar_injecao_temperatura = EEPROM.read(1015) == 1 ? 1 : 0;
+
     byte temperaturas_local[5];
     byte enriquecimento_local[5];
 
@@ -233,6 +263,9 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
 
 void ler_dados_eeprom_avanco_temperatura() {
     int endereco = 1030;
+
+    // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
+    usar_avanco_temperatura = EEPROM.read(1016) == 1 ? 1 : 0;
 
     byte temperaturas_local[5];
     byte avanco_local[5];
@@ -299,6 +332,8 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_tabela_ignicao_map_rpm();
     ler_dados_eeprom_tabela_ve_map_rpm();
     ler_dados_eeprom_configuracao_injecao();
+    ler_dados_eeprom_parametros_injetor();
+    ler_dados_eeprom_configuracao_iat();
     ler_dados_eeprom_configuracao_protecao();
     ler_dados_eeprom_enriquecimento_aceleracao();
     leitura_dados_eeprom_configuracao_tps();

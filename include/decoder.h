@@ -7,6 +7,7 @@ volatile byte amostras_intervalo_validas = 0;
 #define GAP_FATOR_MIN_PARTIDA_X10 14UL // 1.4x em partida para tolerar sweep/aceleracao
 #define GAP_FATOR_MAX_MARGEM_X 4UL    // limite superior para rejeitar outliers
 #define FATOR_RUIDO_DENTE_CURTO_NUM 3UL // Rejeita pulso menor que 1/3 do dente de referencia
+#define FALHAS_SYNC_MAX_CONSECUTIVAS 3U
 
 #define TEMPO_CADA_GRAU_MIN_US 1UL
 #define TEMPO_CADA_GRAU_MAX_US 10000UL // Suporta partida lenta com rodas de poucos dentes (ex.: 4-1)
@@ -14,6 +15,7 @@ volatile byte amostras_intervalo_validas = 0;
 #define TEMPO_CADA_GRAU_ALPHA_NUM 1UL
 
 void agendar_eventos_motor_timer1();
+void atualizar_agendamentos_ignicao_por_dente();
 
 static inline unsigned long limita_tempo_cada_grau(unsigned long valor_us) {
   if (valor_us < TEMPO_CADA_GRAU_MIN_US) {
@@ -58,6 +60,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     amostras_intervalo_validas = 0;
     leitura = 0;
     qtd_leitura = 0;
+    falhas_sync_consecutivas = 0;
     verifica_falha = 0;
     inicia_tempo_sensor_roda_fonica = 0;
     return;
@@ -125,23 +128,36 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     //Serial.print(posicao_atual_sensor); 
     qtd_revolucoes++;
     // Fallback por média da volta: usado apenas quando ainda não há atualização válida por dente.
-    if (tempo_cada_grau == 0 && tempo_total_volta_completa > 0) {
+    if (rpm >= rpm_partida && tempo_cada_grau == 0 && tempo_total_volta_completa > 0) {
       tempo_cada_grau = limita_tempo_cada_grau(tempo_total_volta_completa / 360UL);
     }
 
-    // posicao_atual_sensor = grau_cada_dente * qtd_dente_faltante;
-    posicao_atual_sensor = 0;
+    // Mantem a posicao de fim de volta ate processar os cortes vencidos.
+    // O evento final da centelha perdida no comando pode cair junto da falha.
     uint16_t dentes_esperados = (uint16_t)(qtd_dente - qtd_dente_faltante);
-    uint16_t tolerancia_dentes = (rpm < rpm_partida) ? 1U : 0U;
+    // Em partida a velocidade do motor oscila bastante por compressao/bateria, entao aceita
+    // uma janela maior de dentes para nao bloquear sincronismo inicial.
+    uint16_t tolerancia_dentes = 1U;
+    if (rpm < rpm_partida) {
+      tolerancia_dentes = 2U;
+    } else if (rpm < (rpm_partida + 800U)) {
+      tolerancia_dentes = 2U;
+    }
     bool contagem_valida = (qtd_leitura + tolerancia_dentes >= dentes_esperados) &&
                            (qtd_leitura <= dentes_esperados + tolerancia_dentes);
 
     if (!contagem_valida) {
-      revolucoes_sincronizada = 0;
+      if (falhas_sync_consecutivas < 255) {
+        falhas_sync_consecutivas++;
+      }
+      if (falhas_sync_consecutivas >= FALHAS_SYNC_MAX_CONSECUTIVAS) {
+        revolucoes_sincronizada = 0;
+      }
       if (++qtd_perda_sincronia >= 255) {
         qtd_perda_sincronia = 0;
       }
     } else {
+      falhas_sync_consecutivas = 0;
       revolucoes_sincronizada++;
     }
     qtd_leitura = 0;
@@ -153,59 +169,18 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       agendar_eventos_motor_timer1();
     }
 
+    posicao_atual_sensor = 0;
+
   } else {
     posicao_atual_sensor++;
     if (grau_cada_dente > 0) {
       unsigned long tempo_instante_grau = intervalo_tempo_entre_dente / grau_cada_dente;
       if (tempo_instante_grau > 0) {
         tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
+        atualizar_agendamentos_ignicao_por_dente();
       }
     }
     // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
-    if (rpm < rpm_partida && revolucoes_sincronizada >= 1) {
-      if (local_rodafonica == 1 && tipo_ignicao_sequencial == 0) {
-        ajuste_pms = 0;
-        bool referencia_valida = false;
-        for (int i = 0; i < qtd_cilindro; i++) {
-          if (i < qtd_cilindro / 2) {
-            if (posicao_atual_sensor * grau_cada_dente >= grau_pms - grau_cada_dente + ajuste_pms + (grau_entre_cada_cilindro * i) && (captura_dwell[i] == false) && (ign_acionado[i] == false)) {
-              // delay((grau_pms - (posicao_atual_sensor * grau_cada_dente)) * tempo_cada_grau);
-              // captura_dwell[i] = true;
-              // tempo_percorrido[i] = tempo_atual;
-              // digitalWrite(ignicao_pins[i], 1);
-              // // setPinHigh(ignicao_pins[i]);
-              // tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i];
-              // ign_acionado[i] = true;
-              // ign_acionado[i + 1] = false;
-              // captura_dwell[i + 1] = false;
-              // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
-              // enviar_byte_serial(posicao_atual_sensor * grau_cada_dente, 1);
-              referencia_valida = true;
-            }
-          }
-          if (i >= qtd_cilindro / 2) {
-            if (posicao_atual_sensor * grau_cada_dente >= grau_pms - grau_cada_dente + ajuste_pms + (grau_entre_cada_cilindro * i) && (captura_dwell[i] == false) && (ign_acionado[i] == false)) {
-              // delay((grau_pms - (posicao_atual_sensor * grau_cada_dente)) * tempo_cada_grau);
-              // captura_dwell[i] = true;
-              // tempo_percorrido[i] = tempo_atual;
-              // digitalWrite(ignicao_pins[i - qtd_cilindro / 2], 1);
-              // // setPinHigh(ignicao_pins[i - qtd_cilindro/2]);
-              // tempo_atual_proxima_ignicao[i + 1] = tempo_atual_proxima_ignicao[i];
-              // ign_acionado[i] = true;
-              // ign_acionado[i + 1] = false;
-              // captura_dwell[i + 1] = false;
-              // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
-              // enviar_byte_serial(posicao_atual_sensor * grau_cada_dente, 1);
-              referencia_valida = true;
-            }
-          }
-        }
-        referencia_posicao_sensor = referencia_valida; // mantém true se ao menos uma referência válida foi encontrada neste ciclo
-      }
-    }
-    else {
-      referencia_posicao_sensor = true; // Reseta a referência de posição do sensor quando o rpm estiver acima do rpm de partida, para permitir o ajuste normal do avanço
-    }
     //enviar_byte_serial(tempo_cada_grau / 1000, 1);
 
   }

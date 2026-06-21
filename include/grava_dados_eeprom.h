@@ -120,6 +120,29 @@ void gravar_dados_eeprom_configuracao_injecao(){
     
 }
 
+void gravar_dados_eeprom_configuracao_iat() {
+    EEPROM.update(420, referencia_temperatura_iat1 & 0xFF);
+    EEPROM.update(422, referencia_resistencia_iat1 & 0xFF);
+    EEPROM.update(423, (referencia_resistencia_iat1 >> 8) & 0xFF);
+    EEPROM.update(424, referencia_temperatura_iat2 & 0xFF);
+    EEPROM.update(426, referencia_resistencia_iat2 & 0xFF);
+    EEPROM.update(427, (referencia_resistencia_iat2 >> 8) & 0xFF);
+    EEPROM.update(428, 0xA5);
+}
+
+void gravar_dados_eeprom_parametros_injetor() {
+    int endereco = 920;
+
+    EEPROM.update(endereco++, limite_injetor);
+    EEPROM.update(endereco++, tempo_abertura_injetor & 0xFF);
+    EEPROM.update(endereco++, (tempo_abertura_injetor >> 8) & 0xFF);
+    EEPROM.update(endereco++, grau_fechamento_injetor & 0xFF);
+    EEPROM.update(endereco++, (grau_fechamento_injetor >> 8) & 0xFF);
+    EEPROM.update(endereco++, acrescimo_injecao_partida);
+    EEPROM.update(endereco++, acrescimo_injecao_funcionamento);
+    EEPROM.update(endereco++, 0xA5); // Marca o bloco como inicializado.
+}
+
 void gravar_dados_eeprom_configuracao_protecao(){
   int endereco =  950; // Inicializa o endereço de memória
     // Gravar os valores divididos em bytes
@@ -196,6 +219,9 @@ void gravar_dados_eeprom_enriquecimento_temperatura() {
     for (int i = 0; i < 5; i++) {
         EEPROM.update(endereco++, vetor_enriquecimento_temperatura[i] & 0xFF);
     }
+
+    // Endereco livre entre a configuracao do MAP (1010-1014) e os vetores.
+    EEPROM.update(1015, usar_injecao_temperatura ? 1 : 0);
 }
 
 void gravar_dados_eeprom_avanco_temperatura() {
@@ -207,4 +233,7 @@ void gravar_dados_eeprom_avanco_temperatura() {
     for (int i = 0; i < 5; i++) {
         EEPROM.update(endereco++, vetor_avanco_temperatura[i] & 0xFF);
     }
+
+    // Segundo endereco livre reservado para a flag de avanco.
+    EEPROM.update(1016, usar_avanco_temperatura ? 1 : 0);
 }

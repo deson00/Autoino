@@ -246,6 +246,8 @@ void loop(){
       valor_referencia_busca_tempo_injecao = valor_tps;
     }
          
+    bool avanco_baseado_em_tabela = false;
+
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
       dwell_bobina = dwell_partida * 1000ul; 
@@ -267,16 +269,18 @@ void loop(){
       int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
+      avanco_baseado_em_tabela = true;
       dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
     }
     else{
       grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      avanco_baseado_em_tabela = true;
       dwell_bobina = dwell_funcionamento * 1000ul;
       status_corte = 0;
     }
 
-    if (status_corte == 0) {
+    if (usar_avanco_temperatura == 1 && avanco_baseado_em_tabela && status_corte == 0) {
       byte correcao_avanco_temp = avanco_por_temperatura((float)temperatura_motor);
       unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
       if (grau_corrigido > 120U) {
@@ -288,10 +292,12 @@ void loop(){
           VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
           float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
-          //exemplo de entrada calcular_tempo_enriquecimento_gama(tempo_base_injecao, correcao_aquecimento, correcao_O2, correcao_temperatura_ar, correcao_barometrica) 
-          tempo_injecao = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura(temperatura_motor), 100, 100, 100);   
+          float tempo_pulso_corrigido = tempo_pulso;
+          if (usar_injecao_temperatura == 1) {
+            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura(temperatura_motor), 100, 100, 100);
+          }
           calcula_enriquecimento_aceleracao(tempo_pulso);
-          tempo_injecao = tempo_pulso + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
+          tempo_injecao = tempo_pulso_corrigido + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
           if(rpm < rpm_partida){
             // Aplicando o acréscimo de injeção na partida
             tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
@@ -337,6 +343,7 @@ void loop(){
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
+  temperatura_ar = temperatura_iat();
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 

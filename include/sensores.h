@@ -15,3 +15,16 @@ float temperatura_clt(){
       return resultado_temperatura;
   }
 }
+
+float temperatura_iat(){
+  int sensor_iat = analogRead(pino_sensor_iat);
+  float resistencia_total = 2400.0;
+  float resistencia = resistencia_total * sensor_iat / 1023.0;
+  float beta = calculateBeta(referencia_resistencia_iat1, referencia_temperatura_iat1, referencia_resistencia_iat2, referencia_temperatura_iat2);
+  int resultado_temperatura = calculateTemperature(resistencia, beta, referencia_resistencia_iat1, referencia_temperatura_iat1);
+
+  if (resultado_temperatura > 250 || resultado_temperatura < 0) {
+      return 250;
+  }
+  return resultado_temperatura;
+}
