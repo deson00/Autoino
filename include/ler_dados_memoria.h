@@ -185,6 +185,21 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
+  // t) Parametros do injetor
+  Serial.write('t');
+  Serial.write(',');
+  sendSerialInt(limite_injetor);
+  Serial.write(',');
+  sendSerialInt(tempo_abertura_injetor);
+  Serial.write(',');
+  sendSerialInt(grau_fechamento_injetor);
+  Serial.write(',');
+  sendSerialInt(acrescimo_injecao_partida);
+  Serial.write(',');
+  sendSerialInt(acrescimo_injecao_funcionamento);
+  Serial.write(',');
+  Serial.write(';');
+
   // n) Configuração proteção e limites 
   Serial.write('n');
   Serial.write(',');

@@ -109,6 +109,7 @@ byte tipo_vetor_protecao = 0;
 byte tipo_vetor_enriquecimento_aceleracao = 0;
 byte tipo_vetor_enriquecimento_temperatura = 0;
 byte tipo_vetor_avanco_temperatura = 0;
+byte tipo_vetor_parametros_injetor = 0;
 byte tipo_vetor_configuracao_tps = 0;
 byte tipo_vetor_configuracao_map = 0;
 bool status_dados_tempo_real = false;

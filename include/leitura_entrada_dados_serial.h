@@ -95,6 +95,9 @@ void leitura_entrada_dados_serial()
     if (data == 's') {// configuração avanço por temperatura
       tipo_vetor_avanco_temperatura = 1;
     }
+    if (data == 't') {// parametros do injetor
+      tipo_vetor_parametros_injetor = 1;
+    }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
        gravar_dados_eeprom_tabela_ve_map_rpm();
@@ -326,6 +329,22 @@ void leitura_entrada_dados_serial()
 
           gravar_dados_eeprom_avanco_temperatura();
           tipo_vetor_avanco_temperatura = 0;
+      }
+      if (tipo_vetor_parametros_injetor == 1){
+          int limite = values[0];
+          int dead_time = values[1];
+          int angulo_fechamento = values[2];
+          int acrescimo_partida = values[3];
+          int acrescimo_funcionamento = values[4];
+
+          limite_injetor = (byte)constrain(limite, 0, 100);
+          tempo_abertura_injetor = constrain(dead_time, 0, 5000);
+          grau_fechamento_injetor = constrain(angulo_fechamento, 0, 360);
+          acrescimo_injecao_partida = (byte)constrain(acrescimo_partida, 0, 100);
+          acrescimo_injecao_funcionamento = (byte)constrain(acrescimo_funcionamento, 0, 100);
+
+          gravar_dados_eeprom_parametros_injetor();
+          tipo_vetor_parametros_injetor = 0;
       }
       index = 0; // reinicia índice do vetor
     }

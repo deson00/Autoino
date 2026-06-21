@@ -8,20 +8,7 @@ static inline float limitar_enriquecimento_temperatura(float valor) {
   return valor;
 }
 
-// Compatibilidade com o método linear legado.
-float enriquecimento_temperatura(float temperatura, float temperatura_trabalho, float correcao_maxima) {
-  if (temperatura >= temperatura_trabalho) {
-    return 100.0f;
-  }
-  if (temperatura <= 0.0f) {
-    return limitar_enriquecimento_temperatura(100.0f + correcao_maxima);
-  }
-
-  float fator_correcao = correcao_maxima * (1.0f - (temperatura / temperatura_trabalho));
-  return limitar_enriquecimento_temperatura(100.0f + fator_correcao);
-}
-
-// Novo método: tabela de 5 pontos (temperatura x enriquecimento % total).
+// Tabela de 5 pontos (temperatura x enriquecimento % total).
 float enriquecimento_temperatura(float temperatura) {
   if (temperatura <= vetor_temperatura_injecao[0]) {
     return limitar_enriquecimento_temperatura((float)vetor_enriquecimento_temperatura[0]);

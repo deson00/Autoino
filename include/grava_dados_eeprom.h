@@ -120,6 +120,19 @@ void gravar_dados_eeprom_configuracao_injecao(){
     
 }
 
+void gravar_dados_eeprom_parametros_injetor() {
+    int endereco = 920;
+
+    EEPROM.update(endereco++, limite_injetor);
+    EEPROM.update(endereco++, tempo_abertura_injetor & 0xFF);
+    EEPROM.update(endereco++, (tempo_abertura_injetor >> 8) & 0xFF);
+    EEPROM.update(endereco++, grau_fechamento_injetor & 0xFF);
+    EEPROM.update(endereco++, (grau_fechamento_injetor >> 8) & 0xFF);
+    EEPROM.update(endereco++, acrescimo_injecao_partida);
+    EEPROM.update(endereco++, acrescimo_injecao_funcionamento);
+    EEPROM.update(endereco++, 0xA5); // Marca o bloco como inicializado.
+}
+
 void gravar_dados_eeprom_configuracao_protecao(){
   int endereco =  950; // Inicializa o endereço de memória
     // Gravar os valores divididos em bytes
