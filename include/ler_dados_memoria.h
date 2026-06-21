@@ -111,6 +111,19 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
+  // u) Configuração sensor temperatura do ar IAT
+  Serial.write('u');
+  Serial.write(',');
+  sendSerialInt(referencia_temperatura_iat1);
+  Serial.write(',');
+  sendSerialInt(referencia_resistencia_iat1);
+  Serial.write(',');
+  sendSerialInt(referencia_temperatura_iat2);
+  Serial.write(',');
+  sendSerialInt(referencia_resistencia_iat2);
+  Serial.write(',');
+  Serial.write(';');
+
   // ========== TABELA VE ==========
     
   // d) Vetor MAP/TPS VE

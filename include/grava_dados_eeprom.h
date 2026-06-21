@@ -120,6 +120,16 @@ void gravar_dados_eeprom_configuracao_injecao(){
     
 }
 
+void gravar_dados_eeprom_configuracao_iat() {
+    EEPROM.update(420, referencia_temperatura_iat1 & 0xFF);
+    EEPROM.update(422, referencia_resistencia_iat1 & 0xFF);
+    EEPROM.update(423, (referencia_resistencia_iat1 >> 8) & 0xFF);
+    EEPROM.update(424, referencia_temperatura_iat2 & 0xFF);
+    EEPROM.update(426, referencia_resistencia_iat2 & 0xFF);
+    EEPROM.update(427, (referencia_resistencia_iat2 >> 8) & 0xFF);
+    EEPROM.update(428, 0xA5);
+}
+
 void gravar_dados_eeprom_parametros_injetor() {
     int endereco = 920;
 

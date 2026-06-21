@@ -137,6 +137,17 @@ void ler_dados_eeprom_parametros_injetor() {
     acrescimo_injecao_funcionamento = (byte)constrain(EEPROM.read(endereco++), 0, 100);
 }
 
+void ler_dados_eeprom_configuracao_iat() {
+    if (EEPROM.read(428) != 0xA5) {
+        return;
+    }
+
+    referencia_temperatura_iat1 = ler_8bits_eeprom(420);
+    referencia_resistencia_iat1 = ler_16bits_eeprom(422);
+    referencia_temperatura_iat2 = ler_8bits_eeprom(424);
+    referencia_resistencia_iat2 = ler_16bits_eeprom(426);
+}
+
 
 void ler_dados_eeprom_configuracao_protecao(){
   int endereco =  950; // Inicializa o endereço de memória
@@ -322,6 +333,7 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_tabela_ve_map_rpm();
     ler_dados_eeprom_configuracao_injecao();
     ler_dados_eeprom_parametros_injetor();
+    ler_dados_eeprom_configuracao_iat();
     ler_dados_eeprom_configuracao_protecao();
     ler_dados_eeprom_enriquecimento_aceleracao();
     leitura_dados_eeprom_configuracao_tps();

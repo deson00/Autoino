@@ -343,6 +343,7 @@ void loop(){
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
+  temperatura_ar = temperatura_iat();
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 

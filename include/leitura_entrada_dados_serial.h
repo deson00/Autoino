@@ -74,6 +74,9 @@ void leitura_entrada_dados_serial()
     if (data == 'l') {// configuração sensor temperatura clt
       tipo_vetor_configuracao_clt = 1;
     }
+    if (data == 'u') {// configuração sensor temperatura do ar iat
+      tipo_vetor_configuracao_iat = 1;
+    }
     if (data == 'm') {// configuração sensor temperatura clt
       tipo_vetor_configuracao_injecao = 1;
     }
@@ -198,6 +201,14 @@ void leitura_entrada_dados_serial()
           referencia_resistencia_clt2 = values[3];
           gravar_dados_eeprom_configuracao_clt();
           tipo_vetor_configuracao_clt = 0;
+      }
+      if (tipo_vetor_configuracao_iat == 1){
+          referencia_temperatura_iat1 = values[0];
+          referencia_resistencia_iat1 = values[1];
+          referencia_temperatura_iat2 = values[2];
+          referencia_resistencia_iat2 = values[3];
+          gravar_dados_eeprom_configuracao_iat();
+          tipo_vetor_configuracao_iat = 0;
       }
       if (tipo_vetor_configuracao_injecao == 1){
           referencia_leitura_injecao = values[0];//1 map 2 tps
