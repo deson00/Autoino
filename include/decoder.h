@@ -6,8 +6,7 @@ volatile byte amostras_intervalo_validas = 0;
 #define GAP_FATOR_MIN_FUNC_X10 15UL   // 1.5x em funcionamento
 #define GAP_FATOR_MIN_PARTIDA_X10 14UL // 1.4x em partida para tolerar sweep/aceleracao
 #define GAP_FATOR_MAX_MARGEM_X 4UL    // limite superior para rejeitar outliers
-#define DEBOUNCE_DENTE_ADAPTATIVO_NUM 1UL // Rejeita pulso menor que 1/2 do dente de referencia
-#define DEBOUNCE_DENTE_ADAPTATIVO_DEN 2UL
+#define FATOR_RUIDO_DENTE_CURTO_NUM 3UL // Rejeita pulso menor que 1/3 do dente de referencia
 #define FALHAS_SYNC_MAX_CONSECUTIVAS 3U
 
 #define TEMPO_CADA_GRAU_MIN_US 1UL
@@ -44,8 +43,7 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente - dente faltante
   // tempo_inicial_codigo = micros(); // Registra o tempo inicial
   uint32_t tempo_agora = micros();
-  uint32_t intervalo_desde_ultima_interrupcao = (tempo_agora - ultimo_tempo_interrupcao);
-  if (intervalo_desde_ultima_interrupcao < MIN_INTERVALO_DENTE_US) {
+  if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
     return; // Ignora o pulso, é ruído. Não faz nada, pois não é um pulso válido.
   }
 
@@ -68,18 +66,10 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     return;
   }
 
-  // Debounce adaptativo: rejeita dente espurio muito curto em relacao ao ultimo dente valido.
-  // Mantem o debounce fixo como minimo, mas aumenta automaticamente conforme o tempo real do dente.
+  // Filtro adaptativo: rejeita dente espurio muito curto em relacao ao ultimo dente valido.
   unsigned long intervalo_candidato = (tempo_agora - tempo_anterior);
-  unsigned long min_intervalo_adaptativo_us = MIN_INTERVALO_DENTE_US;
-  if (intervalo_dente_referencia_us > 0) {
-    unsigned long min_por_dente_us = (intervalo_dente_referencia_us * DEBOUNCE_DENTE_ADAPTATIVO_NUM) /
-                                     DEBOUNCE_DENTE_ADAPTATIVO_DEN;
-    if (min_por_dente_us > min_intervalo_adaptativo_us) {
-      min_intervalo_adaptativo_us = min_por_dente_us;
-    }
-  }
-  if (intervalo_candidato < min_intervalo_adaptativo_us) {
+  if (intervalo_dente_referencia_us > 0 &&
+      (intervalo_candidato * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
     return;
   }
 

@@ -74,15 +74,28 @@
 //         }
 //     }
 // }
+static inline unsigned int mediana3_rpm(unsigned int a, unsigned int b, unsigned int c) {
+  if ((a >= b && a <= c) || (a <= b && a >= c)) {
+    return a;
+  }
+  if ((b >= a && b <= c) || (b <= a && b >= c)) {
+    return b;
+  }
+  return c;
+}
+
 void calcularRPM() {
   const unsigned long TIMEOUT_SEM_PULSO_MIN_US = 250000;
   const unsigned long TIMEOUT_SEM_PULSO_MAX_US = 1500000;
   const unsigned int RPM_MAX_VALIDO = 12000;          // rejeita leituras fora de faixa
 
   static unsigned int rpm_filtrado = 0;
+  static unsigned int rpm_amostra_1 = 0;
+  static unsigned int rpm_amostra_2 = 0;
   static unsigned long tempo_volta_valido_us = 0;
   static unsigned long ultimo_pulso_observado_us = 0;
   static byte timeout_consecutivo = 0;
+  static byte rpm_amostras_validas = 0;
 
   unsigned long tempo_atual_local = micros();
   unsigned long tempo_volta_snapshot;
@@ -119,6 +132,9 @@ void calcularRPM() {
     }
     if (timeout_consecutivo >= 2) {
       rpm_filtrado = 0;
+      rpm_amostra_1 = 0;
+      rpm_amostra_2 = 0;
+      rpm_amostras_validas = 0;
       rpm = 0;
     }
     tempo_inicial_rpm = tempo_atual_local;
@@ -135,12 +151,26 @@ void calcularRPM() {
     }
 
     if (rpm_calculado > 0 && rpm_calculado < RPM_MAX_VALIDO) {
-      unsigned int rpm_alvo = (unsigned int)rpm_calculado;
+      unsigned int rpm_instantaneo = (unsigned int)rpm_calculado;
+      unsigned int rpm_alvo = rpm_instantaneo;
+
+      // Mediana de 3: remove pico isolado antes de alimentar o filtro principal.
+      if (rpm_amostras_validas >= 2) {
+        rpm_alvo = mediana3_rpm(rpm_instantaneo, rpm_amostra_1, rpm_amostra_2);
+      } else {
+        rpm_amostras_validas++;
+      }
+
+      rpm_amostra_2 = rpm_amostra_1;
+      rpm_amostra_1 = rpm_instantaneo;
 
       if (rpm_filtrado == 0) {
         rpm_filtrado = rpm_alvo;
       } else {
-        unsigned int variacao_maxima = (rpm_filtrado >> 2) + (rpm_filtrado >> 3) + 30; // ~37.5% + margem fixa
+        unsigned int variacao_maxima = (rpm_filtrado >> 3) + 50; // ~12.5% + margem fixa
+        if (rpm_filtrado < rpm_partida) {
+          variacao_maxima = (rpm_filtrado >> 1) + 80; // mais permissivo durante partida
+        }
         int diferenca = (int)rpm_alvo - (int)rpm_filtrado;
 
         if (diferenca > (int)variacao_maxima) {
