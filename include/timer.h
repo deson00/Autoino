@@ -99,6 +99,15 @@ static void atualizar_compare_b_ligar();
 static void atualizar_compare_a_desligar();
 static inline void processar_cortes_vencidos(uint32_t tick_atual);
 
+static inline void limpar_ignicoes_pendentes_nao_acionadas() {
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
+		if (ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
+			ignicao_agendada[i] = false;
+		}
+	}
+}
+
 static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks) {
 	uint32_t tick_fim_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
@@ -158,6 +167,7 @@ static inline void recalcular_ignicao_canal_por_dente(int i, uint32_t tick_atual
 	uint32_t ticks_ate_fim = us_para_ticks_timer1((unsigned long)graus_ate_evento * tempo_cada_grau);
 	uint32_t tick_fim_dwell = tick_atual + ticks_ate_fim;
 	if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
+		limpar_ignicoes_pendentes_nao_acionadas();
 		return;
 	}
 
@@ -268,10 +278,34 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 	return true;
 }
 
+static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_atual) {
+	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
+	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
+	uint32_t dwell_minimo_util_ticks = (dwell_ticks * 80UL) / 100UL;
+	if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
+		dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
+	}
+
+	if (tempo_restante_ticks >= dwell_minimo_util_ticks) {
+		return false;
+	}
+
+	if (tempo_cada_grau == 0) {
+		limpar_ignicoes_pendentes_nao_acionadas();
+		return true;
+	}
+
+	limpar_ignicoes_pendentes_nao_acionadas();
+	return true;
+}
+
 static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
 		if (ignicao_agendada[i] && !ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_ligar[i])) {
+			if (reagendar_ignicao_se_dwell_ficou_curto(i, tick_atual)) {
+				continue;
+			}
 			iniciar_dwell(i);
 		}
 	}
@@ -513,6 +547,7 @@ void agendar_eventos_motor_timer1() {
 	cli();
 	tick_base_sincronismo = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_base_sincronismo);
+	limpar_ignicoes_pendentes_nao_acionadas();
 
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
