@@ -167,7 +167,6 @@ static inline void recalcular_ignicao_canal_por_dente(int i, uint32_t tick_atual
 	uint32_t ticks_ate_fim = us_para_ticks_timer1((unsigned long)graus_ate_evento * tempo_cada_grau);
 	uint32_t tick_fim_dwell = tick_atual + ticks_ate_fim;
 	if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
-		limpar_ignicoes_pendentes_nao_acionadas();
 		return;
 	}
 
