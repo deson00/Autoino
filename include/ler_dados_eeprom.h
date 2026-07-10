@@ -325,6 +325,10 @@ void ler_dados_eeprom_configuracao_inicial() {
     grau_cada_dente = 360 / qtd_dente;
 }
 void ler_dados_eeprom(){
+    // Parametros do injetor possuem bloco proprio com marcador de validade (0xA5).
+    // Carrega sempre para garantir persistencia, mesmo se a configuracao inicial estiver invalida.
+    ler_dados_eeprom_parametros_injetor();
+
     if (!eeprom_configuracao_inicial_valida()) {
         return;
     }
@@ -332,7 +336,6 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_tabela_ignicao_map_rpm();
     ler_dados_eeprom_tabela_ve_map_rpm();
     ler_dados_eeprom_configuracao_injecao();
-    ler_dados_eeprom_parametros_injetor();
     ler_dados_eeprom_configuracao_iat();
     ler_dados_eeprom_configuracao_protecao();
     ler_dados_eeprom_enriquecimento_aceleracao();

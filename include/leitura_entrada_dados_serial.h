@@ -26,6 +26,39 @@ void leitura_entrada_dados_serial()
     char data = Serial.read();
     // Pequeno delay para estabilizar
     delayMicroseconds(100);
+
+    // Reinicia o parser quando um novo comando com payload e detectado.
+    // Evita reaproveitar lixo de um pacote anterior incompleto.
+    if (data == 'a' || data == 'b' || data == 'c' || data == 'd' || data == 'e' ||
+        data == 'f' || data == 'g' || data == 'j' || data == 'k' || data == 'l' ||
+        data == 'u' || data == 'm' || data == 'n' || data == 'o' || data == 'p' ||
+        data == 'q' || data == 'r' || data == 's' || data == 't') {
+      index = 0;
+      memset(buffer, 0, sizeof(buffer));
+      memset(values, 0, sizeof(values));
+
+      // Limpa todos os estados de vetor/comando para nao herdar pacote incompleto.
+      tipo_vetor_map_tps_avanco = 0;
+      tipo_vetor_rpm_avanco = 0;
+      tipo_vetor_matriz_avanco = 0;
+      tipo_vetor_map_tps_ve = 0;
+      tipo_vetor_rpm_ve = 0;
+      tipo_vetor_matriz_ve = 0;
+      tipo_vetor_configuracao_inicial = 0;
+      tipo_vetor_configuracao_faisca = 0;
+      tipo_vetor_configuracao_dwell = 0;
+      tipo_vetor_configuracao_clt = 0;
+      tipo_vetor_configuracao_iat = 0;
+      tipo_vetor_configuracao_injecao = 0;
+      tipo_vetor_protecao = 0;
+      tipo_vetor_enriquecimento_aceleracao = 0;
+      tipo_vetor_enriquecimento_temperatura = 0;
+      tipo_vetor_avanco_temperatura = 0;
+      tipo_vetor_parametros_injetor = 0;
+      tipo_vetor_configuracao_tps = 0;
+      tipo_vetor_configuracao_map = 0;
+    }
+
     if (data == 'a'){//entrada de dados do vetor map ou tps
       tipo_vetor_map_tps_avanco = 1;
       indice_vetor_entrada_dados_serial = 0;
@@ -106,6 +139,13 @@ void leitura_entrada_dados_serial()
        gravar_dados_eeprom_tabela_ve_map_rpm();
     }
     if (data == ';'){ // final do vetor
+      // Aceita pacote finalizado com ou sem virgula antes do ';'.
+      if (strlen(buffer) > 0) {
+        long valor = strtol(buffer, NULL, 10);
+        values[index++] = valor;
+        memset(buffer, 0, sizeof(buffer));
+      }
+
       if (tipo_vetor_map_tps_avanco){
         // for (int i = 0; i < 16; i++){
         //   vetor_map_tps[i] = values[i];
@@ -342,6 +382,12 @@ void leitura_entrada_dados_serial()
           tipo_vetor_avanco_temperatura = 0;
       }
       if (tipo_vetor_parametros_injetor == 1){
+          if (index < 5) {
+            tipo_vetor_parametros_injetor = 0;
+            index = 0;
+            continue;
+          }
+
           int limite = values[0];
           int dead_time = values[1];
           int angulo_fechamento = values[2];
