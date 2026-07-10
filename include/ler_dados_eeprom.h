@@ -122,19 +122,15 @@ void ler_dados_eeprom_configuracao_injecao(){
 }
 
 void ler_dados_eeprom_parametros_injetor() {
-    int endereco = 920;
-
     if (EEPROM.read(927) != 0xA5) {
         return;
     }
 
-    limite_injetor = (byte)constrain(EEPROM.read(endereco++), 0, 100);
-    tempo_abertura_injetor = constrain(ler_16bits_eeprom(endereco), 0, 5000);
-    endereco += 2;
-    grau_fechamento_injetor = constrain(ler_16bits_eeprom(endereco), 0, 360);
-    endereco += 2;
-    acrescimo_injecao_partida = (byte)constrain(EEPROM.read(endereco++), 0, 100);
-    acrescimo_injecao_funcionamento = (byte)constrain(EEPROM.read(endereco++), 0, 100);
+    limite_injetor = (byte)constrain(EEPROM.read(920), 0, 100);
+    tempo_abertura_injetor = constrain(ler_16bits_eeprom(921), 0, 5000);
+    grau_fechamento_injetor = constrain(ler_16bits_eeprom(923), 0, 360);
+    acrescimo_injecao_partida = (byte)constrain(EEPROM.read(925), 0, 100);
+    acrescimo_injecao_funcionamento = (byte)constrain(EEPROM.read(926), 0, 100);
 }
 
 void ler_dados_eeprom_configuracao_iat() {

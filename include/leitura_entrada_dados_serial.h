@@ -382,7 +382,7 @@ void leitura_entrada_dados_serial()
           tipo_vetor_avanco_temperatura = 0;
       }
       if (tipo_vetor_parametros_injetor == 1){
-          if (index < 5) {
+          if (index != 5) {
             tipo_vetor_parametros_injetor = 0;
             index = 0;
             continue;
@@ -406,7 +406,7 @@ void leitura_entrada_dados_serial()
       index = 0; // reinicia índice do vetor
     }
     else if (isdigit(data) || data == '-'){// Incluído suporte a números negativos                                                             
-    int buffer_len = strlen(buffer);
+    size_t buffer_len = strlen(buffer);
     if (buffer_len < sizeof(buffer) - 1) {
         buffer[buffer_len] = data;
         buffer[buffer_len + 1] = '\0';

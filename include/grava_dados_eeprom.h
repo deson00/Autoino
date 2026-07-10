@@ -131,16 +131,12 @@ void gravar_dados_eeprom_configuracao_iat() {
 }
 
 void gravar_dados_eeprom_parametros_injetor() {
-    int endereco = 920;
-
-    EEPROM.update(endereco++, limite_injetor);
-    EEPROM.update(endereco++, tempo_abertura_injetor & 0xFF);
-    EEPROM.update(endereco++, (tempo_abertura_injetor >> 8) & 0xFF);
-    EEPROM.update(endereco++, grau_fechamento_injetor & 0xFF);
-    EEPROM.update(endereco++, (grau_fechamento_injetor >> 8) & 0xFF);
-    EEPROM.update(endereco++, acrescimo_injecao_partida);
-    EEPROM.update(endereco++, acrescimo_injecao_funcionamento);
-    EEPROM.update(endereco++, 0xA5); // Marca o bloco como inicializado.
+    EEPROM.update(920, limite_injetor);
+    escrever_16bits_eeprom(921, tempo_abertura_injetor);
+    escrever_16bits_eeprom(923, grau_fechamento_injetor);
+    EEPROM.update(925, acrescimo_injecao_partida);
+    EEPROM.update(926, acrescimo_injecao_funcionamento);
+    EEPROM.update(927, 0xA5); // Marca o bloco como inicializado.
 }
 
 void gravar_dados_eeprom_configuracao_protecao(){
