@@ -97,6 +97,7 @@ static inline void desabilitar_timer1_compare_b() {
 
 static void atualizar_compare_b_ligar();
 static void atualizar_compare_a_desligar();
+static inline void agendar_injecao_canal(int i, uint32_t tick_atual);
 static inline void processar_cortes_vencidos(uint32_t tick_atual);
 
 static inline void limpar_ignicoes_pendentes_nao_acionadas() {
@@ -342,6 +343,9 @@ static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
+			if (local_rodafonica == 1 && status_corte == 0) {
+				agendar_ignicao_canal(i, tick_atual);
+			}
 		}
 	}
 
@@ -350,6 +354,9 @@ static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 		if (injecao_agendada[i] && inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
+			if (local_rodafonica == 1) {
+				agendar_injecao_canal(i, tick_atual);
+			}
 		}
 	}
 }
