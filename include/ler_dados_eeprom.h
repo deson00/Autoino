@@ -89,15 +89,23 @@ void ler_dados_eeprom_configuracao_partida() {
 }
 
 void ler_dados_eeprom_configuracao_marcha_lenta() {
-    if (EEPROM.read(835) != 0xA5) {
+    bool bloco_novo = EEPROM.read(839) == 0xA6;
+    bool bloco_legado = EEPROM.read(835) == 0xA5;
+    if (!bloco_novo && !bloco_legado) {
         return;
     }
 
-    modo_marcha_lenta = (byte)constrain(EEPROM.read(830), 0, 2);
+    modo_marcha_lenta = (byte)constrain(EEPROM.read(830), 0, bloco_novo ? 3 : 2);
     temperatura_desligamento_marcha_lenta = (byte)constrain(EEPROM.read(831), 0, 120);
     histerese_marcha_lenta = (byte)constrain(EEPROM.read(832), 0, 20);
     pwm_marcha_lenta_frio = (byte)constrain(EEPROM.read(833), 0, 100);
     pwm_marcha_lenta_quente = (byte)constrain(EEPROM.read(834), 0, 100);
+
+    if (bloco_novo) {
+        rpm_alvo_marcha_lenta = constrain(ler_16bits_eeprom(835), 500, 2500);
+        maximo_passos_marcha_lenta = (byte)constrain(EEPROM.read(837), 0, 250);
+        inverter_direcao_marcha_lenta = EEPROM.read(838) ? 1 : 0;
+    }
 }
 
 void ler_dados_eeprom_configuracao_injecao(){

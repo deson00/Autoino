@@ -59,6 +59,71 @@ static inline byte calcular_pwm_marcha_lenta() {
   return (byte)constrain(duty, 0, 100);
 }
 
+static inline void corrigir_abertura_marcha_lenta(byte abertura_base) {
+  const byte TPS_MAXIMO_CONTROLE = 5;
+  const byte HISTERESE_RPM = 50;
+
+  if (rpm <= rpm_partida || valor_tps > TPS_MAXIMO_CONTROLE) {
+    abertura_marcha_lenta_atual = abertura_base;
+    return;
+  }
+
+  if (rpm + HISTERESE_RPM < rpm_alvo_marcha_lenta) {
+    if (abertura_marcha_lenta_atual < 100) {
+      abertura_marcha_lenta_atual++;
+    }
+  } else if (rpm > rpm_alvo_marcha_lenta + HISTERESE_RPM) {
+    if (abertura_marcha_lenta_atual > 0) {
+      abertura_marcha_lenta_atual--;
+    }
+  }
+}
+
+static inline void definir_direcao_passo_marcha_lenta(bool abrir) {
+  bool nivel_alto = abrir != (inverter_direcao_marcha_lenta != 0);
+  digitalWrite(pino_direcao_marcha_lenta, nivel_alto ? HIGH : LOW);
+}
+
+static inline void pulsar_passo_marcha_lenta() {
+  digitalWrite(pino_passo_marcha_lenta, HIGH);
+  delayMicroseconds(2);
+  digitalWrite(pino_passo_marcha_lenta, LOW);
+}
+
+void processar_motor_passo_marcha_lenta() {
+  if (modo_marcha_lenta != 3 || posicao_passo_marcha_lenta == alvo_passo_marcha_lenta) {
+    return;
+  }
+
+  unsigned long agora_us = micros();
+  if ((agora_us - ultimo_passo_marcha_lenta_us) < 1000UL) {
+    return;
+  }
+  ultimo_passo_marcha_lenta_us = agora_us;
+
+  bool abrir = posicao_passo_marcha_lenta < alvo_passo_marcha_lenta;
+  definir_direcao_passo_marcha_lenta(abrir);
+  pulsar_passo_marcha_lenta();
+  if (abrir) {
+    posicao_passo_marcha_lenta++;
+  } else {
+    posicao_passo_marcha_lenta--;
+  }
+}
+
+static void referenciar_motor_passo_marcha_lenta() {
+  desativar_pwm_marcha_lenta();
+  definir_direcao_passo_marcha_lenta(false);
+  unsigned int passos_homing = maximo_passos_marcha_lenta + 10U;
+  for (unsigned int i = 0; i < passos_homing; i++) {
+    pulsar_passo_marcha_lenta();
+    delayMicroseconds(1000);
+  }
+  posicao_passo_marcha_lenta = 0;
+  alvo_passo_marcha_lenta = 0;
+  ultimo_passo_marcha_lenta_us = micros();
+}
+
 void atualizar_controle_marcha_lenta() {
   if (modo_marcha_lenta == 0) {
     desativar_pwm_marcha_lenta();
@@ -67,7 +132,16 @@ void atualizar_controle_marcha_lenta() {
   }
 
   if (modo_marcha_lenta == 2) {
-    aplicar_pwm_marcha_lenta(calcular_pwm_marcha_lenta());
+    corrigir_abertura_marcha_lenta(calcular_pwm_marcha_lenta());
+    aplicar_pwm_marcha_lenta(abertura_marcha_lenta_atual);
+    return;
+  }
+
+  if (modo_marcha_lenta == 3) {
+    corrigir_abertura_marcha_lenta(calcular_pwm_marcha_lenta());
+    alvo_passo_marcha_lenta = ((unsigned int)maximo_passos_marcha_lenta *
+                               abertura_marcha_lenta_atual) / 100U;
+    saida_marcha_lenta_ativa = alvo_passo_marcha_lenta > 0;
     return;
   }
 
@@ -101,7 +175,13 @@ void atualizar_controle_marcha_lenta() {
 
 void inicializar_controle_marcha_lenta() {
   pinMode(pino_marcha_lenta, OUTPUT);
+  pinMode(pino_passo_marcha_lenta, OUTPUT);
+  pinMode(pino_direcao_marcha_lenta, OUTPUT);
   desativar_pwm_marcha_lenta();
   saida_marcha_lenta_ativa = false;
+  abertura_marcha_lenta_atual = calcular_pwm_marcha_lenta();
+  if (modo_marcha_lenta == 3) {
+    referenciar_motor_passo_marcha_lenta();
+  }
   atualizar_controle_marcha_lenta();
 }

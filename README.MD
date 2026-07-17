@@ -239,26 +239,38 @@ inicial simultâneo; se o motor começar a girar antes dele, esse pulso é cance
 ### `w` — Controle de marcha lenta
 
 ```text
-w,modo,temp_desligamento,histerese,pwm_frio,pwm_quente,;
+w,modo,temp_desligamento,histerese,abertura_frio,abertura_quente,rpm_alvo,max_passos,inverter_direcao,;
 ```
 
 | Campo | Faixa/unidade |
 |---|---|
-| `modo` | `0` desligado, `1` abre/fecha, `2` PWM por temperatura |
+| `modo` | `0` desligado, `1` abre/fecha, `2` PWM, `3` motor de passo |
 | `temp_desligamento` | `0` a `120` °C |
 | `histerese` | `0` a `20` °C |
-| `pwm_frio` | `0` a `100` % a 0 °C |
-| `pwm_quente` | `0` a `100` % na temperatura de desligamento |
+| `abertura_frio` | `0` a `100` % a 0 °C |
+| `abertura_quente` | `0` a `100` % na temperatura de desligamento |
+| `rpm_alvo` | `500` a `2500` RPM |
+| `max_passos` | `0` a `250` passos entre fechado e aberto |
+| `inverter_direcao` | `0` normal, `1` invertida |
 
 No modo abre/fecha, a saída desliga ao atingir `temp_desligamento` e volta a
-ligar abaixo desse valor menos a histerese. No modo PWM, o duty cycle é
-interpolado linearmente entre `pwm_frio` e `pwm_quente` conforme a temperatura.
+ligar abaixo desse valor menos a histerese. Nos modos PWM e motor de passo, a
+abertura base é interpolada conforme a temperatura. Com o motor funcionando e
+TPS até 5%, a abertura sobe ou desce um ponto por ciclo para manter `rpm_alvo`
+dentro de uma banda fixa de 50 RPM, sem usar PID.
 
 No perfil Autoino com ATmega328P, o controle usa o D11/OC2A. No perfil Speeduino
 v0.4 com ATmega2560, usa a saída padrão Idle 1 no D5/OC3A; o D6 reservado para a
 segunda via de válvulas de três fios ainda não é utilizado. Os dois perfis geram
 PWM de hardware a aproximadamente 61 Hz. A saída deve acionar um driver de
 potência adequado; não conecte a válvula diretamente ao microcontrolador.
+
+No modo motor de passo, Autoino usa D11 para `STEP` e D10 para `DIR`; Speeduino
+usa os pinos padrão D17 para `STEP` e D16 para `DIR`. Ao inicializar, o firmware
+move `max_passos + 10` no sentido de fechamento para referenciar a posição zero.
+Os pulsos são espaçados em 1000 microssegundos e possuem largura de 2 microssegundos.
+O A4988 deve ter `RESET` e `SLEEP` em nível alto, `ENABLE` habilitado e o limite
+de corrente ajustado para o motor. Configure o modo de passo com o motor parado.
 
 ## Comandos de controle
 
@@ -304,7 +316,7 @@ Ordem atual dos blocos:
 18. `r`: 5 temperaturas, 5 enriquecimentos e a flag de ativação.
 19. `s`: 5 temperaturas, 5 avanços e a flag de ativação.
 20. `v`: RPM de partida, TPS de limpeza, atraso da injeção e tempo de redução.
-21. `w`: modo, temperatura, histerese e percentuais PWM da marcha lenta.
+21. `w`: modo, abertura, alvos de RPM e parâmetros do motor de passo.
 
 Exemplo parcial:
 
@@ -357,7 +369,7 @@ Principais blocos utilizados atualmente:
 | 532–547 | Eixo MAP/TPS VE |
 | 548–803 | Matriz VE |
 | 820–827 | Configuração de partida e marcador |
-| 830–835 | Configuração de marcha lenta e marcador |
+| 830–839 | Configuração de marcha lenta e marcador |
 | 900–918 | Configuração da injeção |
 | 920–927 | Parâmetros do injetor e marcador |
 | 950–958 | Proteção |

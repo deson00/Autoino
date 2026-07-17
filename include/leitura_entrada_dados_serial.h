@@ -439,17 +439,22 @@ void leitura_entrada_dados_serial()
           tipo_vetor_configuracao_partida = 0;
       }
       if (tipo_vetor_configuracao_marcha_lenta == 1){
-          if (index != 5) {
+          if (index != 5 && index != 8) {
             tipo_vetor_configuracao_marcha_lenta = 0;
             index = 0;
             continue;
           }
 
-          modo_marcha_lenta = (byte)constrain(values[0], 0, 2);
+          modo_marcha_lenta = (byte)constrain(values[0], 0, 3);
           temperatura_desligamento_marcha_lenta = (byte)constrain(values[1], 0, 120);
           histerese_marcha_lenta = (byte)constrain(values[2], 0, 20);
           pwm_marcha_lenta_frio = (byte)constrain(values[3], 0, 100);
           pwm_marcha_lenta_quente = (byte)constrain(values[4], 0, 100);
+          if (index == 8) {
+            rpm_alvo_marcha_lenta = constrain(values[5], 500, 2500);
+            maximo_passos_marcha_lenta = (byte)constrain(values[6], 0, 250);
+            inverter_direcao_marcha_lenta = values[7] ? 1 : 0;
+          }
           gravar_dados_eeprom_configuracao_marcha_lenta();
           inicializar_controle_marcha_lenta();
           tipo_vetor_configuracao_marcha_lenta = 0;

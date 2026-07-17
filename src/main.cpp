@@ -254,6 +254,7 @@ void setup(){
 }
 void loop(){
    calcularRPM();
+    processar_motor_passo_marcha_lenta();
     qtd_loop++;
   
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial

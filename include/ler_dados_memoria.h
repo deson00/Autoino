@@ -347,6 +347,12 @@ void ler_dados_memoria() {
   Serial.write(',');
   sendSerialInt(pwm_marcha_lenta_quente);
   Serial.write(',');
+  sendSerialInt(rpm_alvo_marcha_lenta);
+  Serial.write(',');
+  sendSerialInt(maximo_passos_marcha_lenta);
+  Serial.write(',');
+  sendSerialInt(inverter_direcao_marcha_lenta);
+  Serial.write(',');
   Serial.write(';');
 
 }

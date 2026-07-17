@@ -104,7 +104,10 @@ void gravar_dados_eeprom_configuracao_marcha_lenta() {
     EEPROM.update(832, histerese_marcha_lenta);
     EEPROM.update(833, pwm_marcha_lenta_frio);
     EEPROM.update(834, pwm_marcha_lenta_quente);
-    EEPROM.update(835, 0xA5);
+    escrever_16bits_eeprom(835, rpm_alvo_marcha_lenta);
+    EEPROM.update(837, maximo_passos_marcha_lenta);
+    EEPROM.update(838, inverter_direcao_marcha_lenta);
+    EEPROM.update(839, 0xA6);
 }
 
 
