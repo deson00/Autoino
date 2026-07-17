@@ -55,6 +55,15 @@ unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rp
 volatile unsigned int rpm = 0;
 volatile int rpm_anterior = 0;
 unsigned int rpm_partida = 400;
+byte nivel_limpeza_afogamento = 70; // TPS minimo (%) para cortar injecao durante a partida
+unsigned int atraso_injecao_inicial = 0; // atraso do pulso inicial em ms
+unsigned int tempo_reducao_enriquecimento_partida = 5; // reducao gradual apos a partida, em segundos
+volatile bool limpeza_afogamento_ativa = false;
+byte enriquecimento_partida_atual = 0;
+bool motor_estava_em_partida = true;
+bool reducao_enriquecimento_partida_ativa = false;
+unsigned long inicio_reducao_enriquecimento_partida_ms = 0;
+unsigned long inicio_espera_injecao_inicial_ms = 0;
 byte ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
 // Declare as variáveis para controlar o estado do pino de saída
@@ -75,7 +84,7 @@ volatile bool injecao_agendada[8] = {false, false, false, false, false, false, f
 //volatile bool flag_interrupcao = false;
 unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
-const int maximo_valores_recebido = 30; // tamanho máximo de dados recebido do vetor ou matriz
+const int maximo_valores_recebido = 18; // maior pacote escalar possui 17 valores
 int values[maximo_valores_recebido];     // vetor para armazenar os valores recebidos
 int matriz_ve_count = 0;
 int matriz_avanco_count = 0;
@@ -113,6 +122,8 @@ byte tipo_vetor_avanco_temperatura = 0;
 byte tipo_vetor_parametros_injetor = 0;
 byte tipo_vetor_configuracao_tps = 0;
 byte tipo_vetor_configuracao_map = 0;
+byte tipo_vetor_configuracao_partida = 0;
+byte tipo_vetor_configuracao_marcha_lenta = 0;
 bool status_dados_tempo_real = false;
 //int leituras_map[10]={0};
 //int leituras_tps[10]={0};
@@ -137,6 +148,12 @@ int referencia_resistencia_clt1 = 2500;
 int referencia_temperatura_clt2 = 100;
 int referencia_resistencia_clt2 = 187;
 byte temperatura_motor = 0;
+byte modo_marcha_lenta = 0; // 0 desligado, 1 abre/fecha, 2 PWM por temperatura
+byte temperatura_desligamento_marcha_lenta = 70;
+byte histerese_marcha_lenta = 5;
+byte pwm_marcha_lenta_frio = 70;
+byte pwm_marcha_lenta_quente = 0;
+bool saida_marcha_lenta_ativa = false;
 int referencia_temperatura_iat1 = 20;
 int referencia_resistencia_iat1 = 2500;
 int referencia_temperatura_iat2 = 100;

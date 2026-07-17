@@ -20,6 +20,19 @@ static inline byte normalizar_qtd_cilindro_ignicao(int cilindros_recebidos, byte
   return (byte)canais_ignicao;
 }
 
+static int converter_numero_serial(const char *texto) {
+  bool negativo = texto[0] == '-';
+  byte posicao = negativo ? 1 : 0;
+  int valor = 0;
+
+  while (texto[posicao] >= '0' && texto[posicao] <= '9') {
+    valor = (valor * 10) + (texto[posicao] - '0');
+    posicao++;
+  }
+
+  return negativo ? -valor : valor;
+}
+
 void leitura_entrada_dados_serial()
 {
   while (Serial.available() > 0){
@@ -32,7 +45,7 @@ void leitura_entrada_dados_serial()
     if (data == 'a' || data == 'b' || data == 'c' || data == 'd' || data == 'e' ||
         data == 'f' || data == 'g' || data == 'j' || data == 'k' || data == 'l' ||
         data == 'u' || data == 'm' || data == 'n' || data == 'o' || data == 'p' ||
-        data == 'q' || data == 'r' || data == 's' || data == 't') {
+        data == 'q' || data == 'r' || data == 's' || data == 't' || data == 'v' || data == 'w') {
       index = 0;
       memset(buffer, 0, sizeof(buffer));
       memset(values, 0, sizeof(values));
@@ -57,6 +70,8 @@ void leitura_entrada_dados_serial()
       tipo_vetor_parametros_injetor = 0;
       tipo_vetor_configuracao_tps = 0;
       tipo_vetor_configuracao_map = 0;
+      tipo_vetor_configuracao_partida = 0;
+      tipo_vetor_configuracao_marcha_lenta = 0;
     }
 
     if (data == 'a'){//entrada de dados do vetor map ou tps
@@ -134,6 +149,12 @@ void leitura_entrada_dados_serial()
     if (data == 't') {// parametros do injetor
       tipo_vetor_parametros_injetor = 1;
     }
+    if (data == 'v') {// configuracao de partida
+      tipo_vetor_configuracao_partida = 1;
+    }
+    if (data == 'w') {// configuracao de marcha lenta
+      tipo_vetor_configuracao_marcha_lenta = 1;
+    }
     if (data == 'z') {// configuração da ve e ponto
        gravar_dados_eeprom_tabela_ignicao_map_rpm();
        gravar_dados_eeprom_tabela_ve_map_rpm();
@@ -141,7 +162,7 @@ void leitura_entrada_dados_serial()
     if (data == ';'){ // final do vetor
       // Aceita pacote finalizado com ou sem virgula antes do ';'.
       if (strlen(buffer) > 0) {
-        long valor = strtol(buffer, NULL, 10);
+        int valor = converter_numero_serial(buffer);
         values[index++] = valor;
         memset(buffer, 0, sizeof(buffer));
       }
@@ -403,6 +424,36 @@ void leitura_entrada_dados_serial()
           gravar_dados_eeprom_parametros_injetor();
           tipo_vetor_parametros_injetor = 0;
       }
+      if (tipo_vetor_configuracao_partida == 1){
+          if (index != 4) {
+            tipo_vetor_configuracao_partida = 0;
+            index = 0;
+            continue;
+          }
+
+          rpm_partida = constrain(values[0], 100, 2000);
+          nivel_limpeza_afogamento = (byte)constrain(values[1], 0, 100);
+          atraso_injecao_inicial = constrain(values[2], 0, 10000);
+          tempo_reducao_enriquecimento_partida = constrain(values[3], 0, 600);
+          gravar_dados_eeprom_configuracao_partida();
+          tipo_vetor_configuracao_partida = 0;
+      }
+      if (tipo_vetor_configuracao_marcha_lenta == 1){
+          if (index != 5) {
+            tipo_vetor_configuracao_marcha_lenta = 0;
+            index = 0;
+            continue;
+          }
+
+          modo_marcha_lenta = (byte)constrain(values[0], 0, 2);
+          temperatura_desligamento_marcha_lenta = (byte)constrain(values[1], 0, 120);
+          histerese_marcha_lenta = (byte)constrain(values[2], 0, 20);
+          pwm_marcha_lenta_frio = (byte)constrain(values[3], 0, 100);
+          pwm_marcha_lenta_quente = (byte)constrain(values[4], 0, 100);
+          gravar_dados_eeprom_configuracao_marcha_lenta();
+          inicializar_controle_marcha_lenta();
+          tipo_vetor_configuracao_marcha_lenta = 0;
+      }
       index = 0; // reinicia índice do vetor
     }
     else if (isdigit(data) || data == '-'){// Incluído suporte a números negativos                                                             
@@ -418,7 +469,7 @@ void leitura_entrada_dados_serial()
       buffer[strlen(buffer)] = '\0';  // adiciona um terminador de string para converter o buffer em uma string válida
       //values[index++] = atoi(buffer); // adiciona ao vetor
       //Substituído por strtol
-      long valor = strtol(buffer, NULL, 10);
+      int valor = converter_numero_serial(buffer);
       values[index++] = valor;
       //--------tabela ignção ----------//
       if (tipo_vetor_map_tps_avanco && indice_vetor_entrada_dados_serial < 16){

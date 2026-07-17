@@ -89,6 +89,24 @@ void gravar_dados_eeprom_tabela_ve_map_rpm() {
     // endereco final = 804
 }
 
+void gravar_dados_eeprom_configuracao_partida() {
+    // Bloco livre e valido tanto no ATmega328P quanto no ATmega2560.
+    escrever_16bits_eeprom(820, rpm_partida);
+    EEPROM.update(822, nivel_limpeza_afogamento);
+    escrever_16bits_eeprom(823, atraso_injecao_inicial);
+    escrever_16bits_eeprom(825, tempo_reducao_enriquecimento_partida);
+    EEPROM.update(827, 0xA5);
+}
+
+void gravar_dados_eeprom_configuracao_marcha_lenta() {
+    EEPROM.update(830, modo_marcha_lenta);
+    EEPROM.update(831, temperatura_desligamento_marcha_lenta);
+    EEPROM.update(832, histerese_marcha_lenta);
+    EEPROM.update(833, pwm_marcha_lenta_frio);
+    EEPROM.update(834, pwm_marcha_lenta_quente);
+    EEPROM.update(835, 0xA5);
+}
+
 
 void gravar_dados_eeprom_configuracao_injecao(){
   int endereco =  900; // Inicializa o endereço de memória

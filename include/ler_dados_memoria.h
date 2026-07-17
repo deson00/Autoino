@@ -321,4 +321,32 @@ void ler_dados_memoria() {
   Serial.write(',');
   Serial.write(';');
 
+  // v) Configuracao de partida
+  Serial.write('v');
+  Serial.write(',');
+  sendSerialInt(rpm_partida);
+  Serial.write(',');
+  sendSerialInt(nivel_limpeza_afogamento);
+  Serial.write(',');
+  sendSerialInt(atraso_injecao_inicial);
+  Serial.write(',');
+  sendSerialInt(tempo_reducao_enriquecimento_partida);
+  Serial.write(',');
+  Serial.write(';');
+
+  // w) Controle de marcha lenta
+  Serial.write('w');
+  Serial.write(',');
+  sendSerialInt(modo_marcha_lenta);
+  Serial.write(',');
+  sendSerialInt(temperatura_desligamento_marcha_lenta);
+  Serial.write(',');
+  sendSerialInt(histerese_marcha_lenta);
+  Serial.write(',');
+  sendSerialInt(pwm_marcha_lenta_frio);
+  Serial.write(',');
+  sendSerialInt(pwm_marcha_lenta_quente);
+  Serial.write(',');
+  Serial.write(';');
+
 }

@@ -3,6 +3,7 @@
 #include <definicoes_hardware.h>
 #include <variaveis_global.h>
 #include <util.h>
+#include <marcha_lenta.h>
 #include <ler_dados_eeprom.h>
 #include <ler_dados_memoria.h>
 #include <grava_dados_eeprom.h>
@@ -15,7 +16,6 @@
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
-#include <timer2.h>
 #include <enriquecimento_aceleracao.h>
 #include <enriquecimento_gama.h>
 #include <enriquecimento_temperatura.h>
@@ -188,6 +188,40 @@ void calcularRPM() {
 
   tempo_inicial_rpm = tempo_atual_local;
 }
+void atualizar_estado_partida() {
+  bool em_partida = rpm < rpm_partida;
+  limpeza_afogamento_ativa = em_partida && valor_tps >= nivel_limpeza_afogamento;
+
+  if (em_partida) {
+    motor_estava_em_partida = true;
+    reducao_enriquecimento_partida_ativa = false;
+    enriquecimento_partida_atual = acrescimo_injecao_partida;
+    return;
+  }
+
+  if (motor_estava_em_partida) {
+    motor_estava_em_partida = false;
+    inicio_reducao_enriquecimento_partida_ms = millis();
+    reducao_enriquecimento_partida_ativa = tempo_reducao_enriquecimento_partida > 0;
+  }
+
+  if (!reducao_enriquecimento_partida_ativa) {
+    enriquecimento_partida_atual = 0;
+    return;
+  }
+
+  unsigned long duracao_ms = (unsigned long)tempo_reducao_enriquecimento_partida * 1000UL;
+  unsigned long tempo_decorrido_ms = millis() - inicio_reducao_enriquecimento_partida_ms;
+  if (tempo_decorrido_ms >= duracao_ms) {
+    enriquecimento_partida_atual = 0;
+    reducao_enriquecimento_partida_ativa = false;
+    return;
+  }
+
+  unsigned long tempo_restante_ms = duracao_ms - tempo_decorrido_ms;
+  enriquecimento_partida_atual = (byte)(((unsigned long)acrescimo_injecao_partida * tempo_restante_ms) / duracao_ms);
+}
+
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
   delay(1000);
@@ -200,6 +234,7 @@ void setup(){
   pinMode(inj2, OUTPUT);
   pinMode(inj3, OUTPUT);
   pinMode(inj4, OUTPUT);
+  inicializar_controle_marcha_lenta();
   pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
   pinMode(pino_sensor_map, INPUT);
   pinMode(pino_sensor_tps, INPUT);
@@ -214,6 +249,7 @@ void setup(){
   delay(200);
   tempo_inicial_rpm = micros();
   ultimo_pulso_rpm_us = tempo_inicial_rpm;
+  inicio_espera_injecao_inicial_ms = millis();
   sei(); // Habilita interrupções globais
 }
 void loop(){
@@ -237,6 +273,8 @@ void loop(){
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
     valor_tps_adc = analogRead(pino_sensor_tps);
     valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
+    valor_tps = constrain(valor_tps, 0, 100);
+    atualizar_estado_partida();
     int leitura_adc = analogRead(pino_sensor_o2);
 
     // tensão em milivolts (0 a 5000 mV)
@@ -328,12 +366,17 @@ void loop(){
           }
           calcula_enriquecimento_aceleracao(tempo_pulso);
           tempo_injecao = tempo_pulso_corrigido + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
-          if(rpm < rpm_partida){
-            // Aplicando o acréscimo de injeção na partida
-            tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
+          if(enriquecimento_partida_atual > 0){
+            // Aplica o acrescimo durante a partida e sua reducao gradual.
+            tempo_injecao = tempo_injecao + (tempo_injecao * (enriquecimento_partida_atual / 100.0));
           }
           // tempo_injecao = round(tempo_pulso);
-          if(status_primeira_injecao == false){ 
+          if (status_primeira_injecao == false && rpm > 0) {
+            // Nao dispara a escorva simultanea se o motor girar antes do atraso terminar.
+            status_primeira_injecao = true;
+          }
+          if(status_primeira_injecao == false && !limpeza_afogamento_ativa &&
+             (millis() - inicio_espera_injecao_inicial_ms) >= atraso_injecao_inicial){
             for (int j = 0; j < numero_injetor; j++){
               digitalWrite(injecao_pins[j], 1);
             }
@@ -373,6 +416,7 @@ void loop(){
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
   envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
+  atualizar_controle_marcha_lenta();
   temperatura_ar = temperatura_iat();
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 

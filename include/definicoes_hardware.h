@@ -1,8 +1,8 @@
 // Se nenhum perfil for definido manualmente, escolhe um padrao por MCU para evitar
 // pinagem incorreta ao trocar de placa no PlatformIO.
 // Para forcar manualmente:
-// #define Autoino
-#define Speeduino
+#define Autoino
+// #define Speeduino
 #if !defined(Autoino) && !defined(Speeduino)
 	#if defined(__AVR_ATmega2560__)
 		#define Speeduino
@@ -20,6 +20,7 @@
 #define pino_sensor_iat A3
 #define pino_sensor_o2  A4
 #define pino_sensor_brv A5
+#define pino_marcha_lenta 11
 byte ign1 = 4;
 byte ign2 = 5;
 byte ign3 = 6;
@@ -38,6 +39,7 @@ byte inj4 = 13;
 #define pino_sensor_iat A0
 #define pino_sensor_o2  A8
 #define pino_sensor_brv A4
+#define pino_marcha_lenta 5 // Saida Idle 1 / IDLE-OUT padrao da Speeduino v0.4.
 byte ign1 = 40;
 byte ign2 = 38;
 byte ign3 = 52;

@@ -81,7 +81,7 @@ if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
 }
 void ligar_injetor(int i){
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) &&
-        revolucoes_sincronizada >= 1 && status_corte == 0){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && !limpeza_afogamento_ativa){
         if(modo_injecao == 1 || tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], HIGH);

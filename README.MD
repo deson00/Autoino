@@ -218,6 +218,48 @@ s,temp1,temp2,temp3,temp4,temp5,avanco1,avanco2,avanco3,avanco4,avanco5,habilita
 - `habilitado`: `0` desativa, `1` ativa.
 - O firmware interpola linearmente entre os pontos.
 
+### `v` — Configuração de partida
+
+```text
+v,rpm_max_partida,limpeza_afogamento,atraso_injecao_ms,reducao_enriquecimento_s,;
+```
+
+| Campo | Faixa/unidade |
+|---|---|
+| `rpm_max_partida` | `100` a `2000` RPM |
+| `limpeza_afogamento` | `0` a `100` % de TPS |
+| `atraso_injecao_ms` | `0` a `10000` milissegundos |
+| `reducao_enriquecimento_s` | `0` a `600` segundos |
+
+Durante a partida, TPS igual ou superior ao nível de limpeza bloqueia somente a
+injeção. Depois que a rotação supera `rpm_max_partida`, o acréscimo de partida é
+reduzido linearmente até zero no tempo configurado. O atraso afeta apenas o pulso
+inicial simultâneo; se o motor começar a girar antes dele, esse pulso é cancelado.
+
+### `w` — Controle de marcha lenta
+
+```text
+w,modo,temp_desligamento,histerese,pwm_frio,pwm_quente,;
+```
+
+| Campo | Faixa/unidade |
+|---|---|
+| `modo` | `0` desligado, `1` abre/fecha, `2` PWM por temperatura |
+| `temp_desligamento` | `0` a `120` °C |
+| `histerese` | `0` a `20` °C |
+| `pwm_frio` | `0` a `100` % a 0 °C |
+| `pwm_quente` | `0` a `100` % na temperatura de desligamento |
+
+No modo abre/fecha, a saída desliga ao atingir `temp_desligamento` e volta a
+ligar abaixo desse valor menos a histerese. No modo PWM, o duty cycle é
+interpolado linearmente entre `pwm_frio` e `pwm_quente` conforme a temperatura.
+
+No perfil Autoino com ATmega328P, o controle usa o D11/OC2A. No perfil Speeduino
+v0.4 com ATmega2560, usa a saída padrão Idle 1 no D5/OC3A; o D6 reservado para a
+segunda via de válvulas de três fios ainda não é utilizado. Os dois perfis geram
+PWM de hardware a aproximadamente 61 Hz. A saída deve acionar um driver de
+potência adequado; não conecte a válvula diretamente ao microcontrolador.
+
 ## Comandos de controle
 
 | Comando | Ação |
@@ -226,7 +268,7 @@ s,temp1,temp2,temp3,temp4,temp5,avanco1,avanco2,avanco3,avanco4,avanco5,habilita
 | `i;` | Alterna o envio dos dados binários em tempo real |
 | `z;` | Grava as tabelas de ignição e VE na EEPROM |
 
-Os comandos de configuração (`g` a `u`, conforme aplicável) gravam seus próprios
+Os comandos de configuração (`g` a `w`, conforme aplicável) gravam seus próprios
 blocos na EEPROM imediatamente. O comando `z` é específico para as duas tabelas.
 
 ## Dados recebidos da ECU
@@ -237,7 +279,7 @@ A ECU retorna uma sequência ASCII de blocos separados por `;`. A resposta come�
 com `;` e cada bloco também possui vírgula depois do último valor:
 
 ```text
-;a,...,;b,...,;c,...,;g,...,;j,...,;k,...,;l,...,;u,...,;d,...,;e,...,;f,...,;m,...,;t,...,;n,...,;o,...,;p,...,;q,...,;r,...,;s,...,;
+;a,...,;b,...,;c,...,;g,...,;j,...,;k,...,;l,...,;u,...,;d,...,;e,...,;f,...,;m,...,;t,...,;n,...,;o,...,;p,...,;q,...,;r,...,;s,...,;v,...,;w,...,;
 ```
 
 Ordem atual dos blocos:
@@ -261,6 +303,8 @@ Ordem atual dos blocos:
 17. `q`: 3 valores da calibração MAP.
 18. `r`: 5 temperaturas, 5 enriquecimentos e a flag de ativação.
 19. `s`: 5 temperaturas, 5 avanços e a flag de ativação.
+20. `v`: RPM de partida, TPS de limpeza, atraso da injeção e tempo de redução.
+21. `w`: modo, temperatura, histerese e percentuais PWM da marcha lenta.
 
 Exemplo parcial:
 
@@ -312,6 +356,8 @@ Principais blocos utilizados atualmente:
 | 500–531 | Eixo RPM VE |
 | 532–547 | Eixo MAP/TPS VE |
 | 548–803 | Matriz VE |
+| 820–827 | Configuração de partida e marcador |
+| 830–835 | Configuração de marcha lenta e marcador |
 | 900–918 | Configuração da injeção |
 | 920–927 | Parâmetros do injetor e marcador |
 | 950–958 | Proteção |

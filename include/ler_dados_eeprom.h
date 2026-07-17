@@ -77,6 +77,29 @@ void ler_dados_eeprom_tabela_ve_map_rpm() {
     // endereco final = 804
 }
 
+void ler_dados_eeprom_configuracao_partida() {
+    if (EEPROM.read(827) != 0xA5) {
+        return;
+    }
+
+    rpm_partida = constrain(ler_16bits_eeprom(820), 100, 2000);
+    nivel_limpeza_afogamento = (byte)constrain(EEPROM.read(822), 0, 100);
+    atraso_injecao_inicial = constrain(ler_16bits_eeprom(823), 0, 10000);
+    tempo_reducao_enriquecimento_partida = constrain(ler_16bits_eeprom(825), 0, 600);
+}
+
+void ler_dados_eeprom_configuracao_marcha_lenta() {
+    if (EEPROM.read(835) != 0xA5) {
+        return;
+    }
+
+    modo_marcha_lenta = (byte)constrain(EEPROM.read(830), 0, 2);
+    temperatura_desligamento_marcha_lenta = (byte)constrain(EEPROM.read(831), 0, 120);
+    histerese_marcha_lenta = (byte)constrain(EEPROM.read(832), 0, 20);
+    pwm_marcha_lenta_frio = (byte)constrain(EEPROM.read(833), 0, 100);
+    pwm_marcha_lenta_quente = (byte)constrain(EEPROM.read(834), 0, 100);
+}
+
 void ler_dados_eeprom_configuracao_injecao(){
   int endereco = 900; // Inicializa o endereço de memória
 
@@ -324,6 +347,8 @@ void ler_dados_eeprom(){
     // Parametros do injetor possuem bloco proprio com marcador de validade (0xA5).
     // Carrega sempre para garantir persistencia, mesmo se a configuracao inicial estiver invalida.
     ler_dados_eeprom_parametros_injetor();
+    ler_dados_eeprom_configuracao_partida();
+    ler_dados_eeprom_configuracao_marcha_lenta();
 
     if (!eeprom_configuracao_inicial_valida()) {
         return;
