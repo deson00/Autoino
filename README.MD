@@ -326,30 +326,95 @@ Exemplo parcial:
 
 ### Monitoramento binário em tempo real
 
-O comando `i;` ativa ou desativa quadros binários de **20 bytes**. Valores de
-dois bytes são enviados em little-endian: byte menos significativo primeiro.
+O comando `i;` alterna o monitoramento entre ligado e desligado. Enquanto estiver
+ligado, o firmware envia um quadro binário de **20 bytes** aproximadamente a cada
+**200 ms (5 Hz)**. O comando não possui resposta de confirmação e atua como
+*toggle*: a UI deve manter o estado da conexão para não inverter o estado por
+engano.
 
-| Offset | Tamanho | Campo |
-|---:|---:|---|
-| 0 | 2 | RPM |
-| 2 | 2 | MAP |
-| 4 | 1 | Temperatura CLT |
-| 5 | 1 | Avanço atual |
-| 6 | 2 | Contador/carga do loop |
-| 8 | 1 | Perdas de sincronismo |
-| 9 | 1 | VE atual |
-| 10 | 2 | Tempo de injeção |
-| 12 | 1 | TPS em porcentagem |
-| 13 | 1 | Estado do corte |
-| 14 | 2 | Incremento de aceleração |
-| 16 | 2 | Lambda multiplicado por 1000 |
-| 18 | 2 | ADC bruto do TPS |
+Todos os campos são inteiros sem sinal no protocolo. Campos de dois bytes usam
+`uint16` em little-endian (byte menos significativo primeiro). Mesmo quando a
+variável interna tem 32 bits, somente os 16 bits menos significativos são enviados.
+
+#### Dados disponíveis para a UI
+
+| Bytes | Tipo bruto | Chave sugerida na UI | Dado enviado | Unidade/conversão | Faixa esperada/observação |
+|---:|---|---|---|---|---|
+| 0–1 | `uint16 LE` | `rpm` | Rotação atual (`rpm_anterior`) | RPM | `0` a `65535` |
+| 2–3 | `uint16 LE` | `map` | MAP convertido pela calibração | Unidade definida pelos limites `map_minimo`/`map_maximo`, normalmente kPa | Não é o ADC bruto |
+| 4 | `uint8` | `cltC` | Temperatura do motor (CLT) | °C | `0` a `250`; `250` também sinaliza leitura fora da faixa calculável |
+| 5 | `uint8` | `ignitionAdvanceDeg` | Avanço de ignição aplicado | graus | Valor atual de partida, fixo, corte ou tabela, incluindo correção por temperatura |
+| 6–7 | `uint16 LE` | `loopRateHz` | `qtd_loop * 5` | loops/s (estimativa) | Quantidade de passagens pelo `loop()` em cerca de 200 ms, escalada para 1 segundo; não é percentual de CPU |
+| 8 | `uint8` | `syncLossCount` | Contador acumulado de perdas de sincronismo | ocorrências | Incrementa em uma contagem de dentes inválida e volta a `0` ao atingir `255`; não é uma flag de sincronizado |
+| 9 | `uint8` | `vePercent` | Célula VE atualmente selecionada | % | Valor da matriz VE; `100` representa 100% |
+| 10–11 | `uint16 LE` | `injectionTimeUs` | Largura final do pulso de injeção | µs | Inclui VE, correções, dead time, aceleração/desaceleração e enriquecimento de partida; o valor interno é truncado para 16 bits no envio |
+| 12 | `uint8` | `tpsPercent` | Abertura do TPS calibrada | % | Limitada pelo firmware entre `0` e `100` |
+| 13 | `uint8` | `cutActive` | Estado de pré-corte/proteção | booleano | `0` inativo, `1` ativo |
+| 14–15 | `uint16 LE` | `accelEnrichmentUs` | Acréscimo de pulso por aceleração rápida | µs | `0` quando não há enriquecimento; o valor interno é truncado para 16 bits no envio |
+| 16–17 | `uint16 LE` | `o2Adc` | Leitura ADC bruta da sonda O2 | contagens ADC | `0` a `1023`; a UI converte para tensão e interpreta conforme `tipo_sonda_o2` |
+| 18–19 | `uint16 LE` | `tpsAdc` | Leitura ADC bruta do TPS | contagens ADC | `0` a `1023` |
+
+O quadro contém **13 dados**. IAT, tensão/lambda já convertidos, estado de
+sincronismo, abertura da marcha lenta e outros estados internos não fazem parte
+do protocolo atual. A leitura O2 preservada no quadro é o valor bruto do ADC.
+
+O CLT é atualizado logo depois do envio do quadro. Portanto, ele aparece com a
+amostra do ciclo anterior (e vale `0` no primeiro quadro após iniciar a ECU). Os
+demais campos refletem os valores calculados antes da transmissão daquele ciclo.
+
+#### Decodificação na UI
 
 Para reconstruir um valor de dois bytes:
 
 ```text
 valor = byte_baixo | (byte_alto << 8)
 ```
+
+Exemplo em JavaScript/TypeScript, usando um `Uint8Array` com exatamente um quadro:
+
+```ts
+function decodeRealtimeFrame(frame: Uint8Array) {
+  if (frame.length !== 20) throw new Error("Quadro deve ter 20 bytes");
+
+  const u16 = (offset: number) => frame[offset] | (frame[offset + 1] << 8);
+  return {
+    rpm: u16(0),
+    map: u16(2),
+    cltC: frame[4],
+    ignitionAdvanceDeg: frame[5],
+    loopRateHz: u16(6),
+    syncLossCount: frame[8],
+    vePercent: frame[9],
+    injectionTimeUs: u16(10),
+    tpsPercent: frame[12],
+    cutActive: frame[13] !== 0,
+    accelEnrichmentUs: u16(14),
+    o2Adc: u16(16),
+    tpsAdc: u16(18),
+  };
+}
+```
+
+Conversão inicial da sonda na UI, considerando referência nominal de 5 V:
+
+```ts
+const o2Millivolts = (dados.o2Adc * 5000) / 1023;
+```
+
+Para `tipo_sonda_o2 = 1` (wideband), a curva usada anteriormente pelo firmware
+era linear: 200–4800 mV correspondiam a lambda 0,59–1,10. Essa curva deve ser
+configurável na UI porque depende do controlador wideband utilizado. Para
+`tipo_sonda_o2 = 0` (narrowband), prefira exibir tensão e o estado
+pobre/estequiométrico/rico; uma narrowband não fornece uma medição linear e
+precisa de lambda em uma faixa ampla.
+
+A porta serial pode entregar um quadro dividido em vários blocos ou vários
+quadros em um único bloco. A UI deve acumular bytes e consumir sempre grupos de
+20. O protocolo atual não possui cabeçalho, versão, tamanho, checksum ou byte de
+sincronização; se um byte for perdido, não é possível reenquadrar o fluxo com
+segurança sem desligar/reiniciar a transmissão. Evite solicitar `h;` enquanto o
+monitoramento estiver ligado, pois a resposta ASCII de configuração compartilhará
+a mesma porta com os quadros binários.
 
 ## EEPROM
 

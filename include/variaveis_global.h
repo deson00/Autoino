@@ -217,8 +217,7 @@ int tps_dot_escala[5] = {200, 400, 600, 800, 1000}; //escala de velocidade no ac
 int rpm_minimo_enriquecimento = 1000;
 int rpm_maximo_enriquecimento = 5000;
 int enriquecimento_desaceleracao = 0; // Quantidade de redução de combustível em porcentagem
-int valor_o2 = 0;
-int sonda_o2 = 0;
+uint16_t valor_o2_adc = 0;
 bool tipo_sonda_o2 = 1; // 0 para narrow band e 1 para wide band
 
 void resetar_estado_agendamento_motor();

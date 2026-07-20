@@ -276,33 +276,9 @@ void loop(){
     valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
     valor_tps = constrain(valor_tps, 0, 100);
     atualizar_estado_partida();
-    int leitura_adc = analogRead(pino_sensor_o2);
-
-    // tensão em milivolts (0 a 5000 mV)
-    int tensao_o2 = (leitura_adc * 5000) / 1023;
-    valor_o2 = tensao_o2;
-
-    int lambda_x1000 = 1000;
-    if (tipo_sonda_o2) {
-      // Wideband 0.2V..4.8V -> lambda 0.59..1.10 (x1000)
-      lambda_x1000 = 590 + ((long)(tensao_o2 - 200) * (1100 - 590)) / (4800 - 200);
-      if (lambda_x1000 < 590) {
-        lambda_x1000 = 590;
-      } else if (lambda_x1000 > 1100) {
-        lambda_x1000 = 1100;
-      }
-    } else {
-      // Narrowband: aproximação para leitura de lambda em torno do estequiométrico
-      // 100mV (lean) -> 1.10, 900mV (rich) -> 0.90
-      lambda_x1000 = 1100 - ((long)(tensao_o2 - 100) * (1100 - 900)) / (900 - 100);
-      if (lambda_x1000 < 900) {
-        lambda_x1000 = 900;
-      } else if (lambda_x1000 > 1100) {
-        lambda_x1000 = 1100;
-      }
-    }
-
-    sonda_o2 = lambda_x1000;
+    // Envia-se a leitura bruta para preservar a resolucao do ADC. A UI conhece
+    // tipo_sonda_o2 e fica responsavel pela conversao para tensao/lambda.
+    valor_o2_adc = analogRead(pino_sensor_o2);
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
