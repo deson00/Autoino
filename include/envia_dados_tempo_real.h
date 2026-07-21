@@ -31,13 +31,40 @@ enum ProtocoloTempoReal : byte {
   TELEMETRIA_VERSAO = 2,
   TELEMETRIA_TAMANHO_QUADRO = 40,
   TELEMETRIA_TAMANHO_CABECALHO = 4,
-  TELEMETRIA_TAMANHO_PAYLOAD = 25,
+  TELEMETRIA_TAMANHO_PAYLOAD = 35,
   TELEMETRIA_TAMANHO_CRC = 1,
+  TELEMETRIA_EXTENSAO_MAGIC = 0xA2,
   TELEMETRIA_BYTES_RESERVADOS = TELEMETRIA_TAMANHO_QUADRO
       - TELEMETRIA_TAMANHO_CABECALHO
       - TELEMETRIA_TAMANHO_PAYLOAD
       - TELEMETRIA_TAMANHO_CRC
 };
+
+static inline byte obter_abertura_marcha_lenta_telemetria() {
+  if (modo_marcha_lenta == 0) return 0;
+  if (modo_marcha_lenta == 1) return saida_marcha_lenta_ativa ? 100 : 0;
+  if (modo_marcha_lenta == 3) {
+    if (maximo_passos_marcha_lenta == 0) return 0;
+    return (byte)(((unsigned int)posicao_passo_marcha_lenta * 100U) /
+                  (unsigned int)maximo_passos_marcha_lenta);
+  }
+  return abertura_marcha_lenta_atual;
+}
+
+static inline byte calcular_duty_cycle_telemetria() {
+  if (rpm_anterior <= 0 || numero_esguicho <= 0) return 0;
+
+  unsigned long duracao_ciclo_us = tipo_motor == 2
+      ? 60000000UL / (unsigned long)rpm_anterior
+      : 120000000UL / (unsigned long)rpm_anterior;
+  unsigned long pulso_us = min(tempo_injecao, 65535UL);
+  unsigned int esguichos = (unsigned int)constrain(numero_esguicho, 1, 20);
+  unsigned long tempo_acionado_us = pulso_us * esguichos;
+  unsigned long duty = duracao_ciclo_us > 0
+      ? (tempo_acionado_us * 100UL) / duracao_ciclo_us
+      : 0;
+  return (byte)min(duty, 100UL);
+}
 
 static inline byte atualizar_crc8_telemetria(byte crc, byte valor) {
   crc ^= valor;
@@ -85,6 +112,13 @@ void envia_dados_tempo_real(int indice_envio){
   enviar_u8_telemetria(montar_flags_estado_motor(), crc);
   enviar_u16_telemetria((uint16_t)analogRead(pino_sensor_flex), crc);
   enviar_u16_telemetria((uint16_t)analogRead(pino_sensor_pressao_oleo), crc);
+  enviar_u8_telemetria(temperatura_ar, crc);
+  enviar_u16_telemetria((uint16_t)analogRead(pino_sensor_brv), crc);
+  enviar_u16_telemetria((uint16_t)min(dwell_bobina, 65535UL), crc);
+  enviar_u8_telemetria(obter_abertura_marcha_lenta_telemetria(), crc);
+  enviar_u16_telemetria((uint16_t)rpm_alvo_marcha_lenta, crc);
+  enviar_u8_telemetria(calcular_duty_cycle_telemetria(), crc);
+  enviar_u8_telemetria(TELEMETRIA_EXTENSAO_MAGIC, crc);
 
   for (byte i = 0; i < TELEMETRIA_BYTES_RESERVADOS; i++) {
     enviar_u8_telemetria(0, crc);

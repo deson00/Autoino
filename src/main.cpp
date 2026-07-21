@@ -391,10 +391,10 @@ void loop(){
   rpm_anterior = rpm; 
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
-  envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
-  atualizar_controle_marcha_lenta();
   temperatura_ar = temperatura_iat();
+  atualizar_controle_marcha_lenta();
+  envia_dados_tempo_real(1);
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 
