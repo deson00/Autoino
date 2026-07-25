@@ -77,6 +77,37 @@ void ler_dados_eeprom_tabela_ve_map_rpm() {
     // endereco final = 804
 }
 
+void ler_dados_eeprom_configuracao_partida() {
+    if (EEPROM.read(827) != 0xA5) {
+        return;
+    }
+
+    rpm_partida = constrain(ler_16bits_eeprom(820), 100, 2000);
+    nivel_limpeza_afogamento = (byte)constrain(EEPROM.read(822), 0, 100);
+    atraso_injecao_inicial = constrain(ler_16bits_eeprom(823), 0, 10000);
+    tempo_reducao_enriquecimento_partida = constrain(ler_16bits_eeprom(825), 0, 600);
+}
+
+void ler_dados_eeprom_configuracao_marcha_lenta() {
+    bool bloco_novo = EEPROM.read(839) == 0xA6;
+    bool bloco_legado = EEPROM.read(835) == 0xA5;
+    if (!bloco_novo && !bloco_legado) {
+        return;
+    }
+
+    modo_marcha_lenta = (byte)constrain(EEPROM.read(830), 0, bloco_novo ? 3 : 2);
+    temperatura_desligamento_marcha_lenta = (byte)constrain(EEPROM.read(831), 0, 120);
+    histerese_marcha_lenta = (byte)constrain(EEPROM.read(832), 0, 20);
+    pwm_marcha_lenta_frio = (byte)constrain(EEPROM.read(833), 0, 100);
+    pwm_marcha_lenta_quente = (byte)constrain(EEPROM.read(834), 0, 100);
+
+    if (bloco_novo) {
+        rpm_alvo_marcha_lenta = constrain(ler_16bits_eeprom(835), 500, 2500);
+        maximo_passos_marcha_lenta = (byte)constrain(EEPROM.read(837), 0, 250);
+        inverter_direcao_marcha_lenta = EEPROM.read(838) ? 1 : 0;
+    }
+}
+
 void ler_dados_eeprom_configuracao_injecao(){
   int endereco = 900; // Inicializa o endereço de memória
 
@@ -122,19 +153,15 @@ void ler_dados_eeprom_configuracao_injecao(){
 }
 
 void ler_dados_eeprom_parametros_injetor() {
-    int endereco = 920;
-
     if (EEPROM.read(927) != 0xA5) {
         return;
     }
 
-    limite_injetor = (byte)constrain(EEPROM.read(endereco++), 0, 100);
-    tempo_abertura_injetor = constrain(ler_16bits_eeprom(endereco), 0, 5000);
-    endereco += 2;
-    grau_fechamento_injetor = constrain(ler_16bits_eeprom(endereco), 0, 360);
-    endereco += 2;
-    acrescimo_injecao_partida = (byte)constrain(EEPROM.read(endereco++), 0, 100);
-    acrescimo_injecao_funcionamento = (byte)constrain(EEPROM.read(endereco++), 0, 100);
+    limite_injetor = (byte)constrain(EEPROM.read(920), 0, 100);
+    tempo_abertura_injetor = constrain(ler_16bits_eeprom(921), 0, 5000);
+    grau_fechamento_injetor = constrain(ler_16bits_eeprom(923), 0, 360);
+    acrescimo_injecao_partida = (byte)constrain(EEPROM.read(925), 0, 100);
+    acrescimo_injecao_funcionamento = (byte)constrain(EEPROM.read(926), 0, 100);
 }
 
 void ler_dados_eeprom_configuracao_iat() {
@@ -325,6 +352,12 @@ void ler_dados_eeprom_configuracao_inicial() {
     grau_cada_dente = 360 / qtd_dente;
 }
 void ler_dados_eeprom(){
+    // Parametros do injetor possuem bloco proprio com marcador de validade (0xA5).
+    // Carrega sempre para garantir persistencia, mesmo se a configuracao inicial estiver invalida.
+    ler_dados_eeprom_parametros_injetor();
+    ler_dados_eeprom_configuracao_partida();
+    ler_dados_eeprom_configuracao_marcha_lenta();
+
     if (!eeprom_configuracao_inicial_valida()) {
         return;
     }
@@ -332,7 +365,6 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_tabela_ignicao_map_rpm();
     ler_dados_eeprom_tabela_ve_map_rpm();
     ler_dados_eeprom_configuracao_injecao();
-    ler_dados_eeprom_parametros_injetor();
     ler_dados_eeprom_configuracao_iat();
     ler_dados_eeprom_configuracao_protecao();
     ler_dados_eeprom_enriquecimento_aceleracao();

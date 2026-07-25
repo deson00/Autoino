@@ -29,7 +29,7 @@ static inline byte indice_pino_injecao(int i) {
 
 static inline byte quantidade_eventos_injecao_por_ciclo_sensor() {
   if (modo_injecao == 1) {
-    return 1;
+    return qtd_cilindro;
   }
 
   if (local_rodafonica == 2 && tipo_motor == 4 && qtd_cilindro > 1) {
@@ -81,7 +81,7 @@ if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
 }
 void ligar_injetor(int i){
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) &&
-        revolucoes_sincronizada >= 1 && status_corte == 0){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && !limpeza_afogamento_ativa){
         if(modo_injecao == 1 || tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], HIGH);
@@ -105,12 +105,7 @@ void desligar_injetor(int i){
   if (captura_req_fuel[i] == true && inj_acionado[i] == true){
           captura_req_fuel[i] = false;
           inj_acionado[i] = false;
-          if (modo_injecao == 1) {
-            for (int j = 0; j < numero_injetor; j++){
-              digitalWrite(injecao_pins[j], LOW);
-              // setPinLow(injecao_pins[j]);
-            }
-          } else if (tipo_acionamento_injetor == 1){
+          if (modo_injecao == 1 || tipo_acionamento_injetor == 1){
             if (local_rodafonica != 2 || !existe_outro_evento_injecao_ativo(i)) {
               for (int j = 0; j < numero_injetor; j++){
                 digitalWrite(injecao_pins[j], LOW);

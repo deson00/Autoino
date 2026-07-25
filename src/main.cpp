@@ -3,6 +3,7 @@
 #include <definicoes_hardware.h>
 #include <variaveis_global.h>
 #include <util.h>
+#include <marcha_lenta.h>
 #include <ler_dados_eeprom.h>
 #include <ler_dados_memoria.h>
 #include <grava_dados_eeprom.h>
@@ -15,7 +16,6 @@
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
-#include <timer2.h>
 #include <enriquecimento_aceleracao.h>
 #include <enriquecimento_gama.h>
 #include <enriquecimento_temperatura.h>
@@ -74,15 +74,28 @@
 //         }
 //     }
 // }
+static inline unsigned int mediana3_rpm(unsigned int a, unsigned int b, unsigned int c) {
+  if ((a >= b && a <= c) || (a <= b && a >= c)) {
+    return a;
+  }
+  if ((b >= a && b <= c) || (b <= a && b >= c)) {
+    return b;
+  }
+  return c;
+}
+
 void calcularRPM() {
   const unsigned long TIMEOUT_SEM_PULSO_MIN_US = 250000;
   const unsigned long TIMEOUT_SEM_PULSO_MAX_US = 1500000;
   const unsigned int RPM_MAX_VALIDO = 12000;          // rejeita leituras fora de faixa
 
   static unsigned int rpm_filtrado = 0;
+  static unsigned int rpm_amostra_1 = 0;
+  static unsigned int rpm_amostra_2 = 0;
   static unsigned long tempo_volta_valido_us = 0;
   static unsigned long ultimo_pulso_observado_us = 0;
   static byte timeout_consecutivo = 0;
+  static byte rpm_amostras_validas = 0;
 
   unsigned long tempo_atual_local = micros();
   unsigned long tempo_volta_snapshot;
@@ -119,6 +132,9 @@ void calcularRPM() {
     }
     if (timeout_consecutivo >= 2) {
       rpm_filtrado = 0;
+      rpm_amostra_1 = 0;
+      rpm_amostra_2 = 0;
+      rpm_amostras_validas = 0;
       rpm = 0;
     }
     tempo_inicial_rpm = tempo_atual_local;
@@ -135,12 +151,26 @@ void calcularRPM() {
     }
 
     if (rpm_calculado > 0 && rpm_calculado < RPM_MAX_VALIDO) {
-      unsigned int rpm_alvo = (unsigned int)rpm_calculado;
+      unsigned int rpm_instantaneo = (unsigned int)rpm_calculado;
+      unsigned int rpm_alvo = rpm_instantaneo;
+
+      // Mediana de 3: remove pico isolado antes de alimentar o filtro principal.
+      if (rpm_amostras_validas >= 2) {
+        rpm_alvo = mediana3_rpm(rpm_instantaneo, rpm_amostra_1, rpm_amostra_2);
+      } else {
+        rpm_amostras_validas++;
+      }
+
+      rpm_amostra_2 = rpm_amostra_1;
+      rpm_amostra_1 = rpm_instantaneo;
 
       if (rpm_filtrado == 0) {
         rpm_filtrado = rpm_alvo;
       } else {
-        unsigned int variacao_maxima = (rpm_filtrado >> 2) + (rpm_filtrado >> 3) + 30; // ~37.5% + margem fixa
+        unsigned int variacao_maxima = (rpm_filtrado >> 3) + 50; // ~12.5% + margem fixa
+        if (rpm_filtrado < rpm_partida) {
+          variacao_maxima = (rpm_filtrado >> 1) + 80; // mais permissivo durante partida
+        }
         int diferenca = (int)rpm_alvo - (int)rpm_filtrado;
 
         if (diferenca > (int)variacao_maxima) {
@@ -158,6 +188,40 @@ void calcularRPM() {
 
   tempo_inicial_rpm = tempo_atual_local;
 }
+void atualizar_estado_partida() {
+  bool em_partida = rpm < rpm_partida;
+  limpeza_afogamento_ativa = em_partida && valor_tps >= nivel_limpeza_afogamento;
+
+  if (em_partida) {
+    motor_estava_em_partida = true;
+    reducao_enriquecimento_partida_ativa = false;
+    enriquecimento_partida_atual = acrescimo_injecao_partida;
+    return;
+  }
+
+  if (motor_estava_em_partida) {
+    motor_estava_em_partida = false;
+    inicio_reducao_enriquecimento_partida_ms = millis();
+    reducao_enriquecimento_partida_ativa = tempo_reducao_enriquecimento_partida > 0;
+  }
+
+  if (!reducao_enriquecimento_partida_ativa) {
+    enriquecimento_partida_atual = 0;
+    return;
+  }
+
+  unsigned long duracao_ms = (unsigned long)tempo_reducao_enriquecimento_partida * 1000UL;
+  unsigned long tempo_decorrido_ms = millis() - inicio_reducao_enriquecimento_partida_ms;
+  if (tempo_decorrido_ms >= duracao_ms) {
+    enriquecimento_partida_atual = 0;
+    reducao_enriquecimento_partida_ativa = false;
+    return;
+  }
+
+  unsigned long tempo_restante_ms = duracao_ms - tempo_decorrido_ms;
+  enriquecimento_partida_atual = (byte)(((unsigned long)acrescimo_injecao_partida * tempo_restante_ms) / duracao_ms);
+}
+
 void setup(){
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
   delay(1000);
@@ -170,6 +234,7 @@ void setup(){
   pinMode(inj2, OUTPUT);
   pinMode(inj3, OUTPUT);
   pinMode(inj4, OUTPUT);
+  inicializar_controle_marcha_lenta();
   pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
   pinMode(pino_sensor_map, INPUT);
   pinMode(pino_sensor_tps, INPUT);
@@ -184,10 +249,12 @@ void setup(){
   delay(200);
   tempo_inicial_rpm = micros();
   ultimo_pulso_rpm_us = tempo_inicial_rpm;
+  inicio_espera_injecao_inicial_ms = millis();
   sei(); // Habilita interrupções globais
 }
 void loop(){
    calcularRPM();
+    processar_motor_passo_marcha_lenta();
     qtd_loop++;
   
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
@@ -207,33 +274,11 @@ void loop(){
     valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
     valor_tps_adc = analogRead(pino_sensor_tps);
     valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
-    int leitura_adc = analogRead(pino_sensor_o2);
-
-    // tensão em milivolts (0 a 5000 mV)
-    int tensao_o2 = (leitura_adc * 5000) / 1023;
-    valor_o2 = tensao_o2;
-
-    int lambda_x1000 = 1000;
-    if (tipo_sonda_o2) {
-      // Wideband 0.2V..4.8V -> lambda 0.59..1.10 (x1000)
-      lambda_x1000 = 590 + ((long)(tensao_o2 - 200) * (1100 - 590)) / (4800 - 200);
-      if (lambda_x1000 < 590) {
-        lambda_x1000 = 590;
-      } else if (lambda_x1000 > 1100) {
-        lambda_x1000 = 1100;
-      }
-    } else {
-      // Narrowband: aproximação para leitura de lambda em torno do estequiométrico
-      // 100mV (lean) -> 1.10, 900mV (rich) -> 0.90
-      lambda_x1000 = 1100 - ((long)(tensao_o2 - 100) * (1100 - 900)) / (900 - 100);
-      if (lambda_x1000 < 900) {
-        lambda_x1000 = 900;
-      } else if (lambda_x1000 > 1100) {
-        lambda_x1000 = 1100;
-      }
-    }
-
-    sonda_o2 = lambda_x1000;
+    valor_tps = constrain(valor_tps, 0, 100);
+    atualizar_estado_partida();
+    // Envia-se a leitura bruta para preservar a resolucao do ADC. A UI conhece
+    // tipo_sonda_o2 e fica responsavel pela conversao para tensao/lambda.
+    valor_o2_adc = analogRead(pino_sensor_o2);
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
@@ -298,12 +343,17 @@ void loop(){
           }
           calcula_enriquecimento_aceleracao(tempo_pulso);
           tempo_injecao = tempo_pulso_corrigido + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
-          if(rpm < rpm_partida){
-            // Aplicando o acréscimo de injeção na partida
-            tempo_injecao = tempo_injecao + (tempo_injecao * (acrescimo_injecao_partida / 100.0));
+          if(enriquecimento_partida_atual > 0){
+            // Aplica o acrescimo durante a partida e sua reducao gradual.
+            tempo_injecao = tempo_injecao + (tempo_injecao * (enriquecimento_partida_atual / 100.0));
           }
           // tempo_injecao = round(tempo_pulso);
-          if(status_primeira_injecao == false){ 
+          if (status_primeira_injecao == false && rpm > 0) {
+            // Nao dispara a escorva simultanea se o motor girar antes do atraso terminar.
+            status_primeira_injecao = true;
+          }
+          if(status_primeira_injecao == false && !limpeza_afogamento_ativa &&
+             (millis() - inicio_espera_injecao_inicial_ms) >= atraso_injecao_inicial){
             for (int j = 0; j < numero_injetor; j++){
               digitalWrite(injecao_pins[j], 1);
             }
@@ -341,9 +391,10 @@ void loop(){
   rpm_anterior = rpm; 
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
-  envia_dados_tempo_real(1);
   temperatura_motor = temperatura_clt();
   temperatura_ar = temperatura_iat();
+  atualizar_controle_marcha_lenta();
+  envia_dados_tempo_real(1);
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 
