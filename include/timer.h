@@ -114,12 +114,28 @@ static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignica
 
 	if (tempo_cada_grau > 0) {
 		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
-		
+
 		if (tick_fim_dwell == tick_atual) {
 			tick_fim_dwell += TIMER1_MIN_DELTA_TICKS;
 		}
 
-		tick_fim_dwell = alinhar_tick_para_futuro_com_margem(tick_fim_dwell, tick_atual, periodo_ticks_360, dwell_ticks + TIMER1_MIN_DELTA_TICKS);
+		if (tick_atual == tick_base_sincronismo) {
+			// Primeiro agendamento da volta (chamado direto no dente de falha):
+			// o angulo alvo nunca esta "no passado" aqui, o unico jeito de nao
+			// caber e o angulo calculado ficar mais perto do inicio do ciclo do
+			// que o dwell precisa de antecedencia. Empurrar o evento inteiro pra
+			// volta seguinte (o que alinhar_tick_para_futuro_com_margem faria)
+			// derruba a centelha desta volta - e como o reagendamento so
+			// acontece de novo no proximo dente de falha, o canal acaba
+			// disparando só a cada 2 voltas (ou nunca, bem no limiar). Em vez
+			// disso, comeca a carregar a bobina agora mesmo, sem esperar.
+			uint32_t ticks_ate_evento = tick_fim_dwell - tick_atual;
+			if (ticks_ate_evento < dwell_ticks) {
+				tick_fim_dwell = tick_atual + dwell_ticks;
+			}
+		} else {
+			tick_fim_dwell = alinhar_tick_para_futuro_com_margem(tick_fim_dwell, tick_atual, periodo_ticks_360, dwell_ticks + TIMER1_MIN_DELTA_TICKS);
+		}
 	} else if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
 		tick_fim_dwell = tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS;
 	}

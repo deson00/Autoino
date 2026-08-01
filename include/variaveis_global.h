@@ -3,6 +3,7 @@ byte qtd_dente = 12; //60
 byte qtd_dente_faltante = 1; //2
 byte local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
 byte qtd_cilindro = 4; // Removido calculo magico. Default absoluto agora é 4 cilindros.
+byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 int grau_pms = 60;
 volatile unsigned long dwell_bobina = 3;
 int dwell_partida = 4;
@@ -13,7 +14,9 @@ volatile unsigned int qtd_voltas = 0;
 byte grau_cada_dente = 360 / qtd_dente;
 byte grau_avanco = 0;
 byte grau_avanco_partida = 1; // avanço definido apenas na partida
-byte grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
+// Com sensor no virabrequinho, o ciclo completo de combustao dura 720 graus
+// (2 voltas) num motor 4 tempos, mas so 360 graus (1 volta) num motor 2 tempos.
+byte grau_entre_cada_cilindro = (local_rodafonica == 2) ? ((tipo_motor == 2 ? 360 : 720) / qtd_cilindro) : (360 / qtd_cilindro);
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura_media = 0;
@@ -174,7 +177,6 @@ int numero_esguicho = 4;
 int tamanho_injetor = 32;// lbs/hora por injetor
 byte tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
 int tipo_combustivel = 14700; // 14700 - Gasolina
-byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
 byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
 byte limite_injetor = 100; // 90% valor em porcentagem

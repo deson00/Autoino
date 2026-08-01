@@ -50,6 +50,22 @@ static inline int offset_referencia_roda_fonica_graus() {
   return 0;
 }
 
+// Espacamento angular entre eventos de cilindros consecutivos. Com o sensor
+// no virabrequinho, isso depende de quantos graus de virabrequim formam um
+// ciclo completo de combustao: 720 graus (2 voltas) num motor 4 tempos,
+// 360 graus (1 volta) num motor 2 tempos. Com o sensor no comando, o proprio
+// sensor ja gira 1 volta por ciclo, entao sempre 360 graus, nos dois casos.
+static inline byte calcular_grau_entre_cada_cilindro() {
+  if (qtd_cilindro < 1) {
+    return 360;
+  }
+  if (local_rodafonica == 2) {
+    int graus_ciclo_completo = (tipo_motor == 2) ? 360 : 720;
+    return (byte)(graus_ciclo_completo / qtd_cilindro);
+  }
+  return (byte)(360 / qtd_cilindro);
+}
+
 float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
   float T1 = ntcTemperature1 + 273.15;   // converte a temperatura em Celsius para Kelvin
   float T2 = ntcTemperature2 + 273.15;

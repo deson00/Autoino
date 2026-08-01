@@ -348,7 +348,7 @@ void ler_dados_eeprom_configuracao_inicial() {
     }
     
     // Removidas as predições forçadas. O valor da tela sobrevive fielmente.
-    grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
+    grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro();
     grau_cada_dente = 360 / qtd_dente;
 }
 void ler_dados_eeprom(){

@@ -232,7 +232,7 @@ void leitura_entrada_dados_serial()
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
           qtd_cilindro = values[5]; // <<< Usa o valor bruto vindo da tela! Não tenta normalizar/adivinhar canais de bobina.
-          grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
+          grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro();
           resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
@@ -274,6 +274,8 @@ void leitura_entrada_dados_serial()
       if (tipo_vetor_configuracao_injecao == 1){
           referencia_leitura_injecao = values[0];//1 map 2 tps
           tipo_motor = values[1];//4 para motor 4 tempo e 2 para 2 tempo
+          grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro(); // 4T/2T muda o tamanho do ciclo completo em graus
+          resetar_estado_agendamento_motor(); // descarta eventos ja agendados com o ciclo antigo
           modo_injecao = values[2]; // 1 pareado 2 semi e 3 sequencial
           emparelhar_injetor = values[3];// 1 para 1234 para emparelhado 2 para 1423 semi ou sequencial e 3 para 1342 para semi ou sequencial
           deslocamento_motor = values[4];// tamanho do motor em polegadas 
