@@ -1,7 +1,23 @@
 // Esta função envia os dados via serial no formato esperado
+
+// Passa cada byte pelo mesmo CRC8 (polinomio 0x07) ja usado no quadro de
+// telemetria, e so escreve na serial de verdade se nao estiver no modo
+// "somente CRC" (comando 'x') - assim o comando 'x' reusa 100% da logica
+// de serializacao de ler_dados_memoria() sem gastar flash com uma copia
+// dela, e sem precisar mandar o dump inteiro so pra saber se mudou algo.
+void enviar_byte_config(byte valor) {
+  crc_config_atual ^= valor;
+  for (byte bit = 0; bit < 8; bit++) {
+    crc_config_atual = (crc_config_atual & 0x80U) ? (byte)((crc_config_atual << 1) ^ 0x07U) : (byte)(crc_config_atual << 1);
+  }
+  if (!modo_somente_crc_config) {
+    Serial.write(valor);
+  }
+}
+
 void sendSerialString(const char* str) {
   while (*str) {
-    Serial.write(*str++);
+    enviar_byte_config(*str++);
   }
 }
 
@@ -17,342 +33,342 @@ void ler_dados_memoria() {
   // ========== TABELA IGNIÇÃO
   // Enviar o identificador de comando
   // a) Vetor MAP/TPS ignição
-  Serial.write(';');
-  Serial.write('a');
-  Serial.write(',');
+  enviar_byte_config(';');
+  enviar_byte_config('a');
+  enviar_byte_config(',');
 
   // Enviar os valores do vetor_map_tps
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_map_tps[i]);
-    
-      Serial.write(',');
-    
+
+      enviar_byte_config(',');
+
   }
-  Serial.write(';');
-  // b) Vetor RPM ignição 
-  Serial.write('b');
-  Serial.write(',');
+  enviar_byte_config(';');
+  // b) Vetor RPM ignição
+  enviar_byte_config('b');
+  enviar_byte_config(',');
   // vetor rpm
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_rpm[i]);
-    
-      Serial.write(',');
-    
+
+      enviar_byte_config(',');
+
   }
-  Serial.write(';');
+  enviar_byte_config(';');
 
   // transforma matriz em vetor
-  Serial.write('c');
-  Serial.write(',');
+  enviar_byte_config('c');
+  enviar_byte_config(',');
   for (int i = 0; i < 16; i++) {
     for (int j = 0; j < 16; j++) {
       sendSerialInt(matriz_avanco[i][j]);
-      
-        Serial.write(',');
-      
+
+        enviar_byte_config(',');
+
     }
   }
-  Serial.write(';');
+  enviar_byte_config(';');
   // ========== CONFIGURAÇÕES SISTEMA ==========
-    
+
   // g) Configuração inicial
-  Serial.write('g');
-  Serial.write(',');
+  enviar_byte_config('g');
+  enviar_byte_config(',');
   sendSerialInt(tipo_ignicao);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(qtd_dente);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(local_rodafonica);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(qtd_dente_faltante);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(grau_pms);
-  Serial.write(',');
-  sendSerialInt(qtd_cilindro); // Removida a multiplicação corrompida 
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  sendSerialInt(qtd_cilindro); // Removida a multiplicação corrompida
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // j) Configuração faisca
-  Serial.write('j');
-  Serial.write(',');
+  enviar_byte_config('j');
+  enviar_byte_config(',');
   sendSerialInt(referencia_leitura_ignicao);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(modo_ignicao);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(grau_avanco_partida);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(avanco_fixo);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(grau_avanco_fixo);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tipo_sinal_bobina);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // k) Configuração dwell
-  Serial.write('k');
-  Serial.write(',');
+  enviar_byte_config('k');
+  enviar_byte_config(',');
   sendSerialInt(dwell_partida);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(dwell_funcionamento);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // l) Configuração sensor temperatura CLT
-  Serial.write('l');
-  Serial.write(','); // letra L minúsculo
+  enviar_byte_config('l');
+  enviar_byte_config(','); // letra L minúsculo
   sendSerialInt(referencia_temperatura_clt1);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(referencia_resistencia_clt1);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(referencia_temperatura_clt2);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(referencia_resistencia_clt2);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // u) Configuração sensor temperatura do ar IAT
-  Serial.write('u');
-  Serial.write(',');
+  enviar_byte_config('u');
+  enviar_byte_config(',');
   sendSerialInt(referencia_temperatura_iat1);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(referencia_resistencia_iat1);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(referencia_temperatura_iat2);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(referencia_resistencia_iat2);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // ========== TABELA VE ==========
-    
+
   // d) Vetor MAP/TPS VE
-  Serial.write('d');
-  Serial.write(',');
+  enviar_byte_config('d');
+  enviar_byte_config(',');
   // vetor map ou tps da ve
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_map_tps_ve[i]);
-    
-      Serial.write(',');
-    
+
+      enviar_byte_config(',');
+
   }
-  Serial.write(';');
+  enviar_byte_config(';');
 
   // e) Vetor RPM VE
-  Serial.write('e');
-  Serial.write(',');
+  enviar_byte_config('e');
+  enviar_byte_config(',');
   // vetor rpm da tabela ve
   for (int i = 0; i < 16; i++) {
     sendSerialInt(vetor_rpm_ve[i]);
-    
-      Serial.write(',');
-    
+
+      enviar_byte_config(',');
+
   }
-  Serial.write(';');
-  
+  enviar_byte_config(';');
+
   // f) Matriz VE (como vetor linear)
-  Serial.write('f');
-  Serial.write(',');
+  enviar_byte_config('f');
+  enviar_byte_config(',');
   for (int i = 0; i < 16; i++) {
     for (int j = 0; j < 16; j++) {
       sendSerialInt(matriz_ve[i][j]);
-      
-        Serial.write(',');
-      
+
+        enviar_byte_config(',');
+
     }
   }
-  Serial.write(';');
+  enviar_byte_config(';');
 
   // ========== CONFIGURAÇÕES INJEÇÃO E PROTEÇÃO ==========
-    
+
   // m) Configuração injeção
-  Serial.write('m');
-  Serial.write(',');
+  enviar_byte_config('m');
+  enviar_byte_config(',');
   sendSerialInt(referencia_leitura_injecao);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tipo_motor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(modo_injecao);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(emparelhar_injetor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(deslocamento_motor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(numero_cilindro_injecao);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(numero_injetor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(numero_esguicho);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tamanho_injetor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tipo_acionamento_injetor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tipo_combustivel);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(REQ_FUEL);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(dreq_fuel);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tipo_sonda_o2);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // t) Parametros do injetor
-  Serial.write('t');
-  Serial.write(',');
+  enviar_byte_config('t');
+  enviar_byte_config(',');
   sendSerialInt(limite_injetor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tempo_abertura_injetor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(grau_fechamento_injetor);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(acrescimo_injecao_partida);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(acrescimo_injecao_funcionamento);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
-  // n) Configuração proteção e limites 
-  Serial.write('n');
-  Serial.write(',');
+  // n) Configuração proteção e limites
+  enviar_byte_config('n');
+  enviar_byte_config(',');
   sendSerialInt(tipo_protecao);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(rpm_pre_corte);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(avanco_corte);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tempo_corte);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(rpm_maximo_corte);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(numero_base_corte);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(qtd_corte);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
     // o) Enriquecimento na aceleração
-    Serial.write('o');
-    Serial.write(',');
+    enviar_byte_config('o');
+    enviar_byte_config(',');
     sendSerialInt(enriquecimento_aceleracao[0]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(enriquecimento_aceleracao[1]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(enriquecimento_aceleracao[2]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(enriquecimento_aceleracao[3]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(enriquecimento_aceleracao[4]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(tps_dot_escala[0]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(tps_dot_escala[1]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(tps_dot_escala[2]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(tps_dot_escala[3]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(tps_dot_escala[4]);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(tipo_verificacao_aceleracao_rapida);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(tps_mudanca_minima);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(intervalo_tempo_aceleracao);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(duracao_enriquecimento);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(rpm_minimo_enriquecimento);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(rpm_maximo_enriquecimento);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(enriquecimento_desaceleracao);
-    Serial.write(',');
-    Serial.write(';');
+    enviar_byte_config(',');
+    enviar_byte_config(';');
 
   // p) Configuração TPS
-  Serial.write('p');
-  Serial.write(',');
+  enviar_byte_config('p');
+  enviar_byte_config(',');
   sendSerialInt(valor_tps_minimo);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(valor_tps_maximo);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // q) Configuração MAP
-    Serial.write('q');
-    Serial.write(',');
+    enviar_byte_config('q');
+    enviar_byte_config(',');
     sendSerialInt(valor_map_tipo);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(valor_map_minimo);
-    Serial.write(',');
+    enviar_byte_config(',');
     sendSerialInt(valor_map_maximo);
-    Serial.write(',');
-    Serial.write(';');
+    enviar_byte_config(',');
+    enviar_byte_config(';');
 
   // r) Enriquecimento de injeção por temperatura (5 pontos)
-  Serial.write('r');
-  Serial.write(',');
+  enviar_byte_config('r');
+  enviar_byte_config(',');
   for (int i = 0; i < 5; i++) {
     sendSerialInt(vetor_temperatura_injecao[i]);
-    Serial.write(',');
+    enviar_byte_config(',');
   }
   for (int i = 0; i < 5; i++) {
     sendSerialInt(vetor_enriquecimento_temperatura[i]);
-    Serial.write(',');
+    enviar_byte_config(',');
   }
   sendSerialInt(usar_injecao_temperatura);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // s) Avanco por temperatura (5 pontos)
-  Serial.write('s');
-  Serial.write(',');
+  enviar_byte_config('s');
+  enviar_byte_config(',');
   for (int i = 0; i < 5; i++) {
     sendSerialInt(vetor_temperatura[i]);
-    Serial.write(',');
+    enviar_byte_config(',');
   }
   for (int i = 0; i < 5; i++) {
     sendSerialInt(vetor_avanco_temperatura[i]);
-    Serial.write(',');
+    enviar_byte_config(',');
   }
   sendSerialInt(usar_avanco_temperatura);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // v) Configuracao de partida
-  Serial.write('v');
-  Serial.write(',');
+  enviar_byte_config('v');
+  enviar_byte_config(',');
   sendSerialInt(rpm_partida);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(nivel_limpeza_afogamento);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(atraso_injecao_inicial);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(tempo_reducao_enriquecimento_partida);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
   // w) Controle de marcha lenta
-  Serial.write('w');
-  Serial.write(',');
+  enviar_byte_config('w');
+  enviar_byte_config(',');
   sendSerialInt(modo_marcha_lenta);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(temperatura_desligamento_marcha_lenta);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(histerese_marcha_lenta);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(pwm_marcha_lenta_frio);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(pwm_marcha_lenta_quente);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(rpm_alvo_marcha_lenta);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(maximo_passos_marcha_lenta);
-  Serial.write(',');
+  enviar_byte_config(',');
   sendSerialInt(inverter_direcao_marcha_lenta);
-  Serial.write(',');
-  Serial.write(';');
+  enviar_byte_config(',');
+  enviar_byte_config(';');
 
 }

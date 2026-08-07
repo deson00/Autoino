@@ -128,6 +128,12 @@ byte tipo_vetor_configuracao_map = 0;
 byte tipo_vetor_configuracao_partida = 0;
 byte tipo_vetor_configuracao_marcha_lenta = 0;
 bool status_dados_tempo_real = false;
+// CRC8 "impressao digital" da configuracao atual (ver comando 'x' em
+// leitura_entrada_dados_serial.h) - deixa a tela comparar se o mapa
+// selecionado localmente bate com o que esta gravado na ECU sem precisar
+// pedir o dump inteiro de novo.
+byte crc_config_atual = 0;
+bool modo_somente_crc_config = false;
 //int leituras_map[10]={0};
 //int leituras_tps[10]={0};
 //int contador_leitura = 0;

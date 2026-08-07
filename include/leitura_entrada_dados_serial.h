@@ -106,12 +106,24 @@ void leitura_entrada_dados_serial()
      if (data == 'h'){//retorna dados da ecu
         ler_dados_memoria();
     }
-    if (data == 'i') {
-     if(status_dados_tempo_real){
-      status_dados_tempo_real = false;
-     }else{
+    if (data == 'x') { // retorna so o CRC8 da configuracao atual (sem mandar o dump inteiro)
+      crc_config_atual = 0;
+      modo_somente_crc_config = true;
+      ler_dados_memoria();
+      modo_somente_crc_config = false;
+      Serial.write(';');
+      Serial.write('x');
+      Serial.write(',');
+      sendSerialInt(crc_config_atual);
+      Serial.write(';');
+    }
+    if (data == 'i') { // liga o envio de dados em tempo real - idempotente, nunca desliga
       status_dados_tempo_real = true;
-     }
+    }
+    if (data == 'y') { // desliga o envio de dados em tempo real - uso interno da tela
+      // (ex.: pausar um instante antes do comando 'x' pra ler a resposta sem
+      // misturar com quadros binarios chegando ao mesmo tempo)
+      status_dados_tempo_real = false;
     }
     if (data == 'j') {// configuração da faisca
       tipo_vetor_configuracao_faisca = 1;
