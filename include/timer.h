@@ -1,6 +1,12 @@
 static const uint16_t TIMER1_TICK_US = 4;
 static const uint16_t TIMER1_MIN_DELTA_TICKS = 2;
 static const uint8_t TIMER1_MAX_REPLAN_LOOPS = 32;
+// Margem de seguranca entre ler o tick atual e escrever OCR1A/OCR1B: cobre so
+// o tempo real de varrer os poucos canais + escrever o registrador (bem menos
+// de 1 tick na pratica). O valor antigo (20 ticks = 80us) era bem mais folgado
+// que o necessario e fazia o caminho caro (reprocessar na hora, cascata)
+// disparar com mais frequencia do que precisava, principalmente em RPM alto.
+static const uint16_t TIMER1_MARGEM_DEADLOCK_TICKS = 6;
 
 static inline uint32_t us_para_ticks_timer1(unsigned long tempo_us) {
 	if (tempo_us == 0) {
@@ -73,20 +79,6 @@ static inline uint32_t ler_tick32_timer1() {
 	return (overflow_snapshot << 16) | contador_snapshot;
 }
 
-static inline unsigned long ajustar_tempo_evento_borda_referencia(unsigned long tempo_evento_us) {
-	if (tempo_cada_grau > 0) {
-		unsigned long periodo_referencia_us = 360UL * tempo_cada_grau;
-		if (periodo_referencia_us > 0 && (tempo_evento_us % periodo_referencia_us) == 0) {
-			if (tempo_evento_us >= tempo_cada_grau) {
-				tempo_evento_us -= tempo_cada_grau;
-			} else {
-				tempo_evento_us += tempo_cada_grau;
-			}
-		}
-	}
-	return tempo_evento_us;
-}
-
 static inline void desabilitar_timer1_compare_a() {
 	TIMSK1 &= ~(1 << OCIE1A);
 }
@@ -98,7 +90,7 @@ static inline void desabilitar_timer1_compare_b() {
 static void atualizar_compare_b_ligar();
 static void atualizar_compare_a_desligar();
 static inline void agendar_injecao_canal(int i, uint32_t tick_atual);
-static inline void processar_cortes_vencidos(uint32_t tick_atual);
+static inline bool processar_cortes_vencidos(uint32_t tick_atual);
 
 static inline void limpar_ignicoes_pendentes_nao_acionadas() {
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
@@ -215,6 +207,13 @@ static inline void recalcular_injecao_canal_por_dente(int i, uint32_t tick_atual
 	injecao_tick_desligar[i] = tick_inicio_injecao + tempo_injecao_ticks;
 }
 
+// Refinamento por dente processa 1 canal de ignicao por vez, alternando em
+// sequencia, em vez de recalcular todos a cada chamada. O calculo cheio de
+// todos os canais continua acontecendo 1x por volta no evento de gap
+// (agendar_eventos_motor_timer1) - isto aqui e so a correcao fina entre um
+// gap e outro, entao nao ha problema em espacar um pouco mais por canal.
+volatile byte proximo_canal_ignicao_recalculo = 0;
+
 void atualizar_agendamentos_ignicao_por_dente() {
 	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 ||
 	    (local_rodafonica != 1 && local_rodafonica != 2) || tempo_cada_grau == 0) {
@@ -224,18 +223,33 @@ void atualizar_agendamentos_ignicao_por_dente() {
 	uint8_t sreg = SREG;
 	cli();
 	uint32_t tick_atual = ler_tick32_timer1();
-	processar_cortes_vencidos(tick_atual);
+	bool algo_desligou = processar_cortes_vencidos(tick_atual);
+
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
-	for (int i = 0; i < eventos_ignicao; i++) {
-		recalcular_ignicao_canal_por_dente(i, tick_atual);
+	if (eventos_ignicao > 0) {
+		if (proximo_canal_ignicao_recalculo >= eventos_ignicao) {
+			proximo_canal_ignicao_recalculo = 0;
+		}
+		recalcular_ignicao_canal_por_dente(proximo_canal_ignicao_recalculo, tick_atual);
+		proximo_canal_ignicao_recalculo++;
 	}
+
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_injecao; i++) {
 		recalcular_injecao_canal_por_dente(i, tick_atual);
 	}
-	processar_cortes_vencidos(tick_atual);
+
+	// A segunda chamada a processar_cortes_vencidos(tick_atual) foi removida:
+	// era redundante, checava o mesmo tick_atual ja avaliado acima, nunca
+	// encontrava nada novo.
 	atualizar_compare_b_ligar();
-	atualizar_compare_a_desligar();
+	// So precisa reprogramar o "desligar" se algo realmente desligou acima
+	// (processar_cortes_vencidos) - o recalculo por dente so mexe em canais
+	// que ainda nao ligaram, entao nao afeta o conjunto de quem esta ligado.
+	if (algo_desligou) {
+		atualizar_compare_a_desligar();
+	}
+
 	SREG = sreg;
 }
 
@@ -353,12 +367,14 @@ static inline void limpar_ligamentos_vencidos_sem_acionar(uint32_t tick_atual) {
 	}
 }
 
-static inline void processar_cortes_vencidos(uint32_t tick_atual) {
+static inline bool processar_cortes_vencidos(uint32_t tick_atual) {
+	bool algo_desligou = false;
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
 		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
+			algo_desligou = true;
 			if (local_rodafonica == 1 && status_corte == 0) {
 				agendar_ignicao_canal(i, tick_atual);
 			}
@@ -370,11 +386,13 @@ static inline void processar_cortes_vencidos(uint32_t tick_atual) {
 		if (injecao_agendada[i] && inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
+			algo_desligou = true;
 			if (local_rodafonica == 1) {
 				agendar_injecao_canal(i, tick_atual);
 			}
 		}
 	}
+	return algo_desligou;
 }
 
 void setupTimer1() {
@@ -477,7 +495,7 @@ static void atualizar_compare_b_ligar() {
 		}
 
 		// Prevenção de deadlock do comparador de hardware (evento muito próximo ou já ficou pro passado):
-		if (menor_delta < 20) {
+		if (menor_delta < TIMER1_MARGEM_DEADLOCK_TICKS) {
 			uint32_t tick_evento = agora + menor_delta;
 			processar_ligamentos_vencidos(tick_evento);
 			processar_cortes_vencidos(tick_evento);
@@ -541,7 +559,7 @@ static void atualizar_compare_a_desligar() {
 		}
 
 		// Prevenção de deadlock pro desligamento de bobina/bico:
-		if (menor_delta < 20) {
+		if (menor_delta < TIMER1_MARGEM_DEADLOCK_TICKS) {
 			processar_cortes_vencidos(agora + menor_delta);
 			continue;
 		}
@@ -568,7 +586,7 @@ void agendar_eventos_motor_timer1() {
 	uint8_t sreg = SREG;
 	cli();
 	tick_base_sincronismo = ler_tick32_timer1();
-	processar_cortes_vencidos(tick_base_sincronismo);
+	bool algo_desligou = processar_cortes_vencidos(tick_base_sincronismo);
 	limpar_ignicoes_pendentes_nao_acionadas();
 
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
@@ -586,7 +604,11 @@ void agendar_eventos_motor_timer1() {
 	}
 
 	atualizar_compare_b_ligar();
-	atualizar_compare_a_desligar();
+	// O rearme de canais acima so afeta quem ainda vai ligar (compare B). O
+	// "desligar" (compare A) so muda se processar_cortes_vencidos desligou algo.
+	if (algo_desligou) {
+		atualizar_compare_a_desligar();
+	}
 	SREG = sreg;
 }
 

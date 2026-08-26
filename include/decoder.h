@@ -14,6 +14,12 @@ volatile byte amostras_intervalo_validas = 0;
 #define TEMPO_CADA_GRAU_ALPHA_DEN 4UL
 #define TEMPO_CADA_GRAU_ALPHA_NUM 1UL
 
+// Reagendamento fino por dente: roda em TODO dente, mas so abaixo desse RPM.
+// Em RPM baixo ha CPU de sobra pra recalcular sempre (mais precisao durante
+// partida/marcha lenta); acima disso fica so com o calculo unico por volta
+// (no dente de falha), pra nao competir por tempo com a interrupcao em RPM alto.
+#define RECALCULO_AGENDAMENTO_RPM_MAXIMO 1000U
+
 void agendar_eventos_motor_timer1();
 void atualizar_agendamentos_ignicao_por_dente();
 
@@ -177,7 +183,10 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       unsigned long tempo_instante_grau = intervalo_tempo_entre_dente / grau_cada_dente;
       if (tempo_instante_grau > 0) {
         tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
-        atualizar_agendamentos_ignicao_por_dente();
+        // Reagendamento fino por dente: em todo dente, mas so em RPM baixo.
+        if (rpm < RECALCULO_AGENDAMENTO_RPM_MAXIMO) {
+          atualizar_agendamentos_ignicao_por_dente();
+        }
       }
     }
     // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
@@ -194,7 +203,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
 }
 void leitor_sensor_roda_fonica() {
-//  tempo_inicial_codigo = micros(); // Registra o tempo inicial 
+//  tempo_inicial_codigo = micros(); // Registra o tempo inicial
   // noInterrupts();
   //  TIMSK1 &= ~_BV(TOIE1);  // Desativa a interrupção do Timer1
   decoder_roda_fonica_padrao();

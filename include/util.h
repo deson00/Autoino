@@ -34,11 +34,14 @@ static inline int graus_avanco_para_referencia_sensor(int graus_virabrequim) {
 }
 
 static inline int normalizar_angulo_minimo_zero(int angulo) {
+  // Divisao/modulo de 16 bits sao caras no AVR (sem divisor em hardware).
+  // O angulo aqui nunca fica muito longe de [0,360), entao subtrair em loop
+  // e bem mais barato que "% 360" nesse caminho critico (roda por dente).
   while (angulo < 0) {
     angulo += 360;
   }
-  if (angulo >= 360) {
-    angulo = angulo % 360;
+  while (angulo >= 360) {
+    angulo -= 360;
   }
   return angulo;
 }
@@ -94,16 +97,6 @@ void sort(int arr[], int n) {
       }
     }
  }
-}
-
-int freeMemory() {
-  int size = 1024; // Tamanho inicial da alocação
-  byte *buf;
-  
-  while ((buf = (byte *) malloc(--size)) == NULL); // Aloca até que falhe
-  
-  free(buf); // Libera a memória alocada
-  return size;
 }
 
 void enviar_byte_serial(int valor, int tamanho) {

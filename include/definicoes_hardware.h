@@ -37,12 +37,14 @@ byte inj4 = 13;
 #ifdef Speeduino
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
+#define pino_sensor_iat A0
 #define pino_sensor_clt A1
 #define pino_sensor_tps A2
 #define pino_sensor_map A3
-#define pino_sensor_iat A0
-#define pino_sensor_o2  A8
 #define pino_sensor_brv A4
+#define pino_sensor_flex A6
+#define pino_sensor_pressao_oleo A7
+#define pino_sensor_o2  A8
 #define pino_marcha_lenta 5 // Saida Idle 1 / IDLE-OUT padrao da Speeduino v0.4.
 #define pino_passo_marcha_lenta 17 // STEP padrao do soquete stepper Speeduino v0.4.
 #define pino_direcao_marcha_lenta 16 // DIR padrao do soquete stepper Speeduino v0.4.

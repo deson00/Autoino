@@ -29,7 +29,10 @@ static inline byte indice_pino_injecao(int i) {
 
 static inline byte quantidade_eventos_injecao_por_ciclo_sensor() {
   if (modo_injecao == 1) {
-    return qtd_cilindro;
+    // Pareado: todos os injetores disparam juntos (ver ligar_injetor/desligar_injetor),
+    // entao um unico canal logico basta - nao ha ganho em recalcular e agendar
+    // um evento por cilindro se todos acionam ao mesmo tempo.
+    return 1;
   }
 
   if (local_rodafonica == 2 && tipo_motor == 4 && qtd_cilindro > 1) {
@@ -64,8 +67,8 @@ static inline int calcular_angulo_injecao_indice(int i) {
       while (angulo_base_injecao < 0) {
         angulo_base_injecao += 360;
       }
-      if (angulo_base_injecao >= 360) {
-        angulo_base_injecao = angulo_base_injecao % 360;
+      while (angulo_base_injecao >= 360) {
+        angulo_base_injecao -= 360;
       }
       if (angulo_base_injecao == 0) {
         angulo_base_injecao = 1;
@@ -122,26 +125,3 @@ void desligar_injetor(int i){
   }
 }
 
-void calcula_grau_injetor_comando(int i){
-    if ( i < qtd_cilindro/2){
-    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = normalizar_angulo_minimo_zero(ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
-    }
-  }
-    if (i >= qtd_cilindro / 2){
-    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = normalizar_angulo_minimo_zero(ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
-    }
-  }
-}
-
-void ligar_injetor_comando(int i){
-    ligar_injetor(i);
-}
-
-void desligar_injetor_comando(){
-         for (int i = 0; i < qtd_cilindro; i++)
-         {
-          desligar_injetor(i);
-    }
-}

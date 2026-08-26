@@ -111,27 +111,34 @@ void desligar_dwell(int i){
         ign_acionado[i] = false;
         digitalWrite(ignicao_pins[pino], LOW);
         // setPinLow(ignicao_pins[i]);
-    
-  }  
-}
-
-void calcula_dwell_comando(int i){
-      if ( i < qtd_cilindro/2){
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
-      tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
-    }
-  }
-    if (i >= qtd_cilindro / 2){
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
-      tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
-    }
   }
 }
 
-void iniciar_dwell_comando(int i){
-    iniciar_dwell(i);
+// Protecao de dwell maximo: independente da causa (ainda em investigacao), garante
+// que nenhuma bobina fique carregando por mais que MULTIPLICADOR_DWELL_MAX_X10/10
+// vezes o dwell configurado. Margem relativa (nao um valor fixo em ms) para
+// acompanhar automaticamente qualquer dwell_bobina configurado pela UI.
+#define MULTIPLICADOR_DWELL_MAX_X10 15UL // 1.5x
+volatile unsigned int contagem_protecao_dwell_maximo = 0;
+void protege_dwell_maximo(){
+  unsigned long limite_us = (dwell_bobina * MULTIPLICADOR_DWELL_MAX_X10) / 10UL;
+  byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+  for (byte i = 0; i < eventos_ignicao; i++) {
+    // Protegido contra corrida com as interrupcoes (mesmo padrao usado no resto
+    // do agendamento): sem isso, uma interrupcao podia rearmar o canal para a
+    // proxima centelha bem no meio desta checagem, e o "ignicao_agendada[i] = false"
+    // logo em seguida apagava esse novo agendamento valido por engano.
+    uint8_t sreg = SREG;
+    cli();
+    bool precisa_forcar = ign_acionado[i] && (micros() - tempo_percorrido[i] > limite_us);
+    if (precisa_forcar) {
+      desligar_dwell(i);
+      ignicao_agendada[i] = false;
+    }
+    SREG = sreg;
+    if (precisa_forcar && contagem_protecao_dwell_maximo < 65535) {
+      contagem_protecao_dwell_maximo++;
+    }
+  }
 }
 
-void desligar_dwell_comando(int i){
-    desligar_dwell(i);
-}

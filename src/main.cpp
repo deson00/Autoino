@@ -12,7 +12,6 @@
 #include <sensores.h>
 #include <protecao.h>
 #include <decoder.h>
-// #include <decoder_padrao_melhorado.h>
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
@@ -253,6 +252,8 @@ void setup(){
   sei(); // Habilita interrupções globais
 }
 void loop(){
+   // DEBUG TEMPORARIO: desativado pra teste A/B (ver se ela causa a regressao de teto de RPM)
+   // protege_dwell_maximo();
    calcularRPM();
     processar_motor_passo_marcha_lenta();
     qtd_loop++;
@@ -309,9 +310,10 @@ void loop(){
       dwell_bobina = dwell_funcionamento * 1000ul;
     }
     else if(rpm < 7000 && busca_avanco_linear == true){
-      int grau_minimo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
+      int indice_map_tps_avanco = procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16);
       int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
-      int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
+      int grau_minimo = matriz_avanco[indice_map_tps_avanco][indice_rpm_minimo];
+      int grau_maximo = matriz_avanco[indice_map_tps_avanco][indice_rpm_minimo+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
       avanco_baseado_em_tabela = true;
@@ -409,7 +411,25 @@ void loop(){
   // Serial.println(rpm_anterior);
   }
 
-  //  tempo_final_codigo = micros(); // Registra o tempo final  
-  //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo; 
+  //  tempo_final_codigo = micros(); // Registra o tempo final
+  //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
   //  enviar_byte_serial(tempo_decorrido_codigo, 2);
+
+  // ---- DEBUG TEMPORARIO: quantas vezes a protecao de dwell maximo disparou ----
+  static unsigned long ultimo_debug_protecao_ms = 0;
+  if (millis() - ultimo_debug_protecao_ms >= 500) {
+    ultimo_debug_protecao_ms = millis();
+    unsigned int m_qtd;
+    noInterrupts();
+    m_qtd = contagem_protecao_dwell_maximo;
+    contagem_protecao_dwell_maximo = 0;
+    interrupts();
+    if (m_qtd > 0) {
+      Serial.print(F("PROTECAO_DWELL r="));
+      Serial.print(rpm);
+      Serial.print(F(" qtd="));
+      Serial.println(m_qtd);
+    }
+  }
+  // ---- FIM DEBUG TEMPORARIO ----
 }
