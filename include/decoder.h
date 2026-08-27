@@ -174,8 +174,16 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 // o dwell), o evento nasce vencido e e cancelado. A 7000rpm essa folga e de
 // apenas ~2,07ms.
 //
+// Alvo 3 tambem ja mediu: a latencia entre o gap e o agendamento armado e de
+// ~1,1ms na mediana e ate ~2,9ms no p99. Nao era a causa das falhas.
+//
+// DESLIGADO por padrao. O pino 7 e o ign4, uma saida de ignicao real - ele so
+// esta livre porque a configuracao de 6 cilindros em centelha perdida usa 3
+// canais. Codigo de depuracao nao deve ficar chaveando pino de bobina: com uma
+// quarta bobina ligada, ela receberia pulso a cada gap.
+//
 //   0 = desligado   1 = ISR do dente   2 = ISRs do Timer1   3 = atraso do agendamento
-#define DEBUG_PULSO_ISR_ALVO 3
+#define DEBUG_PULSO_ISR_ALVO 0
 
 #if DEBUG_PULSO_ISR_ALVO && defined(__AVR_ATmega328P__)
   #define PULSO_ALTO()  (PORTD |= _BV(PD7))
