@@ -61,8 +61,13 @@ static inline uint32_t alinhar_tick_para_futuro_com_margem(uint32_t tick_evento,
 	return tick_evento + (saltos * periodo_ticks);
 }
 
-// (contadores de estouro de replan removidos: mediram 0 em todos os testes,
-// descartando a hipotese de canal orfao por estouro de tentativas)
+// Diagnostico ja concluido e removido. O que ele mediu, para nao se repetir:
+// a cascata de replan e o caso "canal ja armado" deram ZERO em todo o log; o
+// unico caminho de perda ativo e o cancelamento por dwell curto, que e zero
+// ate 4200rpm e sobe ate ~25 por janela de 500ms a 7000rpm. Baixar o limiar
+// de 80% para 50% nao reduziu esses cancelamentos, e remover o mascaramento
+// de OCIE1A/OCIE1B durante o calculo tambem nao - ou seja, o atraso que os
+// causa nao vem de nenhuma dessas duas origens.
 
 static inline uint32_t ler_tick32_timer1() {
 	uint32_t overflow_snapshot;
@@ -326,6 +331,21 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_atual) {
 	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
 	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
+	// 50%, nao 80%. Os contadores de diagnostico mostraram que este cancelamento
+	// e o UNICO caminho de perda ativo (cascata e canal-ja-armado deram zero em
+	// todo o log): CD=0 ate 4200rpm e sobe ate 25 por janela de 500ms a 7000rpm.
+	// E cada cancelamento custa DUAS voltas - perde a volta atual, e na seguinte
+	// a logica de cruzamento empurra de novo - o que explica as rajadas de
+	// exatamente 2 voltas sem centelha medidas no analisador. A conta fecha:
+	// 25 cancelamentos x 2 = 50 de 173 eventos esperados = 71% previsto, contra
+	// 69% medidos.
+	//
+	// Cancelar e a pior saida: a carga da bobina e exponencial, entao metade do
+	// dwell ainda entrega boa parte da energia, enquanto cancelar entrega zero.
+	// Testado em 50% e revertido para 80%: o numero de cancelamentos ficou
+	// identico, ou seja os casos que disparam aqui tem MUITO menos que metade
+	// do dwell restante - o limiar nunca e o criterio decisivo. Sem ganho
+	// medido, fica o valor com que a cobertura foi caracterizada.
 	uint32_t dwell_minimo_util_ticks = (dwell_ticks * 80UL) / 100UL;
 	if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
 		dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
@@ -334,6 +354,7 @@ static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_a
 	if (tempo_restante_ticks >= dwell_minimo_util_ticks) {
 		return false;
 	}
+
 
 	// Cancela APENAS este canal. Antes chamava limpar_ignicoes_pendentes_nao_acionadas(),
 	// que apaga o agendamento de TODOS os canais - uma checagem por canal com
@@ -626,6 +647,13 @@ void agendar_eventos_motor_timer1() {
 	// atraso variavel a partir do loop(), em RPM alto (dente a cada ~150-300us)
 	// isso perdia dentes de verdade - corrompendo o sincronismo por tras do
 	// sinal (visivel so como falha silenciosa de agendamento, nao no log bruto).
+	// Mascara so as comparacoes do Timer1 (nao cli() global): a interrupcao do
+	// dente e externa (EIMSK) e nao disputa estes dados.
+	//
+	// TESTADO E REVERTIDO: remover este mascaramento nao reduziu em nada os
+	// cancelamentos por dwell curto (CD ficou igual, 12-30 por janela acima de
+	// 5000rpm), derrubando a hipotese de que a janela cega durante o calculo
+	// fosse a causa do atraso. Como nao trouxe ganho, fica a protecao.
 	TIMSK1 &= ~((1 << OCIE1A) | (1 << OCIE1B));
 
 	processar_cortes_vencidos(tick_base_sincronismo);
