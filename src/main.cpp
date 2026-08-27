@@ -258,6 +258,7 @@ void loop(){
    if (agendamento_pendente) {
      agendamento_pendente = false;
      agendar_eventos_motor_timer1();
+     PULSO_AGENDA_BAIXO();
    }
    protege_dwell_maximo();
    calcularRPM();

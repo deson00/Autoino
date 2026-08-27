@@ -39,7 +39,8 @@ volatile unsigned long tempo_atual = 0;
 volatile unsigned long tempo_atual_proxima_ignicao[8];
 volatile unsigned long tempo_atual_proxima_injecao[8];
 volatile unsigned long intervalo_tempo_entre_dente = 0;
-volatile unsigned long verifica_falha = 0;
+// (verifica_falha removida: era escrita a cada dente mas nunca lida em lugar
+// nenhum - uma escrita volatile de 32 bits desperdicada na interrupcao)
 unsigned long tempo_check = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
@@ -69,6 +70,13 @@ unsigned long inicio_reducao_enriquecimento_partida_ms = 0;
 unsigned long inicio_espera_injecao_inicial_ms = 0;
 byte ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
+
+// Escrita direta de porta (tabelas de porta/mascara resolvidas no setup) foi
+// testada e revertida: economizava ~4,5us por escrita, mas sao apenas 14
+// escritas por volta - 63us, ou 0,7% da CPU a 7000rpm, abaixo do ruido de
+// medicao. Em troca custava 284 bytes de flash e 48 de RAM, e a flash e o
+// recurso que limita este projeto. Reconsiderar so se a duracao das ISRs do
+// Timer1 se mostrar um problema medido, e ai com implementacao mais barata.
 // Declare as variáveis para controlar o estado do pino de saída
 volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
 volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};

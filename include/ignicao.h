@@ -99,7 +99,6 @@ void iniciar_dwell(int i){
         captura_dwell[i] = true;
         tempo_percorrido[i] = micros();
         digitalWrite(ignicao_pins[pino], HIGH);
-        // setPinHigh(ignicao_pins[i]);
         ign_acionado[i] = true;
     }
 }
@@ -110,7 +109,6 @@ void desligar_dwell(int i){
         captura_dwell[i] = false;
         ign_acionado[i] = false;
         digitalWrite(ignicao_pins[pino], LOW);
-        // setPinLow(ignicao_pins[i]);
   }
 }
 

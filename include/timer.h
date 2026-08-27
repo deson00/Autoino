@@ -323,12 +323,17 @@ static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_a
 		return false;
 	}
 
-	if (tempo_cada_grau == 0) {
-		limpar_ignicoes_pendentes_nao_acionadas();
-		return true;
-	}
-
-	limpar_ignicoes_pendentes_nao_acionadas();
+	// Cancela APENAS este canal. Antes chamava limpar_ignicoes_pendentes_nao_acionadas(),
+	// que apaga o agendamento de TODOS os canais - uma checagem por canal com
+	// efeito global. Como os angulos de centelha ficam a 120 graus (213, 333 e
+	// 93 apos o gap), o canal de 93 graus e sempre o apertado: o dwell de 3ms
+	// ocupa 72 graus a 4000rpm e 126 graus a 7000rpm, entao o inicio do
+	// carregamento dele cai antes do proprio gap. Ele falhava primeiro e
+	// derrubava os outros dois junto, produzindo o padrao medido de tudo-ou-nada
+	// (ou os 3 canais disparam na volta, ou nenhum) e cobertura identica nos
+	// tres. A versao da injecao, reagendar_injecao_se_pulso_ficou_curto, sempre
+	// mexeu so no canal recebido - era assimetria, nao intencao.
+	ignicao_agendada[i] = false;
 	return true;
 }
 
@@ -641,19 +646,28 @@ ISR(TIMER1_OVF_vect) {
 	timer1_overflow_count++;
 }
 
+// As duas ISRs compartilham o mesmo pino de medicao: o que se quer saber e o
+// tempo TOTAL em que o Timer1 bloqueia o resto do sistema, nao qual das duas
+// gastou. Elas nunca se sobrepoem (interrupcao nao aninha no AVR), entao cada
+// pulso corresponde a uma execucao - ou a duas coladas, se uma disparar logo
+// apos a outra, o que conta como bloqueio continuo do mesmo jeito.
 ISR(TIMER1_COMPB_vect) {
+	PULSO_TIMER1_ALTO();
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_ligamentos_vencidos(tick_atual);
 	processar_cortes_vencidos(tick_atual);
 
 	atualizar_compare_b_ligar();
 	atualizar_compare_a_desligar();
+	PULSO_TIMER1_BAIXO();
 }
 
 ISR(TIMER1_COMPA_vect) {
+	PULSO_TIMER1_ALTO();
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_atual);
 
 	atualizar_compare_a_desligar();
 	atualizar_compare_b_ligar();
+	PULSO_TIMER1_BAIXO();
 }
