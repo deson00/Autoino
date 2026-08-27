@@ -3,10 +3,6 @@ volatile uint32_t ultimo_tempo_interrupcao = 0;
 volatile uint32_t intervalo_dente_referencia_us = 0;
 volatile byte amostras_intervalo_validas = 0;
 volatile byte rejeicoes_dente_consecutivas = 0;
-// DEBUG TEMPORARIO: quantas vezes o escape teve de liberar o filtro travado.
-// Em regime saudavel deve ser 0; cada ocorrencia e uma morte permanente que
-// foi evitada.
-volatile uint16_t debug_escapes_filtro = 0;
 // Depois de tantas rejeicoes seguidas do filtro de ruido, considera a
 // referencia corrompida e a libera. Um surto de ruido real nunca dura tantos
 // dentes seguidos; ja a referencia envenenada rejeita 100% deles, pra sempre.
@@ -22,8 +18,19 @@ volatile uint16_t debug_escapes_filtro = 0;
 // os dois lados - e o dobro de tolerancia a atraso na roda 60-2.
 //   N=1 -> 1.5x func / 1.4x partida (identico ao comportamento anterior)
 //   N=2 -> 2.0x / 1.8x        N=3 -> 2.5x / 2.2x
-#define GAP_FATOR_MIN_FUNC_X10(n) (10UL + ((unsigned long)(n) * 5UL))
-#define GAP_FATOR_MIN_PARTIDA_X10(n) (10UL + ((unsigned long)(n) * 4UL))
+// Expresso como numerador sobre denominador 8, para o limiar sair por
+// deslocamento em vez de divisao: limiar = referencia * NUM >> 3. A divisao
+// de 32 bits por 10 que havia aqui custava ~300 ciclos dentro da interrupcao
+// do dente, que e o gargalo do RPM maximo.
+//   funcionamento: (4N+8)/8 = 1 + N/2  -> N=1:1.5x   N=2:2.0x   N=3:2.5x
+//   partida:       (3N+8)/8            -> N=1:1.375x N=2:1.75x  N=3:2.125x
+// Os valores de funcionamento sao exatamente os mesmos de antes; os de
+// partida ficam um pouco mais permissivos (1.4->1.375, 1.8->1.75), o que e o
+// lado seguro: durante a partida a rotacao oscila e errar detectando o gap e
+// pior do que aceita-lo com folga.
+#define GAP_FATOR_MIN_FUNC_NUM(n) (8UL + ((unsigned long)(n) * 4UL))
+#define GAP_FATOR_MIN_PARTIDA_NUM(n) (8UL + ((unsigned long)(n) * 3UL))
+#define GAP_FATOR_MIN_SHIFT 3
 #define GAP_FATOR_MAX_MARGEM_X 4UL    // limite superior para rejeitar outliers
 #define FATOR_RUIDO_DENTE_CURTO_NUM 3UL // Rejeita pulso menor que 1/3 do dente de referencia
 #define FALHAS_SYNC_MAX_CONSECUTIVAS 3U
@@ -51,13 +58,6 @@ static inline uint32_t ler_tick32_timer1();
 // esse tick na interrupcao (barato) e deixar o calculo pesado rodar no loop().
 volatile bool agendamento_pendente = false;
 
-// DEBUG TEMPORARIO: contador de falhas de contagem de dente. O detalhe
-// (qtd/esperado/rpm) foi retirado depois que o decoder ficou 100% limpo
-// (zero falhas em 4693 voltas); resta so o contador, para flagrar regressao.
-volatile uint16_t debug_falhas_dente = 0;
-
-// (contador de voltas perdidas removido: mediu 0 em todo o teste, hipotese
-// descartada - o loop nunca deixou de processar uma volta)
 
 // Referencia de "tamanho de dente normal": media filtrada dos dentes normais,
 // e nao o intervalo do ultimo dente isolado. Todo o criterio de gap
@@ -85,6 +85,42 @@ static inline void atualizar_referencia_dente(unsigned long intervalo_us) {
   intervalo_dente_referencia_us = intervalo_dente_referencia_us -
                                   (intervalo_dente_referencia_us >> 2) +
                                   (intervalo_us >> 2);
+}
+
+// Divisao por grau_cada_dente sem divisao de 32 bits. Ela roda em TODO dente
+// e custava ~300 ciclos dentro da interrupcao, que e o gargalo do RPM maximo.
+// grau_cada_dente vem da configuracao e praticamente nunca muda, entao o
+// reciproco fica em cache e so e recalculado quando o valor muda - no caminho
+// quente sobra uma comparacao de byte e uma multiplicacao 32x16.
+// Precisao (verificada contra a divisao inteira em toda a faixa util, para
+// grau de 1 a 360): reciproco arredondado em Q18 com resultado truncado da
+// resultado IDENTICO a divisao para as rodas usuais - inclusive grau=6 da
+// 60-2. So rodas de 1 a 2 dentes (grau 180/360) chegam a divergir 3us, e
+// mesmo esse valor ainda passa pelo filtro IIR de tempo_cada_grau. Q18 e o
+// maior expoente seguro: o produto maximo e 10000*2^18 = 2,6e9, dentro de
+// 32 bits para qualquer grau, porque a entrada ja e limitada logo abaixo.
+#define GRAU_RECIPROCO_SHIFT 18
+static inline unsigned long dividir_por_grau_cada_dente(unsigned long intervalo_us) {
+  static byte grau_em_cache = 0;
+  static uint32_t reciproco = 0;
+  static uint32_t limite_entrada_us = 0;
+
+  if (grau_em_cache != grau_cada_dente) {
+    grau_em_cache = grau_cada_dente;
+    reciproco = ((1UL << GRAU_RECIPROCO_SHIFT) + (grau_cada_dente >> 1)) / grau_cada_dente;
+    limite_entrada_us = TEMPO_CADA_GRAU_MAX_US * (unsigned long)grau_cada_dente;
+  }
+
+  // Teto de entrada, por dois motivos que coincidem: acima dele o resultado
+  // seria saturado por limita_tempo_cada_grau de qualquer jeito, e a
+  // multiplicacao estouraria 32 bits (em rotacao muito baixa o intervalo entre
+  // dentes fica enorme). A divisao original saturava sozinha; aqui, sem esta
+  // guarda, o estouro daria um valor pequeno e ERRADO que passaria batido.
+  if (intervalo_us >= limite_entrada_us) {
+    return TEMPO_CADA_GRAU_MAX_US;
+  }
+
+  return (intervalo_us * reciproco) >> GRAU_RECIPROCO_SHIFT;
 }
 
 static inline unsigned long limita_tempo_cada_grau(unsigned long valor_us) {
@@ -157,9 +193,6 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       intervalo_dente_referencia_us = 0; // libera o filtro e a deteccao de gap
       amostras_intervalo_validas = 0;    // evita gap falso na reconstrucao
       rejeicoes_dente_consecutivas = 0;
-      if (debug_escapes_filtro < 65535) {
-        debug_escapes_filtro++;
-      }
     }
     return;
   }
@@ -172,14 +205,14 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   tempo_atual = tempo_agora;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
 
-  unsigned long fator_gap_min_x10 = (rpm < rpm_partida)
-                                        ? GAP_FATOR_MIN_PARTIDA_X10(qtd_dente_faltante)
-                                        : GAP_FATOR_MIN_FUNC_X10(qtd_dente_faltante);
+  unsigned long fator_gap_min_num = (rpm < rpm_partida)
+                                        ? GAP_FATOR_MIN_PARTIDA_NUM(qtd_dente_faltante)
+                                        : GAP_FATOR_MIN_FUNC_NUM(qtd_dente_faltante);
   unsigned long gap_minimo_us = 0;
   unsigned long gap_maximo_us = 0xFFFFFFFFUL;
 
   if (intervalo_dente_referencia_us > 0) {
-    gap_minimo_us = (intervalo_dente_referencia_us * fator_gap_min_x10) / 10UL;
+    gap_minimo_us = (intervalo_dente_referencia_us * fator_gap_min_num) >> GAP_FATOR_MIN_SHIFT;
     gap_maximo_us = intervalo_dente_referencia_us * ((unsigned long)(qtd_dente_faltante + GAP_FATOR_MAX_MARGEM_X));
   }
 
@@ -266,9 +299,6 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
                            (qtd_leitura <= dentes_esperados + tolerancia_dentes);
 
     if (!contagem_valida) {
-      if (debug_falhas_dente < 65535) {
-        debug_falhas_dente++;
-      }
       if (falhas_sync_consecutivas < 255) {
         falhas_sync_consecutivas++;
       }
@@ -302,7 +332,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   } else {
     posicao_atual_sensor++;
     if (grau_cada_dente > 0) {
-      unsigned long tempo_instante_grau = intervalo_tempo_entre_dente / grau_cada_dente;
+      unsigned long tempo_instante_grau = dividir_por_grau_cada_dente(intervalo_tempo_entre_dente);
       if (tempo_instante_grau > 0) {
         tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
         // Reagendamento fino por dente: em todo dente, mas so em RPM baixo.
