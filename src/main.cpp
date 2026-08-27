@@ -251,9 +251,20 @@ void setup(){
   inicio_espera_injecao_inicial_ms = millis();
   sei(); // Habilita interrupções globais
 }
+// DEBUG TEMPORARIO: quantas voltas do loop() por janela de 500ms.
+unsigned int contador_loops_debug = 0;
 void loop(){
-   // DEBUG TEMPORARIO: desativado pra teste A/B (ver se ela causa a regressao de teto de RPM)
-   // protege_dwell_maximo();
+   contador_loops_debug++;
+   // TESTE: o calculo pesado de agendamento (todos os canais de ignicao/injecao)
+   // foi tirado da interrupcao do dente de falha - so o tick de referencia e
+   // capturado la. Processa aqui, o quanto antes no loop, pra minimizar o atraso.
+   // A medida D= foi retirada: ja sabemos a forma dela (260us em marcha lenta,
+   // 1540us a 4600rpm) e o foco agora e T=, o custo da interrupcao do dente.
+   if (agendamento_pendente) {
+     agendamento_pendente = false;
+     agendar_eventos_motor_timer1();
+   }
+   protege_dwell_maximo();
    calcularRPM();
     processar_motor_passo_marcha_lenta();
     qtd_loop++;
@@ -415,21 +426,34 @@ void loop(){
   //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
   //  enviar_byte_serial(tempo_decorrido_codigo, 2);
 
-  // ---- DEBUG TEMPORARIO: quantas vezes a protecao de dwell maximo disparou ----
+  // ---- DEBUG TEMPORARIO: estado de sincronismo/corte + canario de pilha ----
   static unsigned long ultimo_debug_protecao_ms = 0;
   if (millis() - ultimo_debug_protecao_ms >= 500) {
     ultimo_debug_protecao_ms = millis();
-    unsigned int m_qtd;
+
+    // s=revolucoes_sincronizada saiu: o decoder ficou 100% estavel no ultimo
+    // teste (zero FALHA_DENTE em 4693 voltas), nao precisa mais ser vigiado.
+    // L = voltas do loop() por segundo. P = voltas do motor em que o loop()
+    // nao chegou a processar o agendamento antes do gap seguinte (perdidas).
+    // A 6000rpm o motor da 100 voltas/s, entao L precisa passar disso.
+    unsigned int l_qtd = contador_loops_debug;
+    contador_loops_debug = 0;
     noInterrupts();
-    m_qtd = contagem_protecao_dwell_maximo;
-    contagem_protecao_dwell_maximo = 0;
+    uint16_t f_qtd = debug_falhas_dente;
+    uint16_t e_qtd = debug_escapes_filtro;
+    debug_falhas_dente = 0;
+    debug_escapes_filtro = 0;
     interrupts();
-    if (m_qtd > 0) {
-      Serial.print(F("PROTECAO_DWELL r="));
-      Serial.print(rpm);
-      Serial.print(F(" qtd="));
-      Serial.println(m_qtd);
-    }
+    // E = quantas vezes o escape destravou o filtro de ruido. Cada unidade e
+    // uma morte permanente evitada. F = falhas de contagem de dente.
+    Serial.print(F("EST r="));
+    Serial.print(rpm);
+    Serial.print(F(" L="));
+    Serial.print(l_qtd * 2U);
+    Serial.print(F(" E="));
+    Serial.print(e_qtd);
+    Serial.print(F(" F="));
+    Serial.println(f_qtd);
   }
   // ---- FIM DEBUG TEMPORARIO ----
 }

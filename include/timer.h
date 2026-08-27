@@ -61,6 +61,9 @@ static inline uint32_t alinhar_tick_para_futuro_com_margem(uint32_t tick_evento,
 	return tick_evento + (saltos * periodo_ticks);
 }
 
+// (contadores de estouro de replan removidos: mediram 0 em todos os testes,
+// descartando a hipotese de canal orfao por estouro de tentativas)
+
 static inline uint32_t ler_tick32_timer1() {
 	uint32_t overflow_snapshot;
 	uint16_t contador_snapshot;
@@ -102,6 +105,10 @@ static inline void limpar_ignicoes_pendentes_nao_acionadas() {
 }
 
 static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks) {
+	// REVERTIDO: a tentativa de usar o tick real como "agora" aqui piorou tudo
+	// (cobertura 100%->50% ate 3000rpm e morte permanente em 4600rpm), e nao
+	// reduziu D - o que derrubou a hipotese de que os eventos vencidos eram a
+	// causa do crescimento de D. O gargalo e o custo das proprias interrupcoes.
 	uint32_t tick_fim_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
 	if (tempo_cada_grau > 0) {
@@ -112,15 +119,11 @@ static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignica
 		}
 
 		if (tick_atual == tick_base_sincronismo) {
-			// Primeiro agendamento da volta (chamado direto no dente de falha):
-			// o angulo alvo nunca esta "no passado" aqui, o unico jeito de nao
-			// caber e o angulo calculado ficar mais perto do inicio do ciclo do
-			// que o dwell precisa de antecedencia. Empurrar o evento inteiro pra
-			// volta seguinte (o que alinhar_tick_para_futuro_com_margem faria)
-			// derruba a centelha desta volta - e como o reagendamento so
-			// acontece de novo no proximo dente de falha, o canal acaba
-			// disparando só a cada 2 voltas (ou nunca, bem no limiar). Em vez
-			// disso, comeca a carregar a bobina agora mesmo, sem esperar.
+			// Primeiro agendamento da volta: o angulo alvo nunca esta "no
+			// passado" aqui, o unico jeito de nao caber e o angulo calculado
+			// ficar mais perto do inicio do ciclo do que o dwell precisa de
+			// antecedencia. Empurrar o evento pra volta seguinte derruba a
+			// centelha desta volta; em vez disso comeca a carregar agora.
 			uint32_t ticks_ate_evento = tick_fim_dwell - tick_atual;
 			if (ticks_ate_evento < dwell_ticks) {
 				tick_fim_dwell = tick_atual + dwell_ticks;
@@ -265,7 +268,7 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 
 	if (tempo_cada_grau > 0) {
 		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
-		
+
 		if (tick_inicio_injecao == tick_atual) {
 			tick_inicio_injecao += TIMER1_MIN_DELTA_TICKS;
 		}
@@ -583,10 +586,22 @@ void agendar_eventos_motor_timer1() {
 
 	atualizar_ajuste_pms_ignicao();
 
-	uint8_t sreg = SREG;
-	cli();
-	tick_base_sincronismo = ler_tick32_timer1();
-	bool algo_desligou = processar_cortes_vencidos(tick_base_sincronismo);
+	// tick_base_sincronismo NAO e lido aqui - vem ja capturado pela interrupcao
+	// no proprio instante do dente de falha (ver decoder.h), pra nao perder
+	// precisao caso essa funcao rode com atraso a partir do loop().
+	//
+	// Protecao restrita ao Timer1 (OCIE1A/OCIE1B), NAO cli() global: quem
+	// disputa esses arrays e os registradores OCR1A/OCR1B e a propria ISR de
+	// comparacao do Timer1 (TIMER1_COMPA/COMPB_vect), nao a interrupcao do
+	// sensor de rotacao (pino externo, INT0/INT1 - registrador EIMSK, totalmente
+	// separado do TIMSK1). Usar cli() global aqui bloqueava tambem o dente
+	// pela duracao inteira desse calculo pesado, e como ele agora roda com
+	// atraso variavel a partir do loop(), em RPM alto (dente a cada ~150-300us)
+	// isso perdia dentes de verdade - corrompendo o sincronismo por tras do
+	// sinal (visivel so como falha silenciosa de agendamento, nao no log bruto).
+	TIMSK1 &= ~((1 << OCIE1A) | (1 << OCIE1B));
+
+	processar_cortes_vencidos(tick_base_sincronismo);
 	limpar_ignicoes_pendentes_nao_acionadas();
 
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
@@ -603,13 +618,23 @@ void agendar_eventos_motor_timer1() {
 		}
 	}
 
+	// Fase 2 (programar o hardware): TESTE - sem cli() global aqui.
+	//
+	// O risco de tirar e reentrancia: atualizar_compare_b_ligar re-arma OCIE1B
+	// no meio dela mesma, entao a partir dali um match real pode disparar
+	// TIMER1_COMPB_vect por cima destas duas funcoes, que nao sao reentrantes.
+	// O pior caso concreto e o ramo !encontrado chamar desabilitar_timer1_compare_*
+	// logo depois da ISR ter armado aquele comparador - canal orfao, bobina
+	// ligada sem desligamento agendado. Isso e coberto pelo
+	// processar_cortes_vencidos da volta seguinte e por protege_dwell_maximo (1.5x).
+	//
+	// Em troca, some mais uma janela de bloqueio do dente em posicao ALEATORIA
+	// da volta - que e o que quebra a contagem do decoder (ver a validacao de
+	// posicao do gap em decoder.h). Um bloqueio maior que meio periodo de dente
+	// vira gap falso; esse limiar cai junto com o periodo, por isso o problema
+	// aparecia a partir de ~2000rpm e piorava dai pra cima.
 	atualizar_compare_b_ligar();
-	// O rearme de canais acima so afeta quem ainda vai ligar (compare B). O
-	// "desligar" (compare A) so muda se processar_cortes_vencidos desligou algo.
-	if (algo_desligou) {
-		atualizar_compare_a_desligar();
-	}
-	SREG = sreg;
+	atualizar_compare_a_desligar();
 }
 
 ISR(TIMER1_OVF_vect) {
