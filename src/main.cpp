@@ -345,11 +345,8 @@ void loop(){
 
           VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
-          // ATENCAO: dreq_fuel e int (ex.: 3600 = 3,6ms) e "/ 1000" e divisao
-          // INTEIRA, entao 3600 vira 3 e nao 3,6 - o firmware injeta ~17% menos
-          // do que a tela configura. Comportamento preservado aqui de proposito,
-          // para nao misturar uma mudanca de combustivel com esta conversao.
-          unsigned long tempo_pulso = tempo_pulso_ve((unsigned long)(dreq_fuel / 1000), VE);
+          // dreq_fuel ja esta em microssegundos - sem conversao, sem truncamento.
+          unsigned long tempo_pulso = tempo_pulso_ve((unsigned long)dreq_fuel, VE);
           unsigned long tempo_pulso_corrigido = tempo_pulso;
           if (usar_injecao_temperatura == 1) {
             tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura((int)temperatura_motor), 100, 100, 100);

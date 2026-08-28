@@ -224,8 +224,11 @@ byte acrescimo_injecao_partida = 50;// valor de acrecimo da ve na partida em por
 byte acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
 int tempo_primeira_injecao = 10;//em ms
 bool status_primeira_injecao = false;
-int REQ_FUEL = 10000; //em ms
-int dreq_fuel = 10000;//em ms
+// Em MICROSSEGUNDOS, nao em ms: o padrao 10000 equivale a 10ms, e a tela
+// envia 3600 para 3,6ms. O comentario anterior dizia "em ms" e foi o que
+// levou o chamador a dividir por 1000, truncando 3600 para 3.
+int REQ_FUEL = 10000; // us
+int dreq_fuel = 10000; // us
 int VE = 0;
 int GammaE = 100;
 unsigned long tempo_injecao = 0;

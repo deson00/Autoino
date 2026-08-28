@@ -1,10 +1,15 @@
-// Largura base do pulso de injecao, em microssegundos.
-// REQ_FUEL * (VE/100) * 1000, em aritmetica inteira.
-unsigned long tempo_pulso_ve(unsigned long REQ_FUEL, int VE) {
-    if (VE < 0) {
+// Largura base do pulso de injecao, em microssegundos: REQ_FUEL * VE / 100.
+// req_fuel_us ja vem em MICROSSEGUNDOS (dreq_fuel = 3600 significa 3,6ms).
+//
+// Antes o chamador fazia "dreq_fuel / 1000" para converter para ms, mas
+// dreq_fuel e int e essa e uma divisao INTEIRA: 3600 virava 3 em vez de 3,6, e
+// o motor recebia ~17% menos combustivel do que a tela configurava. Trabalhar
+// direto em us elimina a conversao e o truncamento de uma vez.
+unsigned long tempo_pulso_ve(unsigned long req_fuel_us, int VE) {
+    if (VE <= 0) {
         return 0;
     }
-    return (REQ_FUEL * (unsigned long)VE * 10UL);
+    return (req_fuel_us * (unsigned long)VE) / 100UL;
 }
 
 // (tempo_enriquecimento_gama removida: era codigo morto - quem e chamado e a
