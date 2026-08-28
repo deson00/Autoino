@@ -38,7 +38,10 @@ byte grau_avanco = 0;
 byte grau_avanco_partida = 1; // avanço definido apenas na partida
 // Com sensor no virabrequinho, o ciclo completo de combustao dura 720 graus
 // (2 voltas) num motor 4 tempos, mas so 360 graus (1 volta) num motor 2 tempos.
-byte grau_entre_cada_cilindro = (local_rodafonica == 2) ? ((tipo_motor == 2 ? 360 : 720) / qtd_cilindro) : (360 / qtd_cilindro);
+// int, nao byte: passa de 255 em motores de 1 ou 2 cilindros (ver
+// calcular_grau_entre_cada_cilindro em util.h). Nao vai para a EEPROM - e
+// sempre recalculado na carga da configuracao.
+int grau_entre_cada_cilindro = (local_rodafonica == 2) ? ((tipo_motor == 2 ? 360 : 720) / qtd_cilindro) : (360 / qtd_cilindro);
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura_media = 0;

@@ -58,15 +58,21 @@ static inline int offset_referencia_roda_fonica_graus() {
 // ciclo completo de combustao: 720 graus (2 voltas) num motor 4 tempos,
 // 360 graus (1 volta) num motor 2 tempos. Com o sensor no comando, o proprio
 // sensor ja gira 1 volta por ciclo, entao sempre 360 graus, nos dois casos.
-static inline byte calcular_grau_entre_cada_cilindro() {
+// Retorna int, nao byte: o resultado passa de 255 em motores de poucos
+// cilindros e era truncado silenciosamente. Num 4 tempos com sensor no
+// virabrequim o ciclo tem 720 graus, entao 2 cilindros dao 360 (virava 104) e
+// 1 cilindro da 720 (virava 208), jogando ignicao e injecao em angulos sem
+// relacao com o motor. O compilador ja avisava disso no "return 360" abaixo.
+// Nao afeta 3 cilindros ou mais, onde o valor cabe em um byte.
+static inline int calcular_grau_entre_cada_cilindro() {
   if (qtd_cilindro < 1) {
     return 360;
   }
   if (local_rodafonica == 2) {
     int graus_ciclo_completo = (tipo_motor == 2) ? 360 : 720;
-    return (byte)(graus_ciclo_completo / qtd_cilindro);
+    return graus_ciclo_completo / qtd_cilindro;
   }
-  return (byte)(360 / qtd_cilindro);
+  return 360 / qtd_cilindro;
 }
 
 float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
