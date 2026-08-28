@@ -1,4 +1,7 @@
-void calcula_enriquecimento_aceleracao(float tempo_pulso) {
+// Aritmetica inteira. tps_dot fica em TPS% por segundo, a mesma unidade de
+// antes: (delta de TPS) / (intervalo em segundos) vira (delta * 1000) /
+// (intervalo em ms), sem ponto flutuante.
+void calcula_enriquecimento_aceleracao(unsigned long tempo_pulso) {
  // Calcula a taxa de mudança do TPS (TPSDot)
           if (micros() - tempo_anterior_aceleracao >= (unsigned long)intervalo_tempo_aceleracao * 1000) {
 
@@ -16,8 +19,11 @@ void calcula_enriquecimento_aceleracao(float tempo_pulso) {
                   return;
               }
 
-              // Converte o intervalo para segundos
-              float tps_dot = (valor_tps - tps_anterior) / (intervalo_tempo_aceleracao / 1000.0);
+              // TPS% por segundo, em inteiro
+              int32_t tps_dot = 0;
+              if (intervalo_tempo_aceleracao > 0) {
+                tps_dot = ((int32_t)(valor_tps - tps_anterior) * 1000L) / (int32_t)intervalo_tempo_aceleracao;
+              }
 
               // Verifica se está ocorrendo uma aceleração ou desaceleração
               if (tps_dot > tps_mudanca_minima) {
@@ -26,10 +32,14 @@ void calcula_enriquecimento_aceleracao(float tempo_pulso) {
                   for (int i = 0; i < 4; i++) {
                       if (tps_dot <= tps_dot_escala[i+1]) {
                           // Calcula a interpolação linear
-                          float tps_dot_range = tps_dot_escala[i+1] - tps_dot_escala[i];
-                          float enrichment_range = enriquecimento_aceleracao[i+1] - enriquecimento_aceleracao[i];
-                          float proportion = (tps_dot - tps_dot_escala[i]) / tps_dot_range;
-                          tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[i] + (proportion * enrichment_range);
+                          int32_t faixa_tps_dot = (int32_t)tps_dot_escala[i+1] - tps_dot_escala[i];
+                          int32_t faixa_enriquecimento = (int32_t)enriquecimento_aceleracao[i+1] - enriquecimento_aceleracao[i];
+                          if (faixa_tps_dot <= 0) {
+                            tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[i+1];
+                          } else {
+                            int32_t numerador = (tps_dot - tps_dot_escala[i]) * faixa_enriquecimento;
+                            tps_dot_porcentagem_aceleracao = (int)(enriquecimento_aceleracao[i] + (numerador / faixa_tps_dot));
+                          }
                           ponto_encontrado = true;
                           break;
                       }
@@ -41,7 +51,7 @@ void calcula_enriquecimento_aceleracao(float tempo_pulso) {
                       // ler uma posicao fora dos limites do vetor.
                       tps_dot_porcentagem_aceleracao = enriquecimento_aceleracao[4];
                   }
-                  incremento_aceleracao = round(tempo_pulso * (tps_dot_porcentagem_aceleracao / 100.0));
+                  incremento_aceleracao = (tempo_pulso * (unsigned long)tps_dot_porcentagem_aceleracao + 50UL) / 100UL;
                   decremento_desaceleracao = 0;
                   tps_dot_porcentagem_desaceleracao = 0;
                   tempo_ultima_mudanca = micros();
@@ -51,7 +61,7 @@ void calcula_enriquecimento_aceleracao(float tempo_pulso) {
                   // desaceleracao (%)") em vez da variavel que nunca era
                   // preenchida - antes o corte na desaceleracao nunca
                   // acontecia de verdade, independente do que a tela dizia.
-                  decremento_desaceleracao = round(tempo_pulso * (enriquecimento_desaceleracao / 100.0));
+                  decremento_desaceleracao = (tempo_pulso * (unsigned long)enriquecimento_desaceleracao + 50UL) / 100UL;
                   tempo_ultima_mudanca = micros();
               }
 

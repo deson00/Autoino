@@ -335,7 +335,7 @@ void loop(){
     }
 
     if (usar_avanco_temperatura == 1 && avanco_baseado_em_tabela && status_corte == 0) {
-      byte correcao_avanco_temp = avanco_por_temperatura((float)temperatura_motor);
+      byte correcao_avanco_temp = avanco_por_temperatura((int)temperatura_motor);
       unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
       if (grau_corrigido > 120U) {
         grau_corrigido = 120U;
@@ -345,16 +345,20 @@ void loop(){
 
           VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
-          float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
-          float tempo_pulso_corrigido = tempo_pulso;
+          // ATENCAO: dreq_fuel e int (ex.: 3600 = 3,6ms) e "/ 1000" e divisao
+          // INTEIRA, entao 3600 vira 3 e nao 3,6 - o firmware injeta ~17% menos
+          // do que a tela configura. Comportamento preservado aqui de proposito,
+          // para nao misturar uma mudanca de combustivel com esta conversao.
+          unsigned long tempo_pulso = tempo_pulso_ve((unsigned long)(dreq_fuel / 1000), VE);
+          unsigned long tempo_pulso_corrigido = tempo_pulso;
           if (usar_injecao_temperatura == 1) {
-            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura(temperatura_motor), 100, 100, 100);
+            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura((int)temperatura_motor), 100, 100, 100);
           }
           calcula_enriquecimento_aceleracao(tempo_pulso);
           tempo_injecao = tempo_pulso_corrigido + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
           if(enriquecimento_partida_atual > 0){
             // Aplica o acrescimo durante a partida e sua reducao gradual.
-            tempo_injecao = tempo_injecao + (tempo_injecao * (enriquecimento_partida_atual / 100.0));
+            tempo_injecao = tempo_injecao + ((tempo_injecao * (unsigned long)enriquecimento_partida_atual + 50UL) / 100UL);
           }
           // tempo_injecao = round(tempo_pulso);
           if (status_primeira_injecao == false && rpm > 0) {

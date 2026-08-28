@@ -15,12 +15,17 @@ int procura_indice(int value, int *arr, int size){
   }
   return index;
 }
+// Interpolacao linear entre dois pontos da tabela de avanco, em aritmetica
+// inteira: multiplica antes de dividir para nao perder resolucao. Trunca em
+// direcao a zero, como a versao anterior em float ja fazia ao converter para
+// int no retorno.
 int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo, int grau_maximo) {
-  // Cálculo da proporção
-  float proporcao = float(rpm_atual - rpm_minimo) / float(rpm_maximo - rpm_minimo);
-  // Mapeamento linear
-  int grau = proporcao * (grau_maximo - grau_minimo) + grau_minimo; 
-  return grau;
+  int32_t faixa_rpm = (int32_t)rpm_maximo - rpm_minimo;
+  if (faixa_rpm == 0) {
+    return grau_maximo;
+  }
+  int32_t numerador = (int32_t)(grau_maximo - grau_minimo) * ((int32_t)rpm_atual - rpm_minimo);
+  return (int)((int32_t)grau_minimo + (numerador / faixa_rpm));
 }
 
 static const int MARGEM_IGNICAO_FIM_CICLO_GRAUS = 1;
@@ -75,20 +80,96 @@ static inline int calcular_grau_entre_cada_cilindro() {
   return 360 / qtd_cilindro;
 }
 
-float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
-  float T1 = ntcTemperature1 + 273.15;   // converte a temperatura em Celsius para Kelvin
-  float T2 = ntcTemperature2 + 273.15;
-  float beta = log(ntcResistance2/ntcResistance1) / ((1/T2) - (1/T1));   // aplica a equação do coeficiente beta
-  return beta;
+// log2(valor) em ponto fixo Q16. Substitui o log() de ponto flutuante da
+// biblioteca padrao, que sozinho arrastava ~1150 bytes de rotinas float para
+// o binario (__divsf3x, __mulsf3x, __addsf3x, __fp_powser e conversoes).
+//
+// Algoritmo classico: separa a parte inteira pela posicao do bit mais
+// significativo, normaliza a mantissa para [1,2) em Q15 e extrai 16 bits de
+// fracao elevando ao quadrado repetidamente. Cada quadrado vale um bit.
+// Sem estouro: a mantissa fica sempre abaixo de 65536, e 65535^2 ainda cabe
+// em 32 bits.
+static uint32_t log2_q16(uint32_t valor) {
+  if (valor == 0) {
+    return 0;
+  }
+
+  uint8_t expoente = 0;
+  for (uint32_t v = valor; v > 1; v >>= 1) {
+    expoente++;
+  }
+
+  uint32_t mantissa;
+  if (expoente > 15) {
+    mantissa = valor >> (expoente - 15);
+  } else {
+    mantissa = valor << (15 - expoente);
+  }
+
+  uint32_t fracao = 0;
+  for (uint8_t i = 0; i < 16; i++) {
+    mantissa = (mantissa * mantissa) >> 15;
+    fracao <<= 1;
+    if (mantissa >= 65536UL) {
+      mantissa >>= 1;
+      fracao |= 1;
+    }
+  }
+
+  return ((uint32_t)expoente << 16) | fracao;
 }
 
-float calculateTemperature(float ntcResistance, float ntcBeta, float ntcReferenceResistance, float ntcReferenceTemperature) {
-  float steinhart;
-  steinhart = log(ntcResistance/ntcReferenceResistance) / ntcBeta;     // parte da equação de Steinhart-Hart
-  steinhart += 1.0 / (ntcReferenceTemperature + 273.15);                    // adiciona a temperatura de referência em Kelvin
-  steinhart = 1.0 / steinhart;                                             // inverte a equação
-  steinhart -= 273.15;                                                     // converte para Celsius
-  return steinhart;
+// Temperatura de um NTC a partir da resistencia, por interpolacao entre os
+// dois pontos de calibracao - sem precisar do coeficiente beta.
+//
+// A equacao de beta diz  1/T = 1/T1 + ln(R/R1)/beta, e o proprio beta vale
+// ln(R2/R1)/(1/T2 - 1/T1). Substituindo um no outro, o beta se cancela:
+//
+//     1/T = 1/T1 + k * (1/T2 - 1/T1),  com  k = ln(R/R1) / ln(R2/R1)
+//
+// Ou seja, e uma interpolacao linear no inverso da temperatura. E como k e uma
+// RAZAO entre logaritmos, a base se cancela tambem - da pra usar log2 inteiro
+// no lugar do logaritmo natural. O resultado e matematicamente o mesmo da
+// formula anterior, so que sem ponto flutuante.
+//
+// Precisao: o erro de log2_q16 se traduz em menos de 0,2 C na faixa util, o
+// que e irrelevante aqui porque a temperatura so alimenta duas tabelas de 5
+// pontos (enriquecimento_temperatura e avanco_por_temperatura).
+//
+// ALTERNATIVA CONSIDERADA, para retomar se um dia precisar de mais precisao ou
+// de suportar sensores nao-NTC: mandar da UI uma tabela ADC -> temperatura ja
+// calculada (como a Speeduino faz), deixando aqui so a interpolacao. Custa um
+// bloco novo de protocolo, espaco na EEPROM e acoplamento entre versoes de UI
+// e firmware, por isso ficou de fora agora.
+static int calcular_temperatura_ntc(uint32_t resistencia,
+                                    int resistencia_ref1, int temperatura_ref1,
+                                    int resistencia_ref2, int temperatura_ref2) {
+  if (resistencia == 0 || resistencia_ref1 <= 0 || resistencia_ref2 <= 0) {
+    return 250;
+  }
+
+  int32_t log_r = (int32_t)log2_q16(resistencia);
+  int32_t log_r1 = (int32_t)log2_q16((uint32_t)resistencia_ref1);
+  int32_t log_r2 = (int32_t)log2_q16((uint32_t)resistencia_ref2);
+
+  int32_t denominador = log_r2 - log_r1;
+  if (denominador == 0) {
+    return 250;
+  }
+
+  // k em Q10. Q10 e o maior expoente seguro aqui: log_r cabe em ~1,1e6 para
+  // resistencias de ate 100k, e 1,1e6 << 10 ainda cabe em int32.
+  int32_t k_q10 = ((log_r - log_r1) << 10) / denominador;
+
+  // Inverso da temperatura em milionesimos de Kelvin.
+  int32_t inv_t1 = 1000000L / ((int32_t)temperatura_ref1 + 273L);
+  int32_t inv_t2 = 1000000L / ((int32_t)temperatura_ref2 + 273L);
+  int32_t inv_t = inv_t1 + ((k_q10 * (inv_t2 - inv_t1)) >> 10);
+  if (inv_t <= 0) {
+    return 250;
+  }
+
+  return (int)((1000000L / inv_t) - 273L);
 }
 
 
