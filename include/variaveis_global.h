@@ -5,9 +5,31 @@ byte local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
 byte qtd_cilindro = 4; // Removido calculo magico. Default absoluto agora é 4 cilindros.
 byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 int grau_pms = 60;
-volatile unsigned long dwell_bobina = 3;
-int dwell_partida = 4;
-int dwell_funcionamento = 3;
+volatile unsigned long dwell_bobina = 3000;
+// Dwell configurado pela tela, em MICROSSEGUNDOS. Ate a versao anterior era
+// gravado em ms inteiro (0..8), o que impedia ajustes quebrados tipo 2,3 ms.
+// Guardar em us segue o mesmo caminho ja usado pelo dead time do injetor
+// (tempo_abertura_injetor), que a tela envia multiplicado por 1000.
+unsigned int dwell_partida_us = 4000;
+unsigned int dwell_funcionamento_us = 3000;
+#define DWELL_US_MAXIMO 8000UL
+// Marcador gravado na EEPROM (endereco 406) sinalizando que 402/404 ja estao
+// no formato de 16 bits em us. Sem ele a EEPROM ainda tem o formato antigo.
+#define DWELL_EEPROM_MARCADOR_US 0xA5
+
+// Fecha o dwell na faixa util. Aceita tambem o formato antigo em ms: nenhum
+// dwell real cabe em 20 us, entao um valor tao baixo so pode ter vindo de uma
+// tela/backup anteriores a mudanca de unidade e e convertido de ms para us.
+static inline unsigned int normalizar_dwell_us(long valor) {
+  if (valor <= 0) {
+    return 0;
+  }
+  unsigned long us = (valor <= 20) ? ((unsigned long)valor * 1000UL) : (unsigned long)valor;
+  if (us > DWELL_US_MAXIMO) {
+    us = DWELL_US_MAXIMO;
+  }
+  return (unsigned int)us;
+}
 
 byte tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;

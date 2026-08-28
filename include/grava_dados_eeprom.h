@@ -46,8 +46,14 @@ void gravar_dados_eeprom_configuracao_faisca() {
 }
 
 void gravar_dados_eeprom_configuracao_dwell() {
-    EEPROM.update(1*2+400, dwell_partida);
-    EEPROM.update(2*2+400, dwell_funcionamento); 
+    // 16 bits em us (LSB primeiro, igual ao ler_16bits_eeprom). Os enderecos
+    // 403 e 405 eram padding do layout antigo de 1 byte por dwell, entao dava
+    // pra crescer pra 16 bits sem remapear nada. 406 marca o formato novo.
+    EEPROM.update(402, dwell_partida_us & 0xFF);
+    EEPROM.update(403, (dwell_partida_us >> 8) & 0xFF);
+    EEPROM.update(404, dwell_funcionamento_us & 0xFF);
+    EEPROM.update(405, (dwell_funcionamento_us >> 8) & 0xFF);
+    EEPROM.update(406, DWELL_EEPROM_MARCADOR_US);
 }
 
 void gravar_dados_eeprom_configuracao_clt() {

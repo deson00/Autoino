@@ -261,8 +261,10 @@ void leitura_entrada_dados_serial()
           tipo_vetor_configuracao_faisca = 0;
       }
       if (tipo_vetor_configuracao_dwell == 1){
-          dwell_partida = values[0];
-          dwell_funcionamento = values[1];
+          // Chega em us (a tela multiplica os ms por 1000). normalizar_dwell_us
+          // ainda aceita o formato antigo em ms, pros backups gravados antes.
+          dwell_partida_us = normalizar_dwell_us(values[0]);
+          dwell_funcionamento_us = normalizar_dwell_us(values[1]);
           resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_dwell();
           tipo_vetor_configuracao_dwell = 0;

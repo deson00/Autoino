@@ -108,9 +108,9 @@ void ler_dados_memoria() {
   // k) Configuração dwell
   enviar_byte_config('k');
   enviar_byte_config(',');
-  sendSerialInt(dwell_partida);
+  sendSerialInt(dwell_partida_us); // em us; a tela divide por 1000 pra mostrar em ms
   enviar_byte_config(',');
-  sendSerialInt(dwell_funcionamento);
+  sendSerialInt(dwell_funcionamento_us);
   enviar_byte_config(',');
   enviar_byte_config(';');
 

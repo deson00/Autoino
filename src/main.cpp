@@ -303,18 +303,18 @@ void loop(){
 
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
-      dwell_bobina = dwell_partida * 1000ul; 
+      dwell_bobina = dwell_partida_us; 
       status_corte = 0;
     }
     else if(avanco_fixo){
       grau_avanco = grau_avanco_fixo;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
       status_corte = 0;
     }
     else if(tipo_protecao != 0 && rpm_anterior >= rpm_pre_corte){
       grau_avanco = avanco_corte;
       status_corte = 1;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
     }
     else if(rpm < 7000 && busca_avanco_linear == true){
       int indice_map_tps_avanco = procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16);
@@ -324,13 +324,13 @@ void loop(){
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
       avanco_baseado_em_tabela = true;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
       status_corte = 0;
     }
     else{
       grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       avanco_baseado_em_tabela = true;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
       status_corte = 0;
     }
 

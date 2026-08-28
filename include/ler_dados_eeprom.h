@@ -383,10 +383,17 @@ void ler_dados_eeprom(){
     grau_avanco_fixo = ler_8bits_eeprom(endereco); endereco += 2;
     tipo_sinal_bobina = ler_8bits_eeprom(endereco);
 
-    // Leitura dos dados de configurações de dwell 
-    endereco = 402;
-    dwell_partida = ler_8bits_eeprom(endereco); endereco += 2;
-    dwell_funcionamento = ler_8bits_eeprom(endereco);
+    // Leitura dos dados de configurações de dwell
+    // Com o marcador em 406, 402/404 sao 16 bits em us. Sem ele a EEPROM ainda
+    // esta no formato antigo (1 byte em ms por dwell) - le como ms e converte,
+    // senao um dwell de 3 ms viraria 3 us e o motor nao daria faisca nenhuma.
+    if (ler_8bits_eeprom(406) == DWELL_EEPROM_MARCADOR_US) {
+        dwell_partida_us = normalizar_dwell_us((long)ler_16bits_eeprom(402));
+        dwell_funcionamento_us = normalizar_dwell_us((long)ler_16bits_eeprom(404));
+    } else {
+        dwell_partida_us = normalizar_dwell_us((long)ler_8bits_eeprom(402) * 1000L);
+        dwell_funcionamento_us = normalizar_dwell_us((long)ler_8bits_eeprom(404) * 1000L);
+    }
 
     // Leitura dos dados de calibração de CLT
     referencia_temperatura_clt1 = ler_8bits_eeprom(410);
