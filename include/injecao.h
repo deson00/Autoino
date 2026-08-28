@@ -27,14 +27,22 @@ static inline byte indice_pino_injecao(int i) {
   return (byte)i;
 }
 
+// Quantos EVENTOS de injecao existem por ciclo do sensor. Isso depende do
+// motor (cilindros, 2 ou 4 tempos) e de onde a roda fonica esta - NAO da
+// quantidade de injetores. Quantos injetores sao acionados em cada evento e
+// outra coisa, decidida em ligar_injetor pelo modo e por numero_injetor.
+//
+// A distincao importa no monoponto: um motor de 6 cilindros com um unico bico
+// ainda precisa pulsar a cada cilindro, e nao uma vez por volta.
+//
+// O modo pareado tinha aqui um "return 1", introduzido como otimizacao de
+// agendamento (76c1509) sob a ideia de que um canal logico bastaria por os
+// injetores acionarem juntos. Estava errado: os eventos nao sao redundantes,
+// sao pulsos de injecao distintos. Com REQ_FUEL calculado para N esguichos por
+// ciclo (ver a calculadora dreqfuel, que divide por numsquirts), disparar 2
+// vezes por ciclo em vez de 6 entrega um TERCO do combustivel previsto - falha
+// de mistura pobre, nao apenas diferenca de comportamento.
 static inline byte quantidade_eventos_injecao_por_ciclo_sensor() {
-  if (modo_injecao == 1) {
-    // Pareado: todos os injetores disparam juntos (ver ligar_injetor/desligar_injetor),
-    // entao um unico canal logico basta - nao ha ganho em recalcular e agendar
-    // um evento por cilindro se todos acionam ao mesmo tempo.
-    return 1;
-  }
-
   if (local_rodafonica == 2 && tipo_motor == 4 && qtd_cilindro > 1) {
     return qtd_cilindro / 2;
   }
