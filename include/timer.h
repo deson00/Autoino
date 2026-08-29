@@ -507,8 +507,10 @@ void resetar_estado_agendamento_motor() {
 
 	SREG = sreg;
 
-	for (int i = 0; i < numero_injetor; i++) {
-		digitalWrite(injecao_pins[i], LOW);
+	if (modo_injecao != 0) {
+		for (int i = 0; i < numero_injetor; i++) {
+			digitalWrite(injecao_pins[i], LOW);
+		}
 	}
 	byte canais_ignicao = quantidade_canais_ignicao_fisicos();
 	for (int i = 0; i < canais_ignicao; i++) {
@@ -664,22 +666,69 @@ void agendar_eventos_motor_timer1() {
 	// disso, onde o reagendamento por dente nao roda, a injecao acertava 100%.
 	// Em rotacao FIXA o problema nao aparece, e foi por isso que passou pelos
 	// testes anteriores.
+	// Acima de RECALCULO_AGENDAMENTO_RPM_MAXIMO a ISR do dente NAO chama
+	// atualizar_agendamentos_ignicao_por_dente(), entao o conflito descrito
+	// acima nao pode acontecer - e ali o cli() global sai caro demais.
+	//
+	// Medido em bancada com pulso de depuracao na propria ISR do dente
+	// (DEBUG_PULSO_ISR_ALVO 1, 60-2 simulada ate 7000rpm): 96,5% dos dentes
+	// com latencia alta caiam a menos de 100us de uma borda de ignicao, e os
+	// dentes PERDIDOS se concentravam nas posicoes 2 a 6 da volta - que e
+	// exatamente quando esta funcao roda, logo depois do gap. Resultado: a
+	// contagem chegava ao gap com 55-57 dentes em vez de 58 (96,5% das voltas),
+	// contagem_valida so aceita 57..59, e 3 invalidas seguidas zeravam
+	// revolucoes_sincronizada - uma volta INTEIRA sem ignicao.
+	//
+	// A assinatura no log era inconfundivel e so faz sentido com esta causa:
+	// a volta sem centelha era a unica com os 58 dentes contados certos
+	// (99,9% delas), porque sem ignicao nao havia ISR roubando dente. O
+	// firmware se auto-sabotava em ciclo - a ignicao estragava a contagem, a
+	// contagem derrubava o sincronismo, e a perda de sincronismo desligava a
+	// ignicao, que era o que consertava a contagem.
+	//
+	// Mascarar so OCIE1A/OCIE1B protege os mesmos arrays contra as ISRs do
+	// Timer1 (que sao quem mais os toca) e deixa a interrupcao do dente entrar
+	// na hora. Evento que vencer durante a mascara nao se perde: o flag fica em
+	// TIFR1 e a ISR dispara assim que o bit volta.
+	//
+	// A margem de histerese evita alternar de regime na fronteira. rpm so e
+	// escrito no loop (calcularRPM), nunca na interrupcao, entao esta decisao
+	// nao muda no meio da secao critica.
+	const bool proteger_contra_isr_do_dente =
+		(rpm < (RECALCULO_AGENDAMENTO_RPM_MAXIMO + 200U));
+
 	uint8_t sreg = SREG;
-	cli();
-	bool algo_desligou = processar_cortes_vencidos(tick_base_sincronismo);
+	uint8_t timsk_salvo;
+	if (proteger_contra_isr_do_dente) {
+		cli();
+		timsk_salvo = TIMSK1;
+	} else {
+		cli();
+		timsk_salvo = TIMSK1;
+		TIMSK1 &= ~((1 << OCIE1A) | (1 << OCIE1B));
+		SREG = sreg; // devolve a interrupcao do dente imediatamente
+	}
+
+	// Origem angular congelada: sem o cli() global um gap novo pode chegar no
+	// meio deste calculo e mudar tick_base_sincronismo, misturando duas
+	// referencias entre os canais. O loop reprocessa a volta nova de qualquer
+	// forma, porque a ISR remarca agendamento_pendente.
+	const uint32_t base = tick_base_sincronismo;
+
+	bool algo_desligou = processar_cortes_vencidos(base);
 	limpar_ignicoes_pendentes_nao_acionadas();
 
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
 		if (!ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
-			agendar_ignicao_canal(i, tick_base_sincronismo);
+			agendar_ignicao_canal(i, base);
 		}
 	}
 
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_injecao; i++) {
 		if (!inj_acionado[i] && !captura_req_fuel[i] && !injecao_agendada[i]) {
-			agendar_injecao_canal(i, tick_base_sincronismo);
+			agendar_injecao_canal(i, base);
 		}
 	}
 
@@ -689,7 +738,31 @@ void agendar_eventos_motor_timer1() {
 	if (algo_desligou) {
 		atualizar_compare_a_desligar();
 	}
-	SREG = sreg;
+
+	if (proteger_contra_isr_do_dente) {
+		SREG = sreg;
+	} else {
+		// NAO restaurar TIMSK1 inteiro aqui. As duas funcoes acima gerenciam o
+		// proprio bit: armam quando ha evento e chamam desabilitar_timer1_*
+		// quando nao ha, ou seja o estado que elas deixam JA e o correto.
+		//
+		// Restaurar o valor salvo apagava o arme que atualizar_compare_b_ligar
+		// acabara de fazer, e o resultado em bancada foi ignicao morta de 1200
+		// a 3500 rpm nos tres canais. Acima disso a ign1 reaparecia
+		// gradualmente (40% em 3500, 100% em 4500) porque com os eventos mais
+		// proximos entra o caminho de prevencao de deadlock, que aciona a
+		// bobina direto sem depender da interrupcao - o que mascarava a causa.
+		//
+		// OCIE1B nao precisa de nada: atualizar_compare_b_ligar sempre roda.
+		// OCIE1A so e reescrito quando atualizar_compare_a_desligar roda, entao
+		// fora desse caso ele volta ao valor de entrada. Deixar OCIE1A mascarado
+		// por engano seria pior que tudo: a bobina nunca desligaria.
+		cli();
+		if (!algo_desligou) {
+			TIMSK1 = (uint8_t)((TIMSK1 & ~(1 << OCIE1A)) | (timsk_salvo & (1 << OCIE1A)));
+		}
+		SREG = sreg;
+	}
 }
 
 

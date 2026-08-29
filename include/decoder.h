@@ -203,9 +203,21 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 //   0 = desligado   1 = ISR do dente   2 = ISRs do Timer1   3 = atraso do agendamento
 #define DEBUG_PULSO_ISR_ALVO 0
 
+// Onde sai o pulso.  0 = pino 7 (ign4)   1 = pino 8 (inj1)
+//
+// O pino 8 so pode ser usado com modo_injecao = 0 (injecao desligada): ali ele
+// nao e mais saida de bico e ja costuma estar ligado no analisador. Com a
+// injecao ativa isso pulsaria o injetor 1 a cada volta.
+#define DEBUG_PULSO_PINO 1
+
 #if DEBUG_PULSO_ISR_ALVO && defined(__AVR_ATmega328P__)
-  #define PULSO_ALTO()  (PORTD |= _BV(PD7))
-  #define PULSO_BAIXO() (PORTD &= ~_BV(PD7))
+  #if DEBUG_PULSO_PINO == 1
+    #define PULSO_ALTO()  (PORTB |= _BV(PB0))
+    #define PULSO_BAIXO() (PORTB &= ~_BV(PB0))
+  #else
+    #define PULSO_ALTO()  (PORTD |= _BV(PD7))
+    #define PULSO_BAIXO() (PORTD &= ~_BV(PD7))
+  #endif
 #else
   #define PULSO_ALTO()
   #define PULSO_BAIXO()
