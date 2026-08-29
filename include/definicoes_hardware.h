@@ -1,14 +1,31 @@
-// Se nenhum perfil for definido manualmente, escolhe um padrao por MCU para evitar
-// pinagem incorreta ao trocar de placa no PlatformIO.
-// Para forcar manualmente:
-#define Autoino
-// #define Speeduino
+// Perfil de hardware (mapa de pinos). Quem escolhe e o build_flags do
+// platformio.ini, um -D por ambiente: os ambientes de Nano/Uno passam
+// -D Autoino e o de Mega passa -D Speeduino.
+//
+// Antes havia um "#define Autoino" fixo aqui e trocar de placa exigia editar
+// este arquivo na mao, comentando uma linha e descomentando outra. O trabalho
+// era o de menos: o risco real era commitar o arquivo trocado sem perceber e
+// o build seguinte sair com a pinagem errada - bobina e bico em pino que nao
+// e o deles.
+//
+// O fallback por MCU abaixo continua valendo para quem compila fora do
+// PlatformIO (Arduino IDE, por exemplo), onde nao ha build_flags.
 #if !defined(Autoino) && !defined(Speeduino)
 	#if defined(__AVR_ATmega2560__)
 		#define Speeduino
 	#else
 		#define Autoino
 	#endif
+#endif
+
+#if defined(Autoino) && defined(Speeduino)
+	#error "Autoino e Speeduino definidos ao mesmo tempo - escolha um perfil de hardware"
+#endif
+
+#ifdef Autoino
+	#pragma message("perfil de hardware: Autoino")
+#else
+	#pragma message("perfil de hardware: Speeduino")
 #endif
 
 #ifdef Autoino
