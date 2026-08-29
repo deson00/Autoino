@@ -170,7 +170,7 @@ m,referencia,tipo_motor,modo,emparelhamento,deslocamento,cilindros,injetores,esg
 |---:|---|---|
 | 0 | `referencia` | `1` MAP, `2` TPS |
 | 1 | `tipo_motor` | `4` quatro tempos, `2` dois tempos |
-| 2 | `modo` | `1` pareado, `2` semissequencial, `3` sequencial |
+| 2 | `modo` | `0` injeção desligada (carburador / só ignição), `1` pareado, `2` semissequencial, `3` sequencial |
 | 3 | `emparelhamento` | Código do emparelhamento |
 | 4 | `deslocamento` | Polegadas cúbicas |
 | 5 | `cilindros` | Quantidade de cilindros |

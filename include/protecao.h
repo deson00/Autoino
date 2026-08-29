@@ -31,6 +31,7 @@ void protege_limite_ignicao(){
 }
 
 void protege_limite_injecao(){
+    if (modo_injecao == 0) return; // injecao desligada: pinos nao sao saida de bico
     digitalWrite(injecao_pins[0],0);
     digitalWrite(injecao_pins[1],0);
     digitalWrite(injecao_pins[2],0);

@@ -49,6 +49,17 @@ static inline byte indice_pino_injecao(int i) {
 // vezes por ciclo em vez de 6 entrega um TERCO do combustivel previsto - falha
 // de mistura pobre, nao apenas diferenca de comportamento.
 static inline byte quantidade_eventos_injecao_por_ciclo_sensor() {
+  if (modo_injecao == 0) {
+    // Injecao DESLIGADA: motor a carburador, ou conversao so de ignicao.
+    // Zero eventos significa que nada e agendado, nada e varrido nas ISRs do
+    // Timer1 e nenhum bico e acionado - todos os lacos deste arquivo e de
+    // timer.h sao "for (i = 0; i < eventos_injecao; i++)".
+    //
+    // Nao e so economia de trabalho inutil: numa 60-2 com 6 cilindros em
+    // pareado a injecao gera 3 eventos por volta, ou seja 6 dos 8 eventos de
+    // Timer1 disputando o agendador com a ignicao em RPM alto.
+    return 0;
+  }
   if (sensor_sem_falha()) {
     return 1; // um evento por pulso, pelo mesmo motivo da ignicao
   }

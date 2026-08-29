@@ -362,7 +362,9 @@ void loop(){
             // Nao dispara a escorva simultanea se o motor girar antes do atraso terminar.
             status_primeira_injecao = true;
           }
-          if(status_primeira_injecao == false && !limpeza_afogamento_ativa &&
+          // A escorva aciona os bicos direto, fora do agendamento - precisa da
+          // mesma guarda de injecao desligada.
+          if(modo_injecao != 0 && status_primeira_injecao == false && !limpeza_afogamento_ativa &&
              (millis() - inicio_espera_injecao_inicial_ms) >= atraso_injecao_inicial){
             for (int j = 0; j < numero_injetor; j++){
               digitalWrite(injecao_pins[j], 1);

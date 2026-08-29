@@ -218,7 +218,8 @@ int numero_esguicho = 4;
 int tamanho_injetor = 32;// lbs/hora por injetor
 byte tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
 int tipo_combustivel = 14700; // 14700 - Gasolina
-byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
+// 0 - desligada (carburador / so ignicao), 1 - pareado, 2 semi-sequencial, 3 - sequencial
+byte modo_injecao = 1;
 byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
 byte limite_injetor = 100; // 90% valor em porcentagem
 int tempo_abertura_injetor = 0;// Dead time, tempo que o injetor leva para abrir
