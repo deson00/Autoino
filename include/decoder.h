@@ -1,6 +1,23 @@
 #define MIN_INTERVALO_DENTE_US 50        // Filtro anti-bounce mínimo
 volatile uint32_t ultimo_tempo_interrupcao = 0;
-volatile uint32_t intervalo_dente_referencia_us = 0;
+volatile uint32_t intervalo_dente_referencia_us = 0; // media filtrada - filtro de ruido
+// Periodo do ultimo dente NORMAL, sem filtro. E a referencia da deteccao do
+// gap, e a razao de existir separada da media e a aceleracao:
+//
+// O gap e o dente anterior a ele sao adjacentes no tempo, entao a rotacao e
+// praticamente a mesma nos dois - a razao gap/dente fica em (N+1) qualquer que
+// seja a aceleracao. Ja a media filtrada atrasa alguns dentes; acelerando, ela
+// fica MAIOR que o periodo atual e a razao medida CAI, podendo furar o limiar.
+//
+// O efeito escala com o tamanho angular do dente: na 12-1 cada dente cobre 30
+// graus de virabrequim contra 6 graus na 60-2, entao a variacao de periodo por
+// dente e 5x maior e a media atrasa 5x mais em termos relativos. Medido na
+// 60-2 a razao ficou em 2,94 mesmo acelerando (limiar 2,0, folga de 46%), mas
+// extrapolando o mesmo fator para a 12-1 a folga cairia para ~15%.
+//
+// A media filtrada continua sendo usada no filtro de ruido, onde o que importa
+// e o oposto: ignorar um dente anomalo isolado.
+volatile uint32_t periodo_dente_anterior_us = 0;
 volatile byte amostras_intervalo_validas = 0;
 volatile byte rejeicoes_dente_consecutivas = 0;
 // Depois de tantas rejeicoes seguidas do filtro de ruido, considera a
@@ -68,6 +85,7 @@ volatile bool agendamento_pendente = false;
 // IIR 3/4 antigo + 1/4 novo: segue a aceleracao em poucos dentes, mas um
 // dente anomalo isolado mal desloca a referencia.
 static inline void atualizar_referencia_dente(unsigned long intervalo_us) {
+  periodo_dente_anterior_us = intervalo_us; // referencia do gap: sem filtro
   if (intervalo_dente_referencia_us == 0) {
     intervalo_dente_referencia_us = intervalo_us;
     return;
@@ -238,6 +256,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     tempo_dente_anterior[0] = 0;
     tempo_dente_anterior[1] = 0;
     intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
     amostras_intervalo_validas = 0;
     leitura = 0;
     qtd_leitura = 0;
@@ -264,7 +283,8 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       rejeicoes_dente_consecutivas++;
     }
     if (rejeicoes_dente_consecutivas >= REJEICOES_DENTE_MAX) {
-      intervalo_dente_referencia_us = 0; // libera o filtro e a deteccao de gap
+      intervalo_dente_referencia_us = 0; // libera o filtro
+      periodo_dente_anterior_us = 0;
       amostras_intervalo_validas = 0;    // evita gap falso na reconstrucao
       rejeicoes_dente_consecutivas = 0;
     }
@@ -299,7 +319,19 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   // (x - x/4), que e barato o bastante para rodar em todo dente:
   //   60-2 -> 44 de 58     36-1 -> 27 de 35     12-1 -> 9 de 11
   // Para 80% basta trocar por (x - (x>>3) - (x>>4)), tambem so com shifts.
-  uint16_t posicao_minima_gap = dentes_esperados - (dentes_esperados >> 2);
+  // 75% da volta, mas com piso absoluto de 3 dentes de tolerancia.
+  //
+  // So percentual desequilibra entre rodas: 75% permite perder 14 dentes na
+  // 60-2 (44 de 58) mas apenas 2 na 12-1 (9 de 11). Numa roda de poucos dentes
+  // a margem fica apertada demais, e rejeitar o gap REAL e pior que aceitar um
+  // falso - o gap rejeitado faz a contagem seguir e so se recuperar pelo
+  // re-arme, enquanto o falso e pego pela validacao de contagem logo em
+  // seguida. O piso vale sempre que for mais permissivo que o percentual.
+  uint16_t margem_pct = dentes_esperados >> 2;
+  uint16_t margem_gap = (margem_pct > 3U) ? margem_pct : 3U;
+  uint16_t posicao_minima_gap = (dentes_esperados > margem_gap)
+                                    ? (uint16_t)(dentes_esperados - margem_gap)
+                                    : 1U;
   bool posicao_gap_plausivel = (revolucoes_sincronizada < 1) ||
                                (qtd_leitura >= posicao_minima_gap);
 
@@ -313,18 +345,18 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   bool gap_detectado = false;
   if (posicao_gap_plausivel &&
       amostras_intervalo_validas >= 3 &&
-      intervalo_dente_referencia_us > 0) {
+      periodo_dente_anterior_us > 0) {
     unsigned long fator_gap_min_num = (rpm < rpm_partida)
                                           ? GAP_FATOR_MIN_PARTIDA_NUM(qtd_dente_faltante)
                                           : GAP_FATOR_MIN_FUNC_NUM(qtd_dente_faltante);
     unsigned long gap_minimo_us =
-        (intervalo_dente_referencia_us * fator_gap_min_num) >> GAP_FATOR_MIN_SHIFT;
+        (periodo_dente_anterior_us * fator_gap_min_num) >> GAP_FATOR_MIN_SHIFT;
 
     if (intervalo_tempo_entre_dente > gap_minimo_us) {
       // gap_maximo so importa se o limiar minimo ja passou - segundo produto
       // de 32 bits evitado no caso comum.
       unsigned long gap_maximo_us =
-          intervalo_dente_referencia_us * ((unsigned long)(qtd_dente_faltante + GAP_FATOR_MAX_MARGEM_X));
+          periodo_dente_anterior_us * ((unsigned long)(qtd_dente_faltante + GAP_FATOR_MAX_MARGEM_X));
       gap_detectado = (intervalo_tempo_entre_dente < gap_maximo_us);
     }
   }
@@ -341,6 +373,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     revolucoes_sincronizada = 0;
     qtd_leitura = 0;
     intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
     amostras_intervalo_validas = 0;
   }
 
@@ -478,6 +511,7 @@ void decoder_sem_falha() {
     ultimo_pulso_rpm_us = tempo_agora;
     tempo_anterior = tempo_agora;
     intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
     rejeicoes_dente_consecutivas = 0;
     revolucoes_sincronizada = 0;
     inicia_tempo_sensor_roda_fonica = 0;
@@ -497,6 +531,7 @@ void decoder_sem_falha() {
     }
     if (rejeicoes_dente_consecutivas >= REJEICOES_DENTE_MAX) {
       intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
       rejeicoes_dente_consecutivas = 0;
     }
     return;

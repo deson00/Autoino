@@ -61,13 +61,8 @@ static inline uint32_t alinhar_tick_para_futuro_com_margem(uint32_t tick_evento,
 	return tick_evento + (saltos * periodo_ticks);
 }
 
-// Diagnostico ja concluido e removido. O que ele mediu, para nao se repetir:
-// a cascata de replan e o caso "canal ja armado" deram ZERO em todo o log; o
-// unico caminho de perda ativo e o cancelamento por dwell curto, que e zero
-// ate 4200rpm e sobe ate ~25 por janela de 500ms a 7000rpm. Baixar o limiar
-// de 80% para 50% nao reduziu esses cancelamentos, e remover o mascaramento
-// de OCIE1A/OCIE1B durante o calculo tambem nao - ou seja, o atraso que os
-// causa nao vem de nenhuma dessas duas origens.
+// (contadores de estouro de replan removidos: mediram 0 em todos os testes,
+// descartando a hipotese de canal orfao por estouro de tentativas)
 
 static inline uint32_t ler_tick32_timer1() {
 	uint32_t overflow_snapshot;
@@ -103,66 +98,79 @@ static inline bool processar_cortes_vencidos(uint32_t tick_atual);
 // Tempo entre REFERENCIAS angulares consecutivas, em ticks.
 //
 // Na roda fonica com dente de falha a referencia e o gap, que aparece uma vez
-// por volta do sensor - dai 360 graus. Mas no modo sem falha cada pulso e uma
-// referencia, e elas se repetem a cada grau_cada_dente graus (60 num
-// distribuidor de 6 cilindros, 360 num volante de um dente).
-//
-// Usar 360 fixo neste modo empurrava o evento uma volta INTEIRA do sensor
-// quando o dwell nao cabia, em vez de um pulso. Medido em bancada: o canal
-// ficava armado por 6 pulsos e disparava so no sexto - exatamente 1/6 da taxa
-// esperada, com o angulo correto.
+// por volta do sensor - dai 360 graus. No modo sem dente de falha cada pulso e
+// uma referencia, e elas se repetem a cada grau_cada_dente graus (60 num
+// distribuidor de 6 cilindros, 360 num volante de um dente). Usar 360 fixo la
+// empurrava o evento uma volta inteira do sensor em vez de um pulso.
 static inline uint32_t ticks_entre_referencias() {
 	unsigned long graus = sensor_sem_falha() ? (unsigned long)grau_cada_dente : 360UL;
 	return us_para_ticks_timer1(graus * tempo_cada_grau);
 }
 
-// Limpa apenas agendamentos VENCIDOS (a hora de ligar ja passou e o canal nao
-// ligou). Antes limpava todo agendamento pendente a cada gap, o que impedia
-// que um dwell atravessasse o gap: um canal cujo carregamento precisa comecar
-// no fim de uma volta para a centelha sair no comeco da seguinte era apagado
-// justo no gap entre as duas, e nunca disparava. Canais que ja dispararam sao
-// desarmados por processar_cortes_vencidos, entao continuam sendo reagendados
-// normalmente todo ciclo - o que sobrevive aqui e so o agendamento ainda
-// valido, apontando para o futuro.
-static inline void limpar_ignicoes_pendentes_nao_acionadas(uint32_t tick_agora) {
+static inline void limpar_ignicoes_pendentes_nao_acionadas() {
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
-		if (ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i] &&
-		    tick_ja_passou(tick_agora, ignicao_tick_ligar[i])) {
+		if (ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
 			ignicao_agendada[i] = false;
 		}
 	}
 }
 
 static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks) {
-	// tick_base_sincronismo e a ORIGEM ANGULAR (instante do gap); o tick lido
-	// aqui e o "agora" real, porque esta funcao roda no loop() com atraso
-	// variavel depois do gap.
-	//
-	// Uma tentativa anterior de usar o tempo real aqui piorou tudo (cobertura
-	// caiu para 50% e o firmware morria em 4600rpm). Aquilo era efeito do bug
-	// de cancelamento cruzado, ja corrigido: usar o tempo real fazia mais
-	// canais caírem no caminho de "dwell curto", e naquela epoca cada canal
-	// que caia apagava o agendamento de TODOS. Com o cancelamento por canal, a
-	// premissa volta a valer.
+	// tick_base_sincronismo e a ORIGEM ANGULAR da volta (instante do gap).
+	// Uma tentativa anterior de trocar essa ancora pelo tempo real na funcao
+	// INTEIRA foi desastrosa (cobertura 100%->50% e morte em 4600rpm) - e
+	// tambem carregava o bug de cancelamento cruzado, ja corrigido. Aqui o
+	// tempo real entra em um unico ponto, apenas na decisao de "cabe o dwell?".
 	uint32_t tick_fim_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
 	if (tempo_cada_grau > 0) {
 		uint32_t periodo_ticks_360 = ticks_entre_referencias();
-		uint32_t agora = ler_tick32_timer1();
 
-		// Se o dwell nao couber inteiro antes do alvo desta volta, joga a
-		// centelha para a volta SEGUINTE: o carregamento passa a comecar perto
-		// do fim desta volta e atravessa o gap, em vez de ser cancelado.
-		//
-		// E o caso do canal cujo angulo de centelha fica logo apos o gap (com 6
-		// cilindros em centelha perdida, 93 graus): a folga dele e
-		// volta*93/360 menos o dwell, que a 5000rpm ja e de 0,1ms e acima de
-		// ~5200rpm fica NEGATIVA - o dwell simplesmente nao cabe ali. Comparacao
-		// com sinal porque o alvo pode estar no passado.
-		int32_t ticks_ate_inicio = (int32_t)(tick_fim_dwell - dwell_ticks - agora);
-		if (ticks_ate_inicio < (int32_t)TIMER1_MIN_DELTA_TICKS) {
-			tick_fim_dwell += periodo_ticks_360;
+		if (tick_fim_dwell == tick_atual) {
+			tick_fim_dwell += TIMER1_MIN_DELTA_TICKS;
+		}
+
+		if (tick_atual == tick_base_sincronismo) {
+			// Primeiro agendamento da volta. Se o angulo alvo estiver perto
+			// demais da referencia para caber o dwell inteiro, comeca a
+			// carregar AGORA - centelha retardada e melhor que centelha
+			// nenhuma, e empurrar pra volta seguinte derrubaria a desta volta.
+			//
+			// O "agora" e lido do timer, nao herdado de tick_atual: aqui
+			// tick_atual e o instante do GAP, e esta funcao roda no loop() com
+			// atraso variavel (medido em ~1,1ms de mediana). Usar o instante do
+			// gap como se fosse o presente fazia o evento nascer VENCIDO, e
+			// entao reagendar_ignicao_se_dwell_ficou_curto o cancelava - por
+			// isso o canal mais proximo da referencia (ign1 na 60-2, que fica a
+			// poucos graus do gap) perdia centelhas ao subir de rotacao.
+			//
+			// So esta comparacao usa o tempo real. O restante da funcao continua
+			// ancorado em tick_base_sincronismo, que e a origem ANGULAR - e o
+			// agendamento segue sendo limpo e recalculado a cada gap, sem
+			// agendamento nenhum rodando livre entre voltas.
+			uint32_t agora = ler_tick32_timer1();
+			if ((int32_t)(tick_fim_dwell - agora) < (int32_t)dwell_ticks) {
+				tick_fim_dwell = agora + dwell_ticks;
+			}
+		} else {
+			// Caminho do REARME (chamado apos o evento disparar, com o tempo
+			// real). Aqui o proximo evento deste canal esta, por definicao,
+			// exatamente um periodo a frente - qualquer alvo a menos disso e
+			// duplicata na mesma volta.
+			//
+			// A margem antiga era dwell + delta, uns poucos graus. Insuficiente:
+			// o rearme recalcula o angulo com o tempo_cada_grau ATUAL, e em
+			// DESACELERACAO esse valor cresce, jogando o alvo recalculado mais
+			// adiante na mesma volta - ainda no futuro, logo aceito, e o canal
+			// dispara de novo.
+			//
+			// Medido em bancada com roda 12-1 no comando, rotacao variando:
+			// duplicatas em 16-43% das voltas em desaceleracao contra 0-2% em
+			// aceleracao. Meio periodo e folgado o bastante para rejeitar
+			// qualquer alvo da volta corrente e permissivo o bastante para
+			// aceitar o legitimo, que fica a um periodo inteiro.
+			tick_fim_dwell = alinhar_tick_para_futuro_com_margem(tick_fim_dwell, tick_atual, periodo_ticks_360, periodo_ticks_360 >> 1);
 		}
 	} else if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
 		tick_fim_dwell = tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS;
@@ -306,7 +314,16 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 			tick_inicio_injecao += TIMER1_MIN_DELTA_TICKS;
 		}
 
-		tick_inicio_injecao = alinhar_tick_para_futuro(tick_inicio_injecao, tick_atual, periodo_ticks_360);
+		// Mesma protecao da ignicao contra duplicata em desaceleracao. Antes
+		// usava alinhar_tick_para_futuro, SEM margem nenhuma: bastava o alvo
+		// recalculado ficar um tick a frente para ser aceito na mesma volta.
+		// Com 6 eventos por volta no modo comando, todos duplicavam juntos -
+		// medimos 12 injecoes em voltas que deviam ter 6.
+		if (tick_atual == tick_base_sincronismo) {
+			tick_inicio_injecao = alinhar_tick_para_futuro(tick_inicio_injecao, tick_atual, periodo_ticks_360);
+		} else {
+			tick_inicio_injecao = alinhar_tick_para_futuro_com_margem(tick_inicio_injecao, tick_atual, periodo_ticks_360, periodo_ticks_360 >> 1);
+		}
 	} else if (tick_ja_passou(tick_atual, tick_inicio_injecao)) {
 		tick_inicio_injecao = tick_atual + TIMER1_MIN_DELTA_TICKS;
 	}
@@ -347,21 +364,6 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_atual) {
 	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
 	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
-	// 50%, nao 80%. Os contadores de diagnostico mostraram que este cancelamento
-	// e o UNICO caminho de perda ativo (cascata e canal-ja-armado deram zero em
-	// todo o log): CD=0 ate 4200rpm e sobe ate 25 por janela de 500ms a 7000rpm.
-	// E cada cancelamento custa DUAS voltas - perde a volta atual, e na seguinte
-	// a logica de cruzamento empurra de novo - o que explica as rajadas de
-	// exatamente 2 voltas sem centelha medidas no analisador. A conta fecha:
-	// 25 cancelamentos x 2 = 50 de 173 eventos esperados = 71% previsto, contra
-	// 69% medidos.
-	//
-	// Cancelar e a pior saida: a carga da bobina e exponencial, entao metade do
-	// dwell ainda entrega boa parte da energia, enquanto cancelar entrega zero.
-	// Testado em 50% e revertido para 80%: o numero de cancelamentos ficou
-	// identico, ou seja os casos que disparam aqui tem MUITO menos que metade
-	// do dwell restante - o limiar nunca e o criterio decisivo. Sem ganho
-	// medido, fica o valor com que a cobertura foi caracterizada.
 	uint32_t dwell_minimo_util_ticks = (dwell_ticks * 80UL) / 100UL;
 	if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
 		dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
@@ -370,7 +372,6 @@ static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_a
 	if (tempo_restante_ticks >= dwell_minimo_util_ticks) {
 		return false;
 	}
-
 
 	// Cancela APENAS este canal. Antes chamava limpar_ignicoes_pendentes_nao_acionadas(),
 	// que apaga o agendamento de TODOS os canais - uma checagem por canal com
@@ -432,19 +433,19 @@ static inline bool processar_cortes_vencidos(uint32_t tick_atual) {
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
 			algo_desligou = true;
-			// Rearma o canal assim que a centelha sai, em vez de esperar o
-			// proximo gap. Antes so a roda no comando (local_rodafonica == 1)
-			// fazia isso; no virabrequim o canal ficava sem agendamento ate o
-			// gap seguinte. Com o dwell podendo atravessar a volta, isso criava
-			// um teto de 50%: o agendamento ocupava duas voltas (agenda na
-			// volta N, dispara na N+1) e o canal so podia ser reagendado na
-			// N+2, porque cada canal tem um unico slot. Medido em ~48% no canal
-			// de 93 graus. Rearmando aqui, o slot volta a ficar livre no
-			// instante do disparo e o alvo da volta seguinte e calculado
-			// corretamente pela logica de cruzar a volta.
-			if (status_corte == 0) {
-				agendar_ignicao_canal(i, tick_atual);
-			}
+			// SEM REARME. O canal que acabou de disparar so volta a disparar uma
+			// volta depois, e o gap sempre chega antes disso e reagenda tudo -
+			// entao o rearme nao adianta nada e so cria risco.
+			//
+			// O risco medido: o rearme deslocava o alvo por um periodo estimado
+			// com o tempo_cada_grau atual. Desacelerando esse valor esta
+			// atrasado, o periodo sai CURTO, e o alvo deslocado dispara ANTES do
+			// gap - escapando da limpeza que o cancelaria. So atinge canais de
+			// angulo pequeno: no ign1 (centelha em 22 graus) a extra saia em 353
+			// graus, colada no gap seguinte; o ign2 (207 graus) nunca duplicou.
+			//
+			// O modo virabrequim nunca teve rearme e nunca teve esse defeito.
+			// Agora os dois modos agendam apenas na referencia.
 		}
 	}
 
@@ -454,9 +455,7 @@ static inline bool processar_cortes_vencidos(uint32_t tick_atual) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
 			algo_desligou = true;
-			if (local_rodafonica == 1) {
-				agendar_injecao_canal(i, tick_atual);
-			}
+			// Sem rearme, mesmo motivo da ignicao (ver acima).
 		}
 	}
 	return algo_desligou;
@@ -650,30 +649,25 @@ void agendar_eventos_motor_timer1() {
 
 	atualizar_ajuste_pms_ignicao();
 
-	// tick_base_sincronismo NAO e lido aqui - vem ja capturado pela interrupcao
-	// no proprio instante do dente de falha (ver decoder.h), pra nao perder
-	// precisao caso essa funcao rode com atraso a partir do loop().
+	// cli() GLOBAL, nao apenas mascarar OCIE1A/OCIE1B.
 	//
-	// Protecao restrita ao Timer1 (OCIE1A/OCIE1B), NAO cli() global: quem
-	// disputa esses arrays e os registradores OCR1A/OCR1B e a propria ISR de
-	// comparacao do Timer1 (TIMER1_COMPA/COMPB_vect), nao a interrupcao do
-	// sensor de rotacao (pino externo, INT0/INT1 - registrador EIMSK, totalmente
-	// separado do TIMSK1). Usar cli() global aqui bloqueava tambem o dente
-	// pela duracao inteira desse calculo pesado, e como ele agora roda com
-	// atraso variavel a partir do loop(), em RPM alto (dente a cada ~150-300us)
-	// isso perdia dentes de verdade - corrompendo o sincronismo por tras do
-	// sinal (visivel so como falha silenciosa de agendamento, nao no log bruto).
-	// Mascara so as comparacoes do Timer1 (nao cli() global): a interrupcao do
-	// dente e externa (EIMSK) e nao disputa estes dados.
+	// Cheguei a trocar por TIMSK1 &= ~(OCIE1A|OCIE1B) achando que a interrupcao
+	// do dente, sendo externa (EIMSK), nao disputaria estes vetores. Estava
+	// ERRADO: abaixo de RECALCULO_AGENDAMENTO_RPM_MAXIMO a ISR do dente chama
+	// atualizar_agendamentos_ignicao_por_dente(), que mexe nos MESMOS arrays -
+	// processar_cortes_vencidos, os recalcular_* e atualizar_compare_b_ligar.
+	// Sem o cli() ela entra no meio deste calculo e o agendamento sai duplicado.
 	//
-	// TESTADO E REVERTIDO: remover este mascaramento nao reduziu em nada os
-	// cancelamentos por dwell curto (CD ficou igual, 12-30 por janela acima de
-	// 5000rpm), derrubando a hipotese de que a janela cega durante o calculo
-	// fosse a causa do atraso. Como nao trouxe ganho, fica a protecao.
-	TIMSK1 &= ~((1 << OCIE1A) | (1 << OCIE1B));
-
-	processar_cortes_vencidos(tick_base_sincronismo);
-	limpar_ignicoes_pendentes_nao_acionadas(ler_tick32_timer1());
+	// Medido em motor real (12-1 no comando) e reproduzido em bancada variando
+	// a rotacao: abaixo de ~1000rpm quase metade das voltas saia com centelha
+	// ou injecao a mais - ate 12 injecoes numa volta que deveria ter 6. Acima
+	// disso, onde o reagendamento por dente nao roda, a injecao acertava 100%.
+	// Em rotacao FIXA o problema nao aparece, e foi por isso que passou pelos
+	// testes anteriores.
+	uint8_t sreg = SREG;
+	cli();
+	bool algo_desligou = processar_cortes_vencidos(tick_base_sincronismo);
+	limpar_ignicoes_pendentes_nao_acionadas();
 
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
@@ -689,24 +683,15 @@ void agendar_eventos_motor_timer1() {
 		}
 	}
 
-	// Fase 2 (programar o hardware): TESTE - sem cli() global aqui.
-	//
-	// O risco de tirar e reentrancia: atualizar_compare_b_ligar re-arma OCIE1B
-	// no meio dela mesma, entao a partir dali um match real pode disparar
-	// TIMER1_COMPB_vect por cima destas duas funcoes, que nao sao reentrantes.
-	// O pior caso concreto e o ramo !encontrado chamar desabilitar_timer1_compare_*
-	// logo depois da ISR ter armado aquele comparador - canal orfao, bobina
-	// ligada sem desligamento agendado. Isso e coberto pelo
-	// processar_cortes_vencidos da volta seguinte e por protege_dwell_maximo (1.5x).
-	//
-	// Em troca, some mais uma janela de bloqueio do dente em posicao ALEATORIA
-	// da volta - que e o que quebra a contagem do decoder (ver a validacao de
-	// posicao do gap em decoder.h). Um bloqueio maior que meio periodo de dente
-	// vira gap falso; esse limiar cai junto com o periodo, por isso o problema
-	// aparecia a partir de ~2000rpm e piorava dai pra cima.
 	atualizar_compare_b_ligar();
-	atualizar_compare_a_desligar();
+	// O rearme acima so afeta quem ainda vai ligar (compare B). O "desligar"
+	// (compare A) so muda se processar_cortes_vencidos desligou algo.
+	if (algo_desligou) {
+		atualizar_compare_a_desligar();
+	}
+	SREG = sreg;
 }
+
 
 ISR(TIMER1_OVF_vect) {
 	timer1_overflow_count++;
