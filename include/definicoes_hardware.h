@@ -28,6 +28,29 @@
 	#pragma message("perfil de hardware: Speeduino")
 #endif
 
+// Timer do PWM da marcha lenta. Depende do perfil E do MCU, porque o que
+// importa e qual pino FISICO a saida de comparacao do timer alcanca:
+//
+//   Autoino no 328P/168 -> Timer2/OC2A cai no pino 11, que e pino_marcha_lenta
+//   Speeduino no 2560   -> Timer3/OC3A cai no pino 5, que e pino_marcha_lenta
+//
+// Autoino no ATmega2560 nao tem combinacao valida. La o pino 11 e OC1A, do
+// Timer1, que pertence ao agendador de ignicao - mexer no TCCR1A para gerar
+// PWM quebraria o agendamento. E OC2A no Mega e o pino 10, ou seja usar o
+// Timer2 ali colocaria o PWM num pino onde a fiacao nao esta, silenciosamente.
+//
+// Entao nessa variante a marcha lenta por PWM fica indisponivel, de forma
+// declarada. Os modos liga/desliga e motor de passo continuam funcionando:
+// os dois usam digitalWrite e nao dependem de timer.
+#if defined(Autoino) && (defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__))
+	#define MARCHA_LENTA_PWM_TIMER2
+#elif defined(Speeduino) && defined(__AVR_ATmega2560__)
+	#define MARCHA_LENTA_PWM_TIMER3
+#else
+	#define MARCHA_LENTA_PWM_INDISPONIVEL
+	#pragma message("marcha lenta por PWM indisponivel nesta combinacao de perfil e MCU (liga/desliga e passo seguem funcionando)")
+#endif
+
 #ifdef Autoino
 #define pino_sensor_roda_fonica 2
 #define pino_sensor_fase 3

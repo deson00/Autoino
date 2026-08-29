@@ -1,8 +1,8 @@
 static inline void desativar_pwm_marcha_lenta() {
-#ifdef Autoino
+#ifdef MARCHA_LENTA_PWM_TIMER2
   TCCR2A = 0;
   TCCR2B = 0;
-#elif defined(Speeduino)
+#elif defined(MARCHA_LENTA_PWM_TIMER3)
   TCCR3A = 0;
   TCCR3B = 0;
 #endif
@@ -10,7 +10,7 @@ static inline void desativar_pwm_marcha_lenta() {
 }
 
 static inline void aplicar_pwm_marcha_lenta(byte duty) {
-#ifdef Autoino
+#ifdef MARCHA_LENTA_PWM_TIMER2
   if (duty > 100) {
     duty = 100;
   }
@@ -25,7 +25,7 @@ static inline void aplicar_pwm_marcha_lenta(byte duty) {
   }
   TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20);
   saida_marcha_lenta_ativa = duty > 0;
-#elif defined(Speeduino)
+#elif defined(MARCHA_LENTA_PWM_TIMER3)
   if (duty > 100) {
     duty = 100;
   }
@@ -145,10 +145,10 @@ void atualizar_controle_marcha_lenta() {
     return;
   }
 
-#ifdef Autoino
+#ifdef MARCHA_LENTA_PWM_TIMER2
   TCCR2A = 0;
   TCCR2B = 0;
-#elif defined(Speeduino)
+#elif defined(MARCHA_LENTA_PWM_TIMER3)
   TCCR3A = 0;
   TCCR3B = 0;
 #endif
