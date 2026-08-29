@@ -34,6 +34,11 @@ static inline byte quantidade_canais_ignicao_fisicos() {
 }
 
 static inline byte quantidade_eventos_ignicao_por_ciclo_sensor() {
+  if (sensor_sem_falha()) {
+    // Cada pulso do sensor ja e um evento de cilindro - nao ha N eventos
+    // espalhados por uma volta, ha um evento por referencia.
+    return 1;
+  }
   if (modo_ignicao == 1 && local_rodafonica == 2) {
     return quantidade_canais_ignicao_fisicos();
   }
@@ -41,6 +46,12 @@ static inline byte quantidade_eventos_ignicao_por_ciclo_sensor() {
 }
 
 static inline byte indice_pino_ignicao(int i) {
+  if (sensor_sem_falha()) {
+    // Bobina unica: o distribuidor faz o roteamento mecanico, e no volante de
+    // um dente (moto) ha uma bobina so, eventualmente dupla em paralelo para
+    // gemeas - centelha perdida cobre os dois casos.
+    return 0;
+  }
   // Se estiver lendo virabrequim (2 voltas), as saídas espelham-se pela metade!
   // No caso de 4 cilindros em Wasted Spark (centelha perdida no Vira), i=0 e i=2 vão para bobina A (indice 0);
   // i=1 e i=3 vão para bobina B (indice 1). Não passa do limite e não pisca a IGN3.

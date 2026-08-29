@@ -101,7 +101,7 @@ static inline void atualizar_referencia_dente(unsigned long intervalo_us) {
 // 32 bits para qualquer grau, porque a entrada ja e limitada logo abaixo.
 #define GRAU_RECIPROCO_SHIFT 18
 static inline unsigned long dividir_por_grau_cada_dente(unsigned long intervalo_us) {
-  static byte grau_em_cache = 0;
+  static int grau_em_cache = 0;
   static uint32_t reciproco = 0;
   static uint32_t limite_entrada_us = 0;
 
@@ -442,8 +442,108 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   // tempo_final_codigo = micros(); // Registra o tempo final
   // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
 }
+
+// ---------------------------------------------------------------------------
+// Decoder para sensor SEM dente de falha.
+//
+// Cobre dois casos que na pratica sao o mesmo: distribuidor com sensor hall
+// (um pulso por cilindro, tipo Opala) e volante com um unico dente (motos,
+// tipo Titan). Em ambos NAO ha gap para procurar - cada pulso ja e uma
+// referencia angular conhecida por si so.
+//
+// Por isso este decoder e mais simples que o de roda fonica, nao mais
+// complexo: sem deteccao de gap, sem contagem de dentes, sem validacao de
+// sincronismo. Em troca, tambem nao ha como CONFIRMAR sincronismo - confia-se
+// no sensor. Um pulso espurio vira um evento espurio, e a unica defesa e o
+// filtro de ruido.
+//
+// Configuracao:
+//   tipo_ignicao   = 2      (seleciona este decoder)
+//   qtd_dente      = pulsos por volta do sensor (1 na moto, 6 no distribuidor
+//                    de 6 cilindros)
+//   grau_pms       = graus do SENSOR entre o pulso e o PMS
+//
+// O agendamento reaproveita toda a maquinaria existente: o angulo do evento
+// sai de grau_pms - avanco, medido a partir do pulso, porque
+// offset_referencia_roda_fonica_graus() retorna 0 neste modo.
+// ---------------------------------------------------------------------------
+void decoder_sem_falha() {
+  uint32_t tempo_agora = micros();
+  if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
+    return; // repique
+  }
+
+  if (inicia_tempo_sensor_roda_fonica) {
+    ultimo_tempo_interrupcao = tempo_agora;
+    ultimo_pulso_rpm_us = tempo_agora;
+    tempo_anterior = tempo_agora;
+    intervalo_dente_referencia_us = 0;
+    rejeicoes_dente_consecutivas = 0;
+    revolucoes_sincronizada = 0;
+    inicia_tempo_sensor_roda_fonica = 0;
+    return;
+  }
+
+  unsigned long intervalo = tempo_agora - tempo_anterior;
+
+  // Mesmo filtro de ruido da roda fonica, com o mesmo escape: se rejeitar
+  // demais seguidos, a referencia esta envenenada e precisa ser liberada,
+  // senao o filtro trava para sempre (este return acontece antes de
+  // atualizar_referencia_dente).
+  if (intervalo_dente_referencia_us > 0 &&
+      (intervalo * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
+    if (rejeicoes_dente_consecutivas < 255) {
+      rejeicoes_dente_consecutivas++;
+    }
+    if (rejeicoes_dente_consecutivas >= REJEICOES_DENTE_MAX) {
+      intervalo_dente_referencia_us = 0;
+      rejeicoes_dente_consecutivas = 0;
+    }
+    return;
+  }
+  rejeicoes_dente_consecutivas = 0;
+
+  ultimo_tempo_interrupcao = tempo_agora;
+  ultimo_pulso_rpm_us = tempo_agora;
+  tempo_atual = tempo_agora;
+  intervalo_tempo_entre_dente = intervalo;
+
+  // calcularRPM espera o tempo de uma volta COMPLETA do sensor, e aqui um
+  // pulso cobre so 1/qtd_dente dela.
+  tempo_total_volta_completa = intervalo * (unsigned long)qtd_dente;
+
+  if (grau_cada_dente > 0) {
+    unsigned long tempo_instante_grau = dividir_por_grau_cada_dente(intervalo);
+    if (tempo_instante_grau > 0) {
+      tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
+    }
+  }
+
+  // Cada pulso e a origem angular do proximo evento.
+  posicao_atual_sensor = 0;
+  if (revolucoes_sincronizada < 32000) {
+    revolucoes_sincronizada++;
+  }
+
+  // Espera dois intervalos medidos antes de agendar: com um so, tempo_cada_grau
+  // ainda nao passou pelo filtro e o angulo sairia errado.
+  if (revolucoes_sincronizada >= 2 && tipo_ignicao_sequencial == 0) {
+    tempo_atual_proxima_ignicao[0] = tempo_atual;
+    tempo_atual_proxima_injecao[0] = tempo_atual;
+    tick_base_sincronismo = ler_tick32_timer1();
+    agendamento_pendente = true;
+  }
+
+  atualizar_referencia_dente(intervalo);
+  tempo_anterior = tempo_atual;
+}
+
 void leitor_sensor_roda_fonica() {
   PULSO_DENTE_ALTO();
-  decoder_roda_fonica_padrao();
+  if (sensor_sem_falha()) {
+    decoder_sem_falha();
+  } else {
+    decoder_roda_fonica_padrao();
+  }
   PULSO_DENTE_BAIXO();
 }

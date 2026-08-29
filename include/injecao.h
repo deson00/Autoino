@@ -16,6 +16,9 @@ unsigned long tempo_pulso_ve(unsigned long req_fuel_us, int VE) {
 // enriquecimento_gama de enriquecimento_gama.h, de nome parecido)
 
 static inline byte indice_pino_injecao(int i) {
+  if (sensor_sem_falha()) {
+    return 0; // monoponto, ou pareado que aciona todos via numero_injetor
+  }
   // Mesmo sistema Wasted Spark da ignição, só que para injeção (Semi-Sequencial no Vira)
   // Faz mapear o índice cíclico matemático para dentro dos injetores fisicamente instalados.
   if (local_rodafonica == 2 && modo_injecao == 2) { // modo_injecao 2 = Semi-sequencial
@@ -46,6 +49,9 @@ static inline byte indice_pino_injecao(int i) {
 // vezes por ciclo em vez de 6 entrega um TERCO do combustivel previsto - falha
 // de mistura pobre, nao apenas diferenca de comportamento.
 static inline byte quantidade_eventos_injecao_por_ciclo_sensor() {
+  if (sensor_sem_falha()) {
+    return 1; // um evento por pulso, pelo mesmo motivo da ignicao
+  }
   if (local_rodafonica == 2 && tipo_motor == 4 && qtd_cilindro > 1) {
     return qtd_cilindro / 2;
   }

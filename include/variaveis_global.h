@@ -33,7 +33,9 @@ static inline unsigned int normalizar_dwell_us(long valor) {
 
 byte tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
-byte grau_cada_dente = 360 / qtd_dente;
+// int, nao byte: com um unico dente no volante (moto) o valor e 360 e um byte
+// truncaria para 104. Mesma classe do bug de grau_entre_cada_cilindro.
+int grau_cada_dente = 360 / qtd_dente;
 byte grau_avanco = 0;
 byte grau_avanco_partida = 1; // avanço definido apenas na partida
 // Com sensor no virabrequinho, o ciclo completo de combustao dura 720 graus

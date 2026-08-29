@@ -51,7 +51,18 @@ static inline int normalizar_angulo_minimo_zero(int angulo) {
   return angulo;
 }
 
+// Sensor SEM dente de falha: cada pulso ja e uma referencia angular por si so.
+// Cobre o distribuidor com sensor hall (um pulso por cilindro, tipo Opala) e o
+// volante com um unico dente (motos, tipo Titan). tipo_ignicao ja existia na
+// configuracao com esse significado documentado, mas nunca era consultado.
+static inline bool sensor_sem_falha() {
+  return tipo_ignicao == 2;
+}
+
 static inline int offset_referencia_roda_fonica_graus() {
+  if (sensor_sem_falha()) {
+    return 0; // nao ha gap: o angulo e medido a partir do proprio pulso
+  }
   if ((local_rodafonica == 1 || local_rodafonica == 2) && grau_cada_dente > 0) {
     return ((int)qtd_dente_faltante + 1) * (int)grau_cada_dente;
   }

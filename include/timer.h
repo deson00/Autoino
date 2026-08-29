@@ -100,6 +100,22 @@ static void atualizar_compare_a_desligar();
 static inline void agendar_injecao_canal(int i, uint32_t tick_atual);
 static inline bool processar_cortes_vencidos(uint32_t tick_atual);
 
+// Tempo entre REFERENCIAS angulares consecutivas, em ticks.
+//
+// Na roda fonica com dente de falha a referencia e o gap, que aparece uma vez
+// por volta do sensor - dai 360 graus. Mas no modo sem falha cada pulso e uma
+// referencia, e elas se repetem a cada grau_cada_dente graus (60 num
+// distribuidor de 6 cilindros, 360 num volante de um dente).
+//
+// Usar 360 fixo neste modo empurrava o evento uma volta INTEIRA do sensor
+// quando o dwell nao cabia, em vez de um pulso. Medido em bancada: o canal
+// ficava armado por 6 pulsos e disparava so no sexto - exatamente 1/6 da taxa
+// esperada, com o angulo correto.
+static inline uint32_t ticks_entre_referencias() {
+	unsigned long graus = sensor_sem_falha() ? (unsigned long)grau_cada_dente : 360UL;
+	return us_para_ticks_timer1(graus * tempo_cada_grau);
+}
+
 // Limpa apenas agendamentos VENCIDOS (a hora de ligar ja passou e o canal nao
 // ligou). Antes limpava todo agendamento pendente a cada gap, o que impedia
 // que um dwell atravessasse o gap: um canal cujo carregamento precisa comecar
@@ -132,7 +148,7 @@ static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignica
 	uint32_t tick_fim_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
 	if (tempo_cada_grau > 0) {
-		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
+		uint32_t periodo_ticks_360 = ticks_entre_referencias();
 		uint32_t agora = ler_tick32_timer1();
 
 		// Se o dwell nao couber inteiro antes do alvo desta volta, joga a
@@ -284,7 +300,7 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 	uint32_t tick_inicio_injecao = tick_base_sincronismo + us_para_ticks_timer1(tempo_injecao_inicio_us);
 
 	if (tempo_cada_grau > 0) {
-		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
+		uint32_t periodo_ticks_360 = ticks_entre_referencias();
 
 		if (tick_inicio_injecao == tick_atual) {
 			tick_inicio_injecao += TIMER1_MIN_DELTA_TICKS;
@@ -319,7 +335,7 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 		return true;
 	}
 
-	uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
+	uint32_t periodo_ticks_360 = ticks_entre_referencias();
 	injecao_tick_ligar[i] = alinhar_tick_para_futuro_com_margem(injecao_tick_ligar[i],
 	                                                            tick_atual,
 	                                                            periodo_ticks_360,

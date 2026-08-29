@@ -67,6 +67,45 @@ b,500,700,1000,1500,2000,2500,3000,3500,4000,4500,5000,5500,6000,6500,7000,7500,
 As tabelas ficam na memória de trabalho. Envie `z;` para gravar as tabelas de
 ignição e VE na EEPROM.
 
+### Sensor sem dente de falha (`tipo_ignicao = 2`)
+
+Modo para sensores em que **cada pulso já é uma referência angular**, sem gap
+para procurar. Cobre dois casos que na prática são o mesmo:
+
+- **Distribuidor com sensor hall** (ex.: Opala): um pulso por cilindro, sensor
+  girando na rotação do comando.
+- **Volante com um único dente** (ex.: Titan e motos em geral): um pulso por
+  volta do virabrequim.
+
+Como configurar:
+
+| Campo | Distribuidor 6 cil | Volante 1 dente |
+|---|---|---|
+| `tipo_ignicao` | `2` | `2` |
+| `qtd_dentes` | `6` (pulsos por volta do sensor) | `1` |
+| `qtd_dentes_faltantes` | `0` | `0` |
+| `local_roda` | `1` (comando) | `2` (virabrequim) |
+| `grau_pms` | graus **do sensor** entre o pulso e o PMS | idem |
+
+O `grau_pms` é medido em graus do **sensor**, não do virabrequim. Num
+distribuidor, que gira na metade da rotação do motor, um captador a 60° APMS de
+virabrequim corresponde a `grau_pms = 30`. O avanço configurado continua sendo
+em graus de virabrequim — o firmware converte sozinho quando `local_roda = 1`.
+
+Neste modo a ignição usa **uma única saída** (`ign1`): no distribuidor o
+roteamento é mecânico, e na moto há uma bobina só, eventualmente dupla em
+paralelo para motores gêmeos. Centelha perdida cobre os dois casos.
+
+Limitações inerentes ao sensor, não ao firmware:
+
+- **Não há como validar sincronismo.** Sem gap, não existe contagem de dentes
+  para conferir; um pulso espúrio vira um evento espúrio, e a única defesa é o
+  filtro de ruído.
+- **Precisão angular menor.** Com 58 dentes o firmware corrige o ângulo dezenas
+  de vezes por volta; com 1 dente ele extrapola a volta inteira a partir do
+  intervalo anterior. Em partida e aceleração forte o erro de avanço é
+  visivelmente maior.
+
 ### `g` — Configuração inicial
 
 ```text
@@ -75,7 +114,7 @@ g,tipo_ignicao,qtd_dentes,local_roda,qtd_dentes_faltantes,grau_pms,qtd_cilindros
 
 | Campo | Valores/unidade |
 |---|---|
-| `tipo_ignicao` | Tipo de ignição configurado pela UI |
+| `tipo_ignicao` | `1` roda fônica com dente de falha, `2` sensor sem falha (ver abaixo) |
 | `qtd_dentes` | Quantidade total de dentes |
 | `local_roda` | `1` comando, `2` virabrequim |
 | `qtd_dentes_faltantes` | Quantidade de dentes ausentes |
