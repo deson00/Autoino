@@ -82,8 +82,48 @@ static inline uint32_t ler_tick32_timer1() {
 	return (overflow_snapshot << 16) | contador_snapshot;
 }
 
+// So desarma. Uma tentativa anterior de "desligar tudo que estiver ligado antes
+// de desarmar" foi medida e reprovada: matava a centelha. Nos 60 casos do log
+// a bobina era desligada 0,18ms depois de ligar - dwell nenhum, centelha
+// nenhuma. Quem chega aqui com saida ligada tem outro problema, e a solucao e
+// nao chegar aqui (ver o rearme no estouro de tentativas).
+// Verdadeiro enquanto agendar_eventos_motor_timer1 esta rodando. A ISR do
+// compare A pode disparar nesse meio (ela NAO e mascarada - ver abaixo), e
+// nesse caso ela faz so o trabalho de DESLIGAR: chamar atualizar_compare_b_ligar
+// ali seria reentrar no mesmo planejamento que o agendador esta fazendo. O
+// proprio agendador chama essa funcao no fim, entao nada se perde.
+volatile bool agendador_em_execucao = false;
+
+#if DEBUG_PULSO_ISR_ALVO == 6
+// Pulso so quando ha bobina ligada: desarmar sem bobina ligada e legitimo.
+//   15us -> desabilitar_timer1_compare_a()  (varredura nao achou / estouro)
+//   40us -> mascara do agendador            (a que eu introduzi)
+static inline void pulso_quem_desarmou(uint8_t local) {
+	bool ligada = false;
+	for (byte i = 0; i < 8; i++) {
+		if (ign_acionado[i]) { ligada = true; break; }
+	}
+	if (!ligada) return;
+	PULSO_ALTO();
+	if (local == 1) _delay_us(15); else _delay_us(40);
+	PULSO_BAIXO();
+}
+#else
+#define pulso_quem_desarmou(x)
+#endif
+
 static inline void desabilitar_timer1_compare_a() {
+#if DEBUG_PULSO_ISR_ALVO == 4
+	// Desarmar o compare A com bobina ligada = ninguem mais vai desliga-la.
+	for (byte i = 0; i < 8; i++) {
+		if (ign_acionado[i]) {
+			PULSO_ORFAO_ALTO();
+			break;
+		}
+	}
+#endif
 	TIMSK1 &= ~(1 << OCIE1A);
+	pulso_quem_desarmou(1);
 }
 
 static inline void desabilitar_timer1_compare_b() {
@@ -432,7 +472,7 @@ static inline bool processar_cortes_vencidos(uint32_t tick_atual) {
 	bool algo_desligou = false;
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
-		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
+		if (ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
 			algo_desligou = true;
@@ -454,7 +494,7 @@ static inline bool processar_cortes_vencidos(uint32_t tick_atual) {
 
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_injecao; i++) {
-		if (injecao_agendada[i] && inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
+		if (inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
 			algo_desligou = true;
@@ -589,7 +629,33 @@ static void atualizar_compare_a_desligar() {
 	uint8_t tentativas = 0;
 	while (true) {
 		if (tentativas++ >= TIMER1_MAX_REPLAN_LOOPS) {
-			desabilitar_timer1_compare_a();
+			// Estourar as tentativas NAO pode desarmar o compare A: se ha saida
+			// ligada, desarmar significa que ninguem mais a desliga, e ela fica
+			// carregando ate protege_dwell_maximo cortar.
+			//
+			// Em vez disso, arma para daqui a pouco e deixa a ISR reavaliar com
+			// estado fresco. Custa uma interrupcao a mais e sai do laco.
+			bool algo_ligado = false;
+			byte n_ign = quantidade_eventos_ignicao_por_ciclo_sensor();
+			for (byte i = 0; i < n_ign && !algo_ligado; i++) {
+				if (ign_acionado[i]) algo_ligado = true;
+			}
+			byte n_inj = quantidade_eventos_injecao_por_ciclo_sensor();
+			for (byte i = 0; i < n_inj && !algo_ligado; i++) {
+				if (inj_acionado[i]) algo_ligado = true;
+			}
+			// 200us, nao TIMER1_MIN_DELTA_TICKS (2 ticks = 8us): rearmar a 8us
+			// faz a ISR disparar antes de terminar o trabalho, e o resultado
+			// medido foi tempestade de interrupcao - 429 bobinas presas a
+			// 4000rpm contra 21 sem o rearme. Folga o bastante para a ISR rodar
+			// inteira, curto o bastante para nao segurar bobina.
+			if (algo_ligado) {
+				OCR1A = (uint16_t)(ler_tick32_timer1() + us_para_ticks_timer1(200));
+				TIFR1 = (1 << OCF1A);
+				TIMSK1 |= (1 << OCIE1A);
+			} else {
+				desabilitar_timer1_compare_a();
+			}
 			break;
 		}
 
@@ -598,9 +664,26 @@ static void atualizar_compare_a_desligar() {
 		uint32_t menor_delta = 0xFFFFFFFFUL;
 		uint32_t proximo_tick = 0;
 
+		// Criterio: ign_acionado, e SO ele.
+		//
+		// Antes exigia tambem ignicao_agendada. Com isso, uma bobina ligada cujo
+		// agendamento tivesse sido apagado ficava invisivel para a varredura,
+		// que concluia "nao ha nada para desligar" e DESARMAVA o compare A. Como
+		// e a propria ISR do compare A que se rearmaria, ela nunca mais
+		// disparava: a bobina carregava ate protege_dwell_maximo cortar.
+		//
+		// Medido em bancada com pulso de depuracao na condicao exata (compare A
+		// desarmado com bobina ligada): a 4000rpm, 302 dwells longos e 299 com o
+		// pulso em cima. Em 3800 e 4200 rpm, 1 e 2 - faixa estreitissima, porque
+		// so acontece quando o prazo do evento fica da mesma ordem da latencia
+		// do loop e o codigo alterna entre dois caminhos.
+		//
+		// Quem manda em "precisa desligar" e o estado FISICO da bobina, nao o do
+		// agendamento. O alvo continua valido: ignicao_tick_desligar[i] foi
+		// escrito no mesmo agendamento que ligou o canal.
 		byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 		for (int i = 0; i < eventos_ignicao; i++) {
-			if (ignicao_agendada[i] && ign_acionado[i]) {
+			if (ign_acionado[i]) {
 				uint32_t alvo = ignicao_tick_desligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
 				if (!encontrado || delta < menor_delta) {
@@ -611,9 +694,11 @@ static void atualizar_compare_a_desligar() {
 			}
 		}
 
+		// Mesmo criterio da ignicao: bico aberto precisa fechar. Aqui o risco de
+		// ficar preso e ainda pior - bico aberto e combustivel entrando.
 		byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 		for (int i = 0; i < eventos_injecao; i++) {
-			if (injecao_agendada[i] && inj_acionado[i]) {
+			if (inj_acionado[i]) {
 				uint32_t alvo = injecao_tick_desligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
 				if (!encontrado || delta < menor_delta) {
@@ -708,7 +793,23 @@ void agendar_eventos_motor_timer1() {
 	} else {
 		cli();
 		timsk_salvo = TIMSK1;
-		TIMSK1 &= ~((1 << OCIE1A) | (1 << OCIE1B));
+		// Mascara SO o OCIE1B.
+		//
+		// O compare A e quem DESLIGA a bobina, e silencia-lo com bobina ligada
+		// e o pior estado possivel: ninguem mais a desliga, e ela carrega ate
+		// protege_dwell_maximo cortar, a 1,5x o dwell.
+		//
+		// Medido em bancada a 4000rpm, com pulso identificando quem desarmava:
+		// 86% dos desarmes com bobina ligada vinham DESTA mascara, e 74 dos 86
+		// dwells presos tinham o pulso dela em cima - nenhum ficou sem pulso.
+		// A mascara foi introduzida junto com o estreitamento da secao critica
+		// e o defeito nasceu ali.
+		//
+		// Deixar o compare A disparar durante o planejamento e inofensivo: ele
+		// so cumpre um corte que ja estava vencido. O que nao pode e a ISR dele
+		// reentrar no planejamento, e disso cuida agendador_em_execucao.
+		TIMSK1 &= ~(1 << OCIE1B);
+		agendador_em_execucao = true;
 		SREG = sreg; // devolve a interrupcao do dente imediatamente
 	}
 
@@ -760,10 +861,22 @@ void agendar_eventos_motor_timer1() {
 	// Todos os 28 acima de 1,5x o dwell, com excesso de 0,31 a 0,77ms - a
 	// latencia do loop -, e nada entre 2,53 e 4,05ms. Mecanismo distinto, nao
 	// cauda de distribuicao.
+	// O ARMAMENTO final e atomico; o calculo pesado acima nao e.
+	//
+	// Com o OCIE1A desmascarado (ver acima), a ISR do compare A pode disparar no
+	// meio destas duas chamadas - e ela chama exatamente as mesmas funcoes. Uma
+	// desarma depois que a outra armou, e o canal fica sem desligamento.
+	//
+	// Fechar so este trecho custa pouco: sao duas varreduras de 3 canais, nao o
+	// planejamento inteiro. A interrupcao do dente, que foi o motivo de estreitar
+	// a secao critica, continua livre durante todo o calculo.
+	uint8_t sreg_arme = SREG;
+	cli();
 	atualizar_compare_b_ligar();
 	atualizar_compare_a_desligar();
+	agendador_em_execucao = false;
+	SREG = sreg_arme;
 	(void)algo_desligou;
-
 	if (proteger_contra_isr_do_dente) {
 		SREG = sreg;
 	} else {
@@ -817,6 +930,24 @@ ISR(TIMER1_COMPA_vect) {
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_atual);
 
+	// Com o agendador em curso, faz so o desligamento e o proprio rearme. O
+	// planejamento de quem LIGA e do agendador, que o refaz no fim - reentrar
+	// nele daqui seria mexer no mesmo estado que ele esta montando.
+	if (agendador_em_execucao) {
+		atualizar_compare_a_desligar();
+		PULSO_TIMER1_BAIXO();
+		return;
+	}
+
+	// DESLIGAR antes, LIGAR depois. Parece invertido em relacao a ISR do
+	// compare B, e por raciocinio eu troquei a ordem aqui - "ligar cria
+	// desligamento, entao armar o desligar por ultimo". A bancada reprovou:
+	// com B antes de A, os dwells presos a 4000rpm passaram de 0,14% para 7,4%
+	// das voltas. Revertido.
+	//
+	// Nao tenho explicacao medida para o porque, e por isso a ordem fica como
+	// estava e este comentario fica aqui: e um ponto sensivel que ja custou uma
+	// regressao, nao um detalhe de estilo. Quem for mexer, meça antes.
 	atualizar_compare_a_desligar();
 	atualizar_compare_b_ligar();
 	PULSO_TIMER1_BAIXO();

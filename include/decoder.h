@@ -201,6 +201,10 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 // quarta bobina ligada, ela receberia pulso a cada gap.
 //
 //   0 = desligado   1 = ISR do dente   2 = ISRs do Timer1   3 = atraso do agendamento
+//   4 = desligamento ORFAO (compare A desarmado com bobina ligada)
+//   5 = diagnostico da bobina presa, codificado na largura do pulso
+//   6 = QUEM desarma o OCIE1A com bobina ligada (largura identifica o local)
+#include <util/delay.h>
 #define DEBUG_PULSO_ISR_ALVO 0
 
 // Onde sai o pulso.  0 = pino 7 (ign4)   1 = pino 8 (inj1)
@@ -249,6 +253,22 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 #else
   #define PULSO_AGENDA_ALTO()
   #define PULSO_AGENDA_BAIXO()
+#endif
+
+// Alvo 4: sobe quando o compare A e desarmado enquanto AINDA existe bobina
+// ligada com desligamento pendente - o estado "orfao", em que ninguem mais vai
+// desliga-la e ela fica carregando ate protege_dwell_maximo cortar. Desce
+// quando a bobina realmente desliga. A largura do pulso e o tempo que ela
+// passou presa.
+//
+// Detecta a CONDICAO, nao um caminho de codigo especifico: nao importa qual
+// ramo desarmou o compare A, se havia bobina ligada o pulso sobe.
+#if DEBUG_PULSO_ISR_ALVO == 4
+  #define PULSO_ORFAO_ALTO()  PULSO_ALTO()
+  #define PULSO_ORFAO_BAIXO() PULSO_BAIXO()
+#else
+  #define PULSO_ORFAO_ALTO()
+  #define PULSO_ORFAO_BAIXO()
 #endif
 
 void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente - dente faltante

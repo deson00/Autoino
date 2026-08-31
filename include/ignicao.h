@@ -114,12 +114,29 @@ void iniciar_dwell(int i){
     }
 }
 
+// Guarda por ign_acionado, e ele e o PRIMEIRO a ser limpo.
+//
+// Antes exigia captura_dwell E ign_acionado, com ign_acionado limpo por ultimo.
+// Entre as duas escritas havia uma janela de uma instrucao com ign_acionado
+// verdadeiro e captura_dwell ja falso. Quem varre pedindo so ign_acionado -
+// processar_cortes_vencidos e atualizar_compare_a_desligar - via "precisa
+// desligar", chamava esta funcao, e ela nao fazia NADA porque captura_dwell ja
+// era falso. A flag nao caia, a varredura reencontrava o mesmo canal, e o laco
+// de replanejamento girava ate estourar as 32 tentativas.
+//
+// Janela de uma instrucao, o que explica a faixa estreita de rotacao em que o
+// defeito aparecia: so pega quando a interrupcao cai exatamente ali.
+//
+// Limpar ign_acionado primeiro fecha a janela pelo outro lado: quem varre
+// passa a ver "nao ha o que desligar", que e verdade, em vez de ver um pedido
+// que ninguem atende.
 void desligar_dwell(int i){
-      if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
+      if (ign_acionado[i] == true) {
         byte pino = indice_pino_ignicao(i);
-        captura_dwell[i] = false;
         ign_acionado[i] = false;
+        captura_dwell[i] = false;
         digitalWrite(ignicao_pins[pino], LOW);
+        PULSO_ORFAO_BAIXO();
   }
 }
 
@@ -140,11 +157,38 @@ void protege_dwell_maximo(){
     uint8_t sreg = SREG;
     cli();
     bool precisa_forcar = ign_acionado[i] && (micros() - tempo_percorrido[i] > limite_us);
+#if DEBUG_PULSO_ISR_ALVO == 5
+    // Diagnostico da bobina presa, codificado na LARGURA do pulso. Uma captura
+    // responde as duas perguntas que faltam:
+    //
+    //   40us -> compare A DESARMADO. Ninguem ia desligar, e o caso e de arme
+    //           perdido - problema em quem deveria armar.
+    //   25us -> compare A armado, mas OCR1A NAO aponta para este canal. O
+    //           timer esta esperando outro evento e este ficou orfao na fila.
+    //   10us -> compare A armado E apontando para ca. O arme esta certo e a
+    //           interrupcao simplesmente nao chegou a tempo - problema de
+    //           latencia, nao de logica.
+    uint8_t diag = 0;
+    if (precisa_forcar) {
+      if (!(TIMSK1 & (1 << OCIE1A))) diag = 1;
+      else if (OCR1A != (uint16_t)ignicao_tick_desligar[i]) diag = 2;
+      else diag = 3;
+    }
+#endif
     if (precisa_forcar) {
       desligar_dwell(i);
       ignicao_agendada[i] = false;
     }
     SREG = sreg;
+#if DEBUG_PULSO_ISR_ALVO == 5
+    if (diag) {
+      PULSO_ALTO();
+      if (diag == 1) _delay_us(40);
+      else if (diag == 2) _delay_us(25);
+      else _delay_us(10);
+      PULSO_BAIXO();
+    }
+#endif
     if (precisa_forcar && contagem_protecao_dwell_maximo < 65535) {
       contagem_protecao_dwell_maximo++;
     }

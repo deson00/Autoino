@@ -130,10 +130,13 @@ void ligar_injetor(int i){
   }
 }
 
+// Mesma correcao de desligar_dwell: guarda pelo estado fisico (inj_acionado) e
+// limpa ele primeiro, para nao existir janela em que a varredura pede o
+// desligamento e esta funcao o ignora.
 void desligar_injetor(int i){
-  if (captura_req_fuel[i] == true && inj_acionado[i] == true){
-          captura_req_fuel[i] = false;
+  if (inj_acionado[i] == true){
           inj_acionado[i] = false;
+          captura_req_fuel[i] = false;
           if (modo_injecao == 1 || tipo_acionamento_injetor == 1){
             if (local_rodafonica != 2 || !existe_outro_evento_injecao_ativo(i)) {
               for (int j = 0; j < numero_injetor; j++){
