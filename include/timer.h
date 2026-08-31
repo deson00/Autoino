@@ -286,13 +286,16 @@ void atualizar_agendamentos_ignicao_por_dente() {
 	// A segunda chamada a processar_cortes_vencidos(tick_atual) foi removida:
 	// era redundante, checava o mesmo tick_atual ja avaliado acima, nunca
 	// encontrava nada novo.
+	// As duas, sempre - mesmo motivo da correcao em agendar_eventos_motor_timer1.
+	//
+	// A condicao antiga raciocinava sobre recalcular_ignicao_canal_por_dente,
+	// que de fato so mexe em canais ainda nao ligados. Mas quem liga bobina
+	// aqui e atualizar_compare_b_ligar(), pelo caminho de prevencao de
+	// deadlock, e isso acontece DEPOIS de algo_desligou ter sido calculado.
+	// Bobina ligada sem o compare A armado fica presa ate a protecao de dwell.
 	atualizar_compare_b_ligar();
-	// So precisa reprogramar o "desligar" se algo realmente desligou acima
-	// (processar_cortes_vencidos) - o recalculo por dente so mexe em canais
-	// que ainda nao ligaram, entao nao afeta o conjunto de quem esta ligado.
-	if (algo_desligou) {
-		atualizar_compare_a_desligar();
-	}
+	atualizar_compare_a_desligar();
+	(void)algo_desligou;
 
 	SREG = sreg;
 }
@@ -732,12 +735,34 @@ void agendar_eventos_motor_timer1() {
 		}
 	}
 
+	// As duas chamadas, sempre - exatamente como fazem as duas ISRs do Timer1.
+	//
+	// Antes a segunda era condicionada a algo_desligou, sob a ideia de que o
+	// compare A so mudaria se processar_cortes_vencidos tivesse desligado algo.
+	// A premissa e falsa: atualizar_compare_b_ligar() tem o caminho de
+	// prevencao de deadlock, que LIGA a bobina inline quando o evento nasce
+	// vencido - e isso cria um desligamento pendente novo, depois de
+	// algo_desligou ja ter sido calculado la em cima.
+	//
+	// Com o compare A desarmado, ninguem arma o desligamento dessa bobina. E
+	// como e a propria ISR do compare A que se rearmaria, ela nunca dispara: o
+	// canal fica travado ligado ate protege_dwell_maximo() cortar, 1,5x o dwell
+	// depois. Ou seja, a bobina carrega quase o dobro do previsto e a centelha
+	// sai onde a protecao calhou de rodar, nao onde a tabela mandou.
+	//
+	// Atinge so o primeiro canal depois do gap (ign1 na 60-2 de 6 cilindros),
+	// que e o unico com prazo curto o bastante para o evento nascer vencido.
+	// Medido em bancada em rotacao fixa, 3239 ciclos por canal:
+	//
+	//   ign1: 28 dwells (0,86%) entre 4,05 e 4,50ms, contra 2,49ms de mediana
+	//   ign2 e ign3: nenhum, maximo 2,52ms
+	//
+	// Todos os 28 acima de 1,5x o dwell, com excesso de 0,31 a 0,77ms - a
+	// latencia do loop -, e nada entre 2,53 e 4,05ms. Mecanismo distinto, nao
+	// cauda de distribuicao.
 	atualizar_compare_b_ligar();
-	// O rearme acima so afeta quem ainda vai ligar (compare B). O "desligar"
-	// (compare A) so muda se processar_cortes_vencidos desligou algo.
-	if (algo_desligou) {
-		atualizar_compare_a_desligar();
-	}
+	atualizar_compare_a_desligar();
+	(void)algo_desligou;
 
 	if (proteger_contra_isr_do_dente) {
 		SREG = sreg;
@@ -753,14 +778,15 @@ void agendar_eventos_motor_timer1() {
 		// proximos entra o caminho de prevencao de deadlock, que aciona a
 		// bobina direto sem depender da interrupcao - o que mascarava a causa.
 		//
-		// OCIE1B nao precisa de nada: atualizar_compare_b_ligar sempre roda.
-		// OCIE1A so e reescrito quando atualizar_compare_a_desligar roda, entao
-		// fora desse caso ele volta ao valor de entrada. Deixar OCIE1A mascarado
-		// por engano seria pior que tudo: a bobina nunca desligaria.
-		cli();
-		if (!algo_desligou) {
-			TIMSK1 = (uint8_t)((TIMSK1 & ~(1 << OCIE1A)) | (timsk_salvo & (1 << OCIE1A)));
-		}
+		// Nem OCIE1B nem OCIE1A precisam de restauracao: atualizar_compare_b_ligar
+		// e atualizar_compare_a_desligar rodam as duas, sempre, e cada uma deixa
+		// o proprio bit no estado certo. Restaurar o valor salvo aqui apagaria o
+		// arme que elas acabaram de fazer.
+		//
+		// Havia um restore condicional de OCIE1A para o caso de
+		// atualizar_compare_a_desligar nao rodar. Ele deixou de existir junto
+		// com a condicao: com a chamada incondicional, restaurar seria o erro.
+		(void)timsk_salvo;
 		SREG = sreg;
 	}
 }
