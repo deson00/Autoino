@@ -19,13 +19,61 @@ int procura_indice(int value, int *arr, int size){
 // inteira: multiplica antes de dividir para nao perder resolucao. Trunca em
 // direcao a zero, como a versao anterior em float ja fazia ao converter para
 // int no retorno.
+// Interpola o avanco entre dois pontos da tabela. INTERPOLA, nunca extrapola:
+// o resultado e limitado aos dois graus da tabela.
+//
+// Sem esse limite, um rpm fora do trecho coberto pelo eixo faz a reta seguir
+// alem do ultimo ponto configurado e devolver um avanco que ninguem escreveu
+// na tabela. Num sistema de ignicao isso nao e um numero errado qualquer -
+// avanco demais e detonacao.
 int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo, int grau_maximo) {
   int32_t faixa_rpm = (int32_t)rpm_maximo - rpm_minimo;
   if (faixa_rpm == 0) {
     return grau_maximo;
   }
   int32_t numerador = (int32_t)(grau_maximo - grau_minimo) * ((int32_t)rpm_atual - rpm_minimo);
-  return (int)((int32_t)grau_minimo + (numerador / faixa_rpm));
+  int32_t resultado = (int32_t)grau_minimo + (numerador / faixa_rpm);
+
+  int32_t piso = (grau_minimo < grau_maximo) ? grau_minimo : grau_maximo;
+  int32_t teto = (grau_minimo < grau_maximo) ? grau_maximo : grau_minimo;
+  if (resultado < piso) {
+    resultado = piso;
+  } else if (resultado > teto) {
+    resultado = teto;
+  }
+  return (int)resultado;
+}
+
+// Indice da celula INFERIOR, para quem vai interpolar entre i e i+1.
+//
+// procura_indice nao serve aqui, por dois motivos:
+//
+// 1. Ela devolve o ponto mais PROXIMO. Com o valor na metade de cima de uma
+//    celula ela escolhe o ponto de CIMA, e a interpolacao seguinte extrapola
+//    para tras a partir dele. Em tabela suave o erro e pequeno; onde a tabela
+//    tem degrau, nao e.
+// 2. Ela pode devolver o ULTIMO indice, e o chamador entao le vetor[size] e
+//    matriz[linha][size] - fora dos limites do array. O avanco resultante e
+//    lixo de memoria vizinha.
+//
+// So percorre o trecho crescente do inicio do eixo: eixo com menos de 16
+// pontos configurados fica com zeros no fim, e zero nao e ponto valido.
+// O retorno e sempre <= (ultimo ponto valido - 1), entao i+1 e seguro.
+static int procura_indice_inferior(int valor, const int *vetor, int size) {
+  int ultimo = 0;
+  while (ultimo + 1 < size && vetor[ultimo + 1] > vetor[ultimo]) {
+    ultimo++;
+  }
+  if (ultimo < 1) {
+    return 0; // eixo degenerado: nao ha par de pontos para interpolar
+  }
+
+  int limite = ultimo - 1;
+  int i = 0;
+  while (i < limite && vetor[i + 1] <= valor) {
+    i++;
+  }
+  return i;
 }
 
 static const int MARGEM_IGNICAO_FIM_CICLO_GRAUS = 1;

@@ -318,7 +318,7 @@ void loop(){
     }
     else if(rpm < 7000 && busca_avanco_linear == true){
       int indice_map_tps_avanco = procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16);
-      int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
+      int indice_rpm_minimo = procura_indice_inferior(rpm, vetor_rpm, 16);
       int grau_minimo = matriz_avanco[indice_map_tps_avanco][indice_rpm_minimo];
       int grau_maximo = matriz_avanco[indice_map_tps_avanco][indice_rpm_minimo+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
