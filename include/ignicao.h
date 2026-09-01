@@ -145,6 +145,31 @@ void desligar_dwell(int i){
 // vezes o dwell configurado. Margem relativa (nao um valor fixo em ms) para
 // acompanhar automaticamente qualquer dwell_bobina configurado pela UI.
 #define MULTIPLICADOR_DWELL_MAX_X10 15UL // 1.5x
+
+// Fracao do dwell configurado abaixo da qual a centelha e considerada fraca
+// demais para valer a pena. Usada nos DOIS lugares que decidem o que fazer
+// quando o dwell nao cabe entre a referencia e o angulo alvo - eles precisam
+// concordar, senao um encurta o dwell e o outro cancela o evento em seguida.
+//
+// Era 80%, valor pensado para "cancelar o evento". Para "encurtar o dwell" 80%
+// e restritivo demais: a corrente na bobina sobe de forma exponencial, entao
+// metade do dwell ainda entrega bem mais que metade da energia.
+#define DWELL_MINIMO_UTIL_PCT 50UL
+
+// Piso do CANCELAMENTO, deliberadamente bem abaixo de DWELL_MINIMO_UTIL_PCT.
+//
+// Os dois pisos decidem em momentos diferentes: o agendador decide no gap
+// ("cabe 50%, mantem o angulo") e reagendar_ignicao_se_dwell_ficou_curto
+// reavalia quando o evento vence, ja com a janela encolhida pela latencia. Com
+// os dois em 50% o segundo CANCELAVA o que o primeiro tinha acabado de
+// aprovar - medido em bancada: 1336 voltas sem centelha na ign1 em 5772,
+// com o dwell minimo caindo em 1,43ms contra um piso de 1,50ms.
+//
+// Cancelar entrega centelha NENHUMA, que e pior que centelha fraca. Este piso
+// mais baixo so barra o caso em que a bobina nao teria energia para faiscar de
+// qualquer jeito, e da histerese para a decisao do agendador nao ser desfeita.
+#define DWELL_CANCELA_ABAIXO_PCT 20UL
+
 volatile unsigned int contagem_protecao_dwell_maximo = 0;
 void protege_dwell_maximo(){
   unsigned long limite_us = (dwell_bobina * MULTIPLICADOR_DWELL_MAX_X10) / 10UL;

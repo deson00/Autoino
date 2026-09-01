@@ -189,9 +189,40 @@ static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignica
 			// ancorado em tick_base_sincronismo, que e a origem ANGULAR - e o
 			// agendamento segue sendo limpo e recalculado a cada gap, sem
 			// agendamento nenhum rodando livre entre voltas.
+			// Quando o dwell inteiro nao cabe: MANTEM O ANGULO e deixa o dwell
+			// encurtar. Antes preservava o dwell e empurrava a centelha, e isso
+			// custava caro no primeiro canal depois do gap.
+			//
+			// Medido em motor real (60-2 no virabrequim, 6 cilindros, so
+			// ignicao), centelha da ign1 a 56 graus do gap e agendador rodando
+			// ~2,0ms depois dele:
+			//
+			//   rpm      ign1        ign2 e ign3
+			//   1700     56,6 graus   176 / 297  (planos)
+			//   2100     63,6         176 / 297
+			//   2500     71,6         176 / 297
+			//   2800     80,3 graus   176 / 297
+			//
+			// Ate 1900rpm o dwell comeca depois de 2,3ms e cabe; acima, comeca
+			// antes de o agendador rodar e o empurrao entra - dai o joelho em
+			// 1900 e os 24 graus de atraso em 2800. ign2 e ign3, longe do gap,
+			// ficam planos: a prova de que nao era o avanco, que moveria os
+			// tres juntos.
+			//
+			// Vinte e quatro graus de atraso e pior que meio dwell. Abaixo do
+			// piso, porem, a centelha nao sai, e ai atrasada volta a ser melhor
+			// que nenhuma - por isso o comportamento antigo continua como
+			// ultimo recurso.
 			uint32_t agora = ler_tick32_timer1();
-			if ((int32_t)(tick_fim_dwell - agora) < (int32_t)dwell_ticks) {
-				tick_fim_dwell = agora + dwell_ticks;
+			int32_t disponivel = (int32_t)(tick_fim_dwell - agora);
+			if (disponivel < (int32_t)dwell_ticks) {
+				uint32_t piso = (dwell_ticks * DWELL_MINIMO_UTIL_PCT) / 100UL;
+				if (disponivel < (int32_t)piso) {
+					tick_fim_dwell = agora + dwell_ticks;
+				}
+				// senao: nao mexe. tick_inicio_dwell nasce no passado e
+				// processar_ligamentos_vencidos liga a bobina na hora, com o
+				// dwell reduzido ao que couber.
 			}
 		} else {
 			// Caminho do REARME (chamado apos o evento disparar, com o tempo
@@ -407,7 +438,7 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_atual) {
 	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
 	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
-	uint32_t dwell_minimo_util_ticks = (dwell_ticks * 80UL) / 100UL;
+	uint32_t dwell_minimo_util_ticks = (dwell_ticks * DWELL_CANCELA_ABAIXO_PCT) / 100UL;
 	if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
 		dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
 	}
