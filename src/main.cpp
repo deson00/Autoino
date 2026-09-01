@@ -251,18 +251,35 @@ void setup(){
   inicio_espera_injecao_inicial_ms = millis();
   sei(); // Habilita interrupções globais
 }
+// Consome o agendamento assim que o gap o marca.
+//
+// Chamada em VARIOS pontos do loop, nao so no topo. A latencia do agendamento e
+// o tempo do gap ate os eventos ficarem armados, e ela vira atraso de centelha
+// no primeiro canal depois da referencia. Com uma unica verificacao no topo,
+// essa latencia e o que resta da passada corrente - medida em bancada: mediana
+// de 0,82ms, p99 de 2,1ms, para uma passada de ~1,6ms.
+//
+// Espalhar a verificacao troca "o que resta da passada" por "o que resta do
+// trecho atual". Nao encolhe o trabalho do loop; encolhe a espera.
+//
+// A funcao e barata quando nao ha nada pendente: um teste de bool volatile.
+static inline void processar_agendamento_pendente() {
+  if (agendamento_pendente) {
+    agendamento_pendente = false;
+    agendar_eventos_motor_timer1();
+    PULSO_AGENDA_BAIXO();
+  }
+}
+
 void loop(){
    // O calculo pesado de agendamento (todos os canais de ignicao/injecao) roda
    // fora da interrupcao do dente de falha - la so se captura o tick de
    // referencia. Processa aqui, o quanto antes no loop, pra minimizar o atraso.
-   if (agendamento_pendente) {
-     agendamento_pendente = false;
-     agendar_eventos_motor_timer1();
-     PULSO_AGENDA_BAIXO();
-   }
+   processar_agendamento_pendente();
    protege_dwell_maximo();
    calcularRPM();
     processar_motor_passo_marcha_lenta();
+    processar_agendamento_pendente();
     qtd_loop++;
   
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
@@ -279,14 +296,32 @@ void loop(){
     
     //leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
     //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
-    valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-    valor_tps_adc = analogRead(pino_sensor_tps);
-    valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
-    valor_tps = constrain(valor_tps, 0, 100);
+    // Um analogRead por passada, em rodizio, em vez dos tres.
+    //
+    // Cada conversao do ADC custa ~112us, entao os tres somavam ~336us em TODA
+    // passada do loop - e e essa passada que precisa consumir
+    // agendamento_pendente logo depois do gap, cuja latencia vira atraso de
+    // centelha no primeiro canal. Em rodizio cada sensor segue sendo atualizado
+    // a cada 3 passadas, da ordem de 1ms: rapido demais para MAP, TPS ou sonda
+    // notarem diferenca.
+    //
+    // A leitura da sonda vai bruta de proposito, para preservar a resolucao do
+    // ADC - a UI conhece tipo_sonda_o2 e faz a conversao para tensao/lambda.
+    static byte proximo_adc = 0;
+    if (proximo_adc == 0) {
+      valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
+    } else if (proximo_adc == 1) {
+      valor_tps_adc = analogRead(pino_sensor_tps);
+      valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
+      valor_tps = constrain(valor_tps, 0, 100);
+    } else {
+      valor_o2_adc = analogRead(pino_sensor_o2);
+    }
+    if (++proximo_adc > 2) {
+      proximo_adc = 0;
+    }
     atualizar_estado_partida();
-    // Envia-se a leitura bruta para preservar a resolucao do ADC. A UI conhece
-    // tipo_sonda_o2 e fica responsavel pela conversao para tensao/lambda.
-    valor_o2_adc = analogRead(pino_sensor_o2);
+    processar_agendamento_pendente();
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
@@ -334,6 +369,7 @@ void loop(){
       status_corte = 0;
     }
 
+    processar_agendamento_pendente();
     if (usar_avanco_temperatura == 1 && avanco_baseado_em_tabela && status_corte == 0) {
       byte correcao_avanco_temp = avanco_por_temperatura((int)temperatura_motor);
       unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
@@ -397,16 +433,21 @@ void loop(){
 // calcula_grau_ignicao(i);
 // }
 // }
+    processar_agendamento_pendente();
     leitura_entrada_dados_serial(); 
+    processar_agendamento_pendente();
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   rpm_anterior = rpm; 
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
+  processar_agendamento_pendente();
   temperatura_motor = temperatura_clt();
   temperatura_ar = temperatura_iat();
   atualizar_controle_marcha_lenta();
+  processar_agendamento_pendente();
   envia_dados_tempo_real(1);
+  processar_agendamento_pendente();
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 

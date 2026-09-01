@@ -848,6 +848,7 @@ void agendar_eventos_motor_timer1() {
 	// meio deste calculo e mudar tick_base_sincronismo, misturando duas
 	// referencias entre os canais. O loop reprocessa a volta nova de qualquer
 	// forma, porque a ISR remarca agendamento_pendente.
+	PULSO_FASE_ALTO();
 	const uint32_t base = tick_base_sincronismo;
 
 	bool algo_desligou = processar_cortes_vencidos(base);
@@ -901,12 +902,15 @@ void agendar_eventos_motor_timer1() {
 	// Fechar so este trecho custa pouco: sao duas varreduras de 3 canais, nao o
 	// planejamento inteiro. A interrupcao do dente, que foi o motivo de estreitar
 	// a secao critica, continua livre durante todo o calculo.
+	PULSO_FASE_BAIXO();   // fim da fase 1: agendamento dos canais
+	PULSO_FASE_ALTO();    // inicio da fase 2: atualizacao dos comparadores
 	uint8_t sreg_arme = SREG;
 	cli();
 	atualizar_compare_b_ligar();
 	atualizar_compare_a_desligar();
 	agendador_em_execucao = false;
 	SREG = sreg_arme;
+	PULSO_FASE_BAIXO();
 	(void)algo_desligou;
 	if (proteger_contra_isr_do_dente) {
 		SREG = sreg;

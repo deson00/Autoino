@@ -37,8 +37,17 @@ void leitura_entrada_dados_serial()
 {
   while (Serial.available() > 0){
     char data = Serial.read();
-    // Pequeno delay para estabilizar
-    delayMicroseconds(100);
+    // O delayMicroseconds(100) que havia aqui foi removido.
+    //
+    // Ele nao estabilizava nada: Serial.read() tira de um buffer de anel que a
+    // interrupcao do USART ja encheu, entao nao ha temporizacao a respeitar. Em
+    // troca, custava 100us POR BYTE dentro do loop - e o buffer de recepcao tem
+    // 64 bytes, ou seja ate 6,4ms de espera pura numa unica passada.
+    //
+    // Isso entra direto na latencia do agendamento, que e medida do gap ate os
+    // eventos ficarem armados: na bancada, sem o painel conectado, ela era de
+    // ~0,7ms; no carro, com o painel enviando, ~2,0ms. A diferenca aparecia
+    // como centelha atrasada no primeiro canal depois do gap.
 
     // Reinicia o parser quando um novo comando com payload e detectado.
     // Evita reaproveitar lixo de um pacote anterior incompleto.

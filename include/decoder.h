@@ -205,6 +205,7 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 //   5 = diagnostico da bobina presa, codificado na largura do pulso
 //   6 = QUEM desarma o OCIE1A com bobina ligada (largura identifica o local)
 #include <util/delay.h>
+//   7 = reparticao interna do agendamento (2 pulsos: canais / compare)
 #define DEBUG_PULSO_ISR_ALVO 0
 
 // Onde sai o pulso.  0 = pino 7 (ign4)   1 = pino 8 (inj1)
@@ -253,6 +254,18 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 #else
   #define PULSO_AGENDA_ALTO()
   #define PULSO_AGENDA_BAIXO()
+#endif
+
+// Alvo 7: mede o CALCULO do agendamento, nao a espera. Emite dois pulsos por
+// volta - o primeiro cobre o agendamento dos canais, o segundo cobre
+// atualizar_compare_b_ligar + atualizar_compare_a_desligar. As duas larguras
+// dizem onde estao os 544us medidos.
+#if DEBUG_PULSO_ISR_ALVO == 7
+  #define PULSO_FASE_ALTO()  PULSO_ALTO()
+  #define PULSO_FASE_BAIXO() PULSO_BAIXO()
+#else
+  #define PULSO_FASE_ALTO()
+  #define PULSO_FASE_BAIXO()
 #endif
 
 // Alvo 4: sobe quando o compare A e desarmado enquanto AINDA existe bobina
