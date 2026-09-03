@@ -269,6 +269,10 @@ static inline void processar_agendamento_pendente() {
     agendar_eventos_motor_timer1();
     PULSO_AGENDA_BAIXO();
   }
+  // Canal em regime adiantado nao pode esperar o proximo gap para ser
+  // reagendado - ver rearmar_ignicoes_adiante(). Sai num teste de byte quando
+  // nao ha nenhum, que e o caso comum.
+  rearmar_ignicoes_adiante();
 }
 
 void loop(){

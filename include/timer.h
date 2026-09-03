@@ -94,6 +94,24 @@ static inline uint32_t ler_tick32_timer1() {
 // proprio agendador chama essa funcao no fim, entao nada se perde.
 volatile bool agendador_em_execucao = false;
 
+// Canais em REGIME ADIANTADO: a centelha deles esta agendada uma referencia a
+// frente, porque o angulo alvo fica perto demais da referencia para o dwell
+// caber a partir dela.
+//
+// Um canal em regime adiantado NAO e agendado pelo gap - ele e rearmado pelo
+// loop logo depois de disparar, e por isso precisa sobreviver a limpeza do
+// gap. Um bit por canal; ha no maximo 8.
+volatile uint8_t ignicao_regime_adiantado = 0;
+
+// Enrolar uma referencia so faz sentido se a referencia inteira couber na
+// janela do comparador de 16 bits (65536 ticks = 262ms). Abaixo disso o
+// comparador casa cedo e a ISR precisa rearmar varias vezes ate o evento -
+// funciona, mas nao ha por que pagar isso em partida. 60000 ticks = 240ms,
+// que no comando (uma volta de sensor = 720 graus) e ~500rpm de virabrequim.
+// A Speeduino tem a guarda equivalente em setIgnitionScheduleDuration:
+// angleToTime(CRANK_ANGLE_MAX_IGN) < MAX_TIMER_PERIOD.
+static const uint32_t TIMER1_PERIODO_ADIANTA_MAX_TICKS = 60000UL;
+
 #if DEBUG_PULSO_ISR_ALVO == 6
 // Pulso so quando ha bobina ligada: desarmar sem bobina ligada e legitimo.
 //   15us -> desabilitar_timer1_compare_a()  (varredura nao achou / estouro)
@@ -150,13 +168,19 @@ static inline uint32_t ticks_entre_referencias() {
 static inline void limpar_ignicoes_pendentes_nao_acionadas() {
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
+		// Canal em regime adiantado nao e limpo: o agendamento dele aponta para
+		// a referencia SEGUINTE, e apaga-lo aqui obrigaria a replaneja-lo a
+		// partir desta referencia - de onde, por definicao, ele nao cabe.
+		if (ignicao_regime_adiantado & (uint8_t)(1U << i)) {
+			continue;
+		}
 		if (ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
 			ignicao_agendada[i] = false;
 		}
 	}
 }
 
-static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks) {
+static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks, bool *enrolou) {
 	// tick_base_sincronismo e a ORIGEM ANGULAR da volta (instante do gap).
 	// Uma tentativa anterior de trocar essa ancora pelo tempo real na funcao
 	// INTEIRA foi desastrosa (cobertura 100%->50% e morte em 4600rpm) - e
@@ -213,16 +237,77 @@ static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignica
 			// piso, porem, a centelha nao sai, e ai atrasada volta a ser melhor
 			// que nenhuma - por isso o comportamento antigo continua como
 			// ultimo recurso.
-			uint32_t agora = ler_tick32_timer1();
-			int32_t disponivel = (int32_t)(tick_fim_dwell - agora);
-			if (disponivel < (int32_t)dwell_ticks) {
-				uint32_t piso = (dwell_ticks * DWELL_MINIMO_UTIL_PCT) / 100UL;
-				if (disponivel < (int32_t)piso) {
-					tick_fim_dwell = agora + dwell_ticks;
+			//
+			// TERCEIRA opcao, que so existe desde que o rearme saiu do gap:
+			// ENROLAR uma referencia. Em vez de empurrar a centelha ou cortar o
+			// dwell, agenda o MESMO angulo uma volta a frente, onde ha a volta
+			// inteira de pista para o dwell. E o que a Speeduino faz em
+			// _calculateCoilChargeAngle (o angulo de carga nasce somando
+			// CRANK_ANGLE_MAX_IGN quando fica negativo) e em
+			// _calculateAngularTime (while(delta < 0) delta += maxAngle).
+			//
+			// O comentario que estava aqui dizia que empurrar para a volta
+			// seguinte "derrubaria a desta volta". Isso so vale se o canal for
+			// agendado uma unica vez por volta, no gap: dai ele perderia uma
+			// volta sim, outra nao. Com o rearme no loop
+			// (rearmar_ignicoes_adiante) o canal e reagendado assim que
+			// dispara, e o regime permanente e uma centelha por volta. O custo
+			// e uma unica centelha, na primeira volta apos o sincronismo.
+			//
+			// O criterio de ENTRADA no regime adiantado nao e "nao coube
+			// agora" - e "nao cabe nunca": angulo menor que o proprio dwell.
+			//
+			// A primeira versao usava o disponivel medido, que carrega a
+			// latencia do loop. Medido em bancada numa varredura de 1015 a
+			// 5989 rpm: um pico de latencia de ~1,8ms fazia o canal entrar no
+			// regime a 3000rpm, onde o angulo de 31 graus da 3,2ms e o dwell
+			// de 2,9ms cabe folgado. Resultado, 30 trocas de regime entre 3200
+			// e 2700 rpm na desaceleracao, alternando quase volta a volta, com
+			// a centelha saindo 5 a 8 graus adiantada nas voltas enroladas.
+			//
+			// Com o criterio no angulo ha uma consequencia estrutural que vale
+			// mais que o criterio em si: o inicio do dwell enrolado cai em
+			// (angulo - dwell) relativo ao gap seguinte, que e NEGATIVO por
+			// definicao da propria condicao. Ou seja, a bobina sempre ja esta
+			// carregando quando o gap chega, e o agendador do gap encontra o
+			// canal ocupado. A corrida entre o rearme do loop e o gap deixa de
+			// existir em vez de ser arbitrada.
+			uint32_t angulo_ticks = us_para_ticks_timer1(tempo_ignicao_us);
+
+			if (angulo_ticks < dwell_ticks &&
+			    periodo_ticks_360 > 0 &&
+			    periodo_ticks_360 <= TIMER1_PERIODO_ADIANTA_MAX_TICKS) {
+				// O dwell nao cabe entre a referencia e o alvo em NENHUMA
+				// circunstancia - nem com latencia zero. Enrola.
+				//
+				// Esta decisao nao consulta o tempo real de proposito. A
+				// versao anterior exigia tambem "disponivel < piso", que
+				// embute a latencia do loop, e o efeito medido em bancada
+				// (3094 voltas, 1013 a 5989 rpm) foi uma populacao bimodal:
+				// acima de 3400rpm, onde o angulo ja e menor que o dwell, o
+				// canal entrava no regime so quando a latencia dava um pico -
+				// 693 das 3094 centelhas continuavam saindo com menos de
+				// 2,5ms de dwell, na mesma rotacao em que outras saiam com
+				// 2,95ms.
+				tick_fim_dwell += periodo_ticks_360;
+				if (enrolou != NULL) {
+					*enrolou = true;
 				}
-				// senao: nao mexe. tick_inicio_dwell nasce no passado e
-				// processar_ligamentos_vencidos liga a bobina na hora, com o
-				// dwell reduzido ao que couber.
+			} else {
+				uint32_t agora = ler_tick32_timer1();
+				int32_t disponivel = (int32_t)(tick_fim_dwell - agora);
+				if (disponivel < (int32_t)dwell_ticks) {
+					uint32_t piso = (dwell_ticks * DWELL_MINIMO_UTIL_PCT) / 100UL;
+					if (disponivel < (int32_t)piso) {
+						// Cabe pela geometria, so nao coube por latencia (ou a
+						// referencia e longa demais para o comparador, na
+						// partida): comportamento antigo, centelha atrasada.
+						tick_fim_dwell = agora + dwell_ticks;
+					}
+					// senao: nao mexe. tick_inicio_dwell nasce no passado e
+					// processar_ligamentos_vencidos liga a bobina na hora, com
+					// o dwell reduzido ao que couber.
+				}
 			}
 		} else {
 			// Caminho do REARME (chamado apos o evento disparar, com o tempo
@@ -260,19 +345,107 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 		return;
 	}
 
+	// Canal em regime adiantado pertence ao rearme do loop, nao ao gap. Sem
+	// esta porta, um canal que estivesse livre no instante do gap era
+	// replanejado por ele a partir desta referencia - de onde nao cabe - e o
+	// regime alternava volta a volta. O rearme sempre devolve o bit quando o
+	// canal deixa de precisar (ver rearmar_ignicoes_adiante), entao nao ha
+	// como um canal ficar preso aqui.
+	if (ignicao_regime_adiantado & (uint8_t)(1U << i)) {
+		return;
+	}
+
 	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
 	calcula_grau_ignicao(i);
-	uint32_t tick_fim_dwell = calcular_tick_fim_dwell_futuro(tempo_proxima_ignicao[i], tick_atual, dwell_ticks);
+	bool enrolou = false;
+	uint32_t tick_fim_dwell = calcular_tick_fim_dwell_futuro(tempo_proxima_ignicao[i], tick_atual, dwell_ticks, &enrolou);
 
 	uint32_t tick_inicio_dwell = tick_fim_dwell - dwell_ticks;
 
 	ignicao_tick_ligar[i] = tick_inicio_dwell;
 	ignicao_tick_desligar[i] = tick_fim_dwell;
 	ignicao_agendada[i] = true;
+	if (enrolou) {
+		ignicao_regime_adiantado |= (uint8_t)(1U << i);
+	}
+}
+
+// Rearme dos canais em regime adiantado, fora do gap.
+//
+// Um canal so e agendado no gap. Quando ele acaba de disparar, o proximo alvo
+// alcancavel a partir do gap SEGUINTE ja e a volta depois dele - entao esperar
+// pelo gap custaria uma volta inteira, e o canal dispararia uma volta sim,
+// outra nao. E o mesmo motivo pelo qual a Speeduino chama setIgnitionChannels
+// a cada passada do loop e nao uma vez por referencia.
+//
+// Roda so para os canais marcados, e so quando eles estao livres - ou seja,
+// alguns bytes de teste nas passadas em que nao ha nada a fazer.
+//
+// A ancora continua sendo o ultimo gap REAL (tick_base_sincronismo) mais um
+// periodo estimado, nao uma cadeia de estimativas: o erro nao acumula, e o
+// proprio alinhamento com margem de meio periodo e o mesmo ja usado (e ja
+// testado contra duplicata em desaceleracao) no caminho de rearme antigo.
+static void rearmar_ignicoes_adiante() {
+	if (ignicao_regime_adiantado == 0) {
+		return;
+	}
+
+	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 || status_corte != 0 || tempo_cada_grau == 0) {
+		ignicao_regime_adiantado = 0;
+		return;
+	}
+
+	uint32_t periodo_ticks = ticks_entre_referencias();
+	if (periodo_ticks == 0 || periodo_ticks > TIMER1_PERIODO_ADIANTA_MAX_TICKS) {
+		ignicao_regime_adiantado = 0;
+		return;
+	}
+
+	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
+		if (!(ignicao_regime_adiantado & (uint8_t)(1U << i))) {
+			continue;
+		}
+		if (ignicao_agendada[i] || ign_acionado[i] || captura_dwell[i]) {
+			continue; // ainda ocupado com o ciclo corrente
+		}
+
+		calcula_grau_ignicao(i);
+		uint32_t angulo_ticks = us_para_ticks_timer1(tempo_proxima_ignicao[i]);
+		uint32_t alvo = tick_base_sincronismo + angulo_ticks;
+
+		// Saida do regime: se o angulo ja folga o dwell com sobra, o gap volta
+		// a dar conta com ancora exata, que e sempre melhor que a estimada.
+		// A folga de 25% e histerese - sem ela o canal entraria e sairia do
+		// regime a cada volta na fronteira.
+		if (angulo_ticks > (dwell_ticks + (dwell_ticks >> 2))) {
+			ignicao_regime_adiantado &= (uint8_t)~(1U << i);
+			continue;
+		}
+
+		uint32_t agora = ler_tick32_timer1();
+		alvo = alinhar_tick_para_futuro_com_margem(alvo, agora, periodo_ticks, periodo_ticks >> 1);
+
+		uint8_t sreg = SREG;
+		cli();
+		ignicao_tick_ligar[i] = alvo - dwell_ticks;
+		ignicao_tick_desligar[i] = alvo;
+		ignicao_agendada[i] = true;
+		atualizar_compare_b_ligar();
+		atualizar_compare_a_desligar();
+		SREG = sreg;
+	}
 }
 
 static inline void recalcular_ignicao_canal_por_dente(int i, uint32_t tick_atual) {
 	if (status_corte != 0 || tempo_cada_grau == 0 || grau_cada_dente == 0) {
+		return;
+	}
+
+	// Canal em regime adiantado tem alvo uma referencia a frente; o refino por
+	// dente raciocina dentro da volta corrente e o traria de volta para ela.
+	if (ignicao_regime_adiantado & (uint8_t)(1U << i)) {
 		return;
 	}
 
@@ -555,6 +728,7 @@ void setupTimer1() {
 void limpar_agendamentos_timer1() {
 	uint8_t sreg = SREG;
 	cli();
+	ignicao_regime_adiantado = 0;
 	for (int i = 0; i < 8; i++) {
 		ignicao_agendada[i] = false;
 		injecao_agendada[i] = false;
@@ -567,6 +741,7 @@ void resetar_estado_agendamento_motor() {
 	uint8_t sreg = SREG;
 	cli();
 
+	ignicao_regime_adiantado = 0;
 	for (int i = 0; i < 8; i++) {
 		ignicao_agendada[i] = false;
 		injecao_agendada[i] = false;
