@@ -84,7 +84,6 @@ unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da 
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
 unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
-volatile int rpm_anterior = 0;
 unsigned int rpm_partida = 400;
 byte nivel_limpeza_afogamento = 70; // TPS minimo (%) para cortar injecao durante a partida
 unsigned int atraso_injecao_inicial = 0; // atraso do pulso inicial em ms

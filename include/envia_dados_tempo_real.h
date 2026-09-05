@@ -15,8 +15,8 @@ static inline byte montar_flags_estado_motor() {
   byte flags = 0;
 
   if (revolucoes_sincronizada >= 1) flags |= FLAG_MOTOR_SINCRONIZADO;
-  if (rpm_anterior >= 20 && rpm_anterior < (int)rpm_partida) flags |= FLAG_MOTOR_EM_PARTIDA;
-  if (rpm_anterior >= (int)rpm_partida) flags |= FLAG_MOTOR_FUNCIONANDO;
+  if (rpm >= 20 && rpm < rpm_partida) flags |= FLAG_MOTOR_EM_PARTIDA;
+  if (rpm >= rpm_partida) flags |= FLAG_MOTOR_FUNCIONANDO;
   if (status_corte != 0) flags |= FLAG_PROTECAO_ATIVA;
   if (incremento_aceleracao > 0) flags |= FLAG_ENRIQUECIMENTO_ACELERACAO;
   if (limpeza_afogamento_ativa) flags |= FLAG_LIMPEZA_AFOGAMENTO;
@@ -52,11 +52,11 @@ static inline byte obter_abertura_marcha_lenta_telemetria() {
 }
 
 static inline byte calcular_duty_cycle_telemetria() {
-  if (rpm_anterior <= 0 || numero_esguicho <= 0) return 0;
+  if (rpm == 0 || numero_esguicho <= 0) return 0;
 
   unsigned long duracao_ciclo_us = tipo_motor == 2
-      ? 60000000UL / (unsigned long)rpm_anterior
-      : 120000000UL / (unsigned long)rpm_anterior;
+      ? 60000000UL / (unsigned long)rpm
+      : 120000000UL / (unsigned long)rpm;
   unsigned long pulso_us = min(tempo_injecao, 65535UL);
   unsigned int esguichos = (unsigned int)constrain(numero_esguicho, 1, 20);
   unsigned long tempo_acionado_us = pulso_us * esguichos;
@@ -96,7 +96,7 @@ void envia_dados_tempo_real(int indice_envio){
   enviar_u8_telemetria(TELEMETRIA_VERSAO, crc);
   enviar_u8_telemetria(TELEMETRIA_TAMANHO_QUADRO, crc);
 
-  enviar_u16_telemetria((uint16_t)rpm_anterior, crc);
+  enviar_u16_telemetria((uint16_t)rpm, crc);
   enviar_u16_telemetria((uint16_t)valor_map, crc);
   enviar_u8_telemetria(temperatura_motor, crc);
   enviar_u8_telemetria(grau_avanco, crc);

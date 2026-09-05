@@ -1,10 +1,10 @@
 
 void protege_ignicao_injecao(){
   static bool protecao_baixa_rotacao_ativa = false;
-  bool rotacao_baixa = (rpm_anterior < 20);
+  bool rotacao_baixa = (rpm < 20);
 
   // So executa na borda de entrada (rotacao acabou de cair abaixo de 20 rpm).
-  // Antes isso rodava a cada ciclo enquanto rpm_anterior ficasse baixo, o que
+  // Antes isso rodava a cada ciclo enquanto a rotacao ficasse baixa, o que
   // zerava revolucoes_sincronizada continuamente e nunca deixava o decoder
   // reconquistar sincronismo mesmo depois do sinal do sensor voltar ao normal.
   if (rotacao_baixa && !protecao_baixa_rotacao_ativa) {

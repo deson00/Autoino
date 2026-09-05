@@ -350,7 +350,27 @@ void loop(){
       dwell_bobina = dwell_funcionamento_us;
       status_corte = 0;
     }
-    else if(tipo_protecao != 0 && rpm_anterior >= rpm_pre_corte){
+    // Le rpm, nao uma copia defasada.
+    //
+    // Esta condicao roda em toda passada do loop, mas lia rpm_anterior, que
+    // era atualizado uma vez a cada intervalo_execucao (200ms). Duas
+    // consequencias, as duas ruins:
+    //
+    // 1. Protecao lenta. Acelerando a 5000 rpm/s, 200ms de defasagem sao 1000
+    //    rpm de ultrapassagem antes de o corte agir.
+    // 2. Corte em rotacao que ja passou. Medido em motor real: o corte
+    //    apareceu no log com 3604 rpm na tela porque rpm_anterior ainda
+    //    carregava o pico da amostra anterior.
+    //
+    // O que impedia usar rpm direto era o risco de uma unica leitura ruim
+    // disparar o corte. Isso deixou de existir: leitura ruim vinha de gap
+    // falso, e gap falso agora nao alimenta mais o rpm (ver decoder.h, na
+    // validacao de contagem de dentes).
+    //
+    // Cast para int em vez de comparar sem sinal: rpm_pre_corte e int e o
+    // comportamento fica identico ao anterior, inclusive para valores
+    // configurados fora de faixa.
+    else if(tipo_protecao != 0 && (int)rpm >= rpm_pre_corte){
       grau_avanco = avanco_corte;
       status_corte = 1;
       dwell_bobina = dwell_funcionamento_us;
@@ -442,7 +462,6 @@ void loop(){
     processar_agendamento_pendente();
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
-  rpm_anterior = rpm; 
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
   processar_agendamento_pendente();
@@ -463,7 +482,6 @@ void loop(){
   // Serial.println(dreq_fuel);
   // Serial.println(tempo_injecao);
 
-  // Serial.println(rpm_anterior);
   }
 
   //  tempo_final_codigo = micros(); // Registra o tempo final

@@ -18,6 +18,11 @@ volatile uint32_t intervalo_dente_referencia_us = 0; // media filtrada - filtro 
 // A media filtrada continua sendo usada no filtro de ruido, onde o que importa
 // e o oposto: ignorar um dente anomalo isolado.
 volatile uint32_t periodo_dente_anterior_us = 0;
+
+// Tempo da volta que acabou de fechar, ANTES de saber se a contagem de dentes
+// bateu. So e publicado em tempo_total_volta_completa quando bater - ver o
+// comentario na validacao de contagem, mais abaixo.
+volatile unsigned long volta_completa_candidata_us = 0;
 volatile byte amostras_intervalo_validas = 0;
 volatile byte rejeicoes_dente_consecutivas = 0;
 // Depois de tantas rejeicoes seguidas do filtro de ruido, considera a
@@ -428,7 +433,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 
     if (qtd_voltas == 1) {
       tempo_final_volta_completa = tempo_atual;
-      tempo_total_volta_completa = (tempo_final_volta_completa - tempo_inicio_volta_completa);
+      volta_completa_candidata_us = (tempo_final_volta_completa - tempo_inicio_volta_completa);
       qtd_voltas = 0;
     }
     if (qtd_voltas == 0) {
@@ -471,6 +476,32 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     } else {
       falhas_sync_consecutivas = 0;
       revolucoes_sincronizada++;
+      // SO volta com contagem valida alimenta o rpm.
+      //
+      // Antes tempo_total_volta_completa era publicado em todo gap detectado,
+      // e calcularRPM() o consome direto. Um gap FALSO - detectado antes da
+      // hora - encurta a volta medida, e o rpm sobe na mesma proporcao. Numa
+      // 12-1, gap falso no oitavo dente em vez do decimo primeiro faz a volta
+      // parecer 8/11 do tamanho e o rpm ler 1,37x o real.
+      //
+      // Medido em motor real (12-1 no comando, 6 cilindros, 9,2 min de
+      // percurso): o motor subia a 200 rpm/s com o acelerador parado e a
+      // leitura pulou de 4030 para 5283 rpm - 4941 rpm/s, vinte e cinco vezes
+      // a aceleracao observada, sem o pe mexer. Na mesma amostra o contador de
+      // perda de sincronismo saltou de 1 para 8. O rpm inflado bateu em
+      // rpm_pre_corte e a protecao cortou a ignicao com o motorista em
+      // aceleracao plena (TPS 62). Aconteceu duas vezes no mesmo log, a
+      // segunda com TPS 87.
+      //
+      // A mediana de 3 e o limite de variacao que calcularRPM ja tem nao
+      // seguram isso: a rajada durou varias voltas seguidas, entao a maioria
+      // das amostras estava ruim e o filtro so atrasou a subida.
+      //
+      // Aqui a defesa e categorica: gap falso produz contagem invalida por
+      // definicao (a volta fecha com menos dentes que o esperado), e contagem
+      // invalida nao publica tempo de volta. O rpm simplesmente segura o
+      // ultimo valor bom em vez de inventar um.
+      tempo_total_volta_completa = volta_completa_candidata_us;
     }
     qtd_leitura = 0;
     // A referencia NAO e mais zerada aqui: ela e uma media dos dentes normais
