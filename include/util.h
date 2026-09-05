@@ -268,9 +268,25 @@ void enviar_byte_serial(int valor, int tamanho) {
 }
 
 // FUNÇÕES AUXILIARES PARA EEPROM
+// EEPROM.update, nao EEPROM.write.
+//
+// update le o byte antes e so grava se mudou; write grava sempre, e no AVR
+// cada gravacao custa 3,3ms de CPU parada. Quem passa por aqui sao as duas
+// tabelas grandes (avanco e VE): 304 bytes cada, 608 no total, regravados
+// inteiros a cada clique em "Gravar Modificacoes" mesmo com uma unica celula
+// alterada. Sao ~2 SEGUNDOS com o loop() parado - e loop parado e
+// processar_agendamento_pendente() sem rodar, ou seja nenhuma ignicao
+// agendada. O motor apagava ao salvar a tabela com o carro ligado.
+//
+// O resto do projeto ja usava update (97 chamadas nos blocos de
+// configuracao); a correcao nunca tinha chegado nestes tres pontos, que sao
+// justamente os que gravam mais bytes.
+//
+// Ganho secundario: EEPROM tem vida util de ~100 mil gravacoes por celula.
+// Regravar 608 bytes a cada salvamento gastava a memoria a toa.
 void escrever_16bits_eeprom(int endereco, uint16_t valor) {
-    EEPROM.write(endereco, valor & 0xFF);        // LSB
-    EEPROM.write(endereco + 1, (valor >> 8) & 0xFF); // MSB
+    EEPROM.update(endereco, valor & 0xFF);        // LSB
+    EEPROM.update(endereco + 1, (valor >> 8) & 0xFF); // MSB
 }
 
 uint16_t ler_16bits_eeprom(int endereco) {
@@ -280,7 +296,7 @@ uint16_t ler_16bits_eeprom(int endereco) {
 }
 
 void escrever_8bits_eeprom(int endereco, uint8_t valor) {
-    EEPROM.write(endereco, valor);
+    EEPROM.update(endereco, valor); // ver o comentario em escrever_16bits_eeprom
 }
 
 uint8_t ler_8bits_eeprom(int endereco) {
