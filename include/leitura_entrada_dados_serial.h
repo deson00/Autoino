@@ -126,6 +126,17 @@ void leitura_entrada_dados_serial()
       sendSerialInt(crc_config_atual);
       Serial.write(';');
     }
+#if TESTE_COMPRESSAO
+    if (data == 'C') { // arma o teste de compressao (ignicao e injecao suprimidas)
+      teste_compressao_iniciar();
+    }
+    if (data == 'D') { // desarma o teste de compressao
+      teste_compressao_parar();
+    }
+    if (data == 'E') { // devolve o vetor de tempo medio por posicao de dente
+      teste_compressao_enviar();
+    }
+#endif
     if (data == 'i') { // liga o envio de dados em tempo real - idempotente, nunca desliga
       status_dados_tempo_real = true;
     }

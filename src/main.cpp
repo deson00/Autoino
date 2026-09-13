@@ -7,6 +7,7 @@
 #include <ler_dados_eeprom.h>
 #include <ler_dados_memoria.h>
 #include <grava_dados_eeprom.h>
+#include <teste_compressao.h>
 #include <leitura_entrada_dados_serial.h>
 #include <envia_dados_tempo_real.h>
 #include <sensores.h>
@@ -458,7 +459,8 @@ void loop(){
 // }
 // }
     processar_agendamento_pendente();
-    leitura_entrada_dados_serial(); 
+    leitura_entrada_dados_serial();
+    teste_compressao_verificar_tempo(); 
     processar_agendamento_pendente();
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     

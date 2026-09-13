@@ -105,7 +105,8 @@ if((captura_dwell[i] == false) && (ign_acionado[i] == false)){
 }
 void iniciar_dwell(int i){
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) &&
-        revolucoes_sincronizada >= 1 && status_corte == 0){ 
+        revolucoes_sincronizada >= 1 && status_corte == 0 &&
+        !TESTE_COMPRESSAO_SUPRIME){ 
         byte pino = indice_pino_ignicao(i);
         captura_dwell[i] = true;
         tempo_percorrido[i] = micros();
