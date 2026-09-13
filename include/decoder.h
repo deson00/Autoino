@@ -352,6 +352,9 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   // Teste de compressao: guarda o tempo deste dente na posicao dele. Com o
   // teste desligado isto some na compilacao e o caminho normal nao muda.
   teste_compressao_registrar(qtd_leitura, intervalo_tempo_entre_dente);
+  // Captura de bateria: carimba em que amostra este dente passou, para a UI
+  // poder mapear a forma de onda em angulo de virabrequim.
+  captura_bateria_marcar_dente();
 
   uint16_t dentes_esperados = (uint16_t)(qtd_dente - qtd_dente_faltante);
 

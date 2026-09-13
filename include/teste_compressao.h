@@ -237,7 +237,7 @@ static void teste_compressao_enviar() {
   Serial.write(';');
 }
 
-#define TESTE_COMPRESSAO_SUPRIME (teste_compressao_ativo)
+#define TESTE_COMPRESSAO_SUPRIME (teste_compressao_ativo || CAPTURA_BATERIA_SUPRIME)
 
 #else  // TESTE_COMPRESSAO
 

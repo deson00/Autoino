@@ -127,14 +127,25 @@ void leitura_entrada_dados_serial()
       Serial.write(';');
     }
 #if TESTE_COMPRESSAO
-    if (data == 'C') { // arma o teste de compressao (ignicao e injecao suprimidas)
+    // Os dois modos suprimem ignicao e injecao e disputam o mesmo arranque,
+    // entao armar um sempre desarma o outro - nunca ficam ativos juntos.
+    if (data == 'C') { // arma o teste de compressao por roda fonica
+      captura_bateria_parar();
       teste_compressao_iniciar();
     }
-    if (data == 'D') { // desarma o teste de compressao
+    if (data == 'D') { // desarma os dois modos de teste
       teste_compressao_parar();
+      captura_bateria_parar();
     }
     if (data == 'E') { // devolve o vetor de tempo medio por posicao de dente
       teste_compressao_enviar();
+    }
+    if (data == 'F') { // arma a captura crua de tensao de bateria
+      teste_compressao_parar();
+      captura_bateria_iniciar();
+    }
+    if (data == 'G') { // despeja a forma de onda capturada
+      captura_bateria_enviar();
     }
 #endif
     if (data == 'i') { // liga o envio de dados em tempo real - idempotente, nunca desliga
