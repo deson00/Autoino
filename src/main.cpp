@@ -314,7 +314,8 @@ void loop(){
     // ADC - a UI conhece tipo_sonda_o2 e faz a conversao para tensao/lambda.
     static byte proximo_adc = 0;
     if (proximo_adc == 0) {
-      valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
+      valor_map_adc = analogRead(pino_sensor_map);
+      valor_map = map(valor_map_adc, 0, 1023, valor_map_minimo, valor_map_maximo);
     } else if (proximo_adc == 1) {
       valor_tps_adc = analogRead(pino_sensor_tps);
       valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
@@ -410,7 +411,10 @@ void loop(){
           unsigned long tempo_pulso = tempo_pulso_ve((unsigned long)dreq_fuel, VE);
           unsigned long tempo_pulso_corrigido = tempo_pulso;
           if (usar_injecao_temperatura == 1) {
-            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura((int)temperatura_motor), 100, 100, 100);
+            enriquecimento_temperatura_atual = enriquecimento_temperatura((int)temperatura_motor);
+            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura_atual, 100, 100, 100);
+          } else {
+            enriquecimento_temperatura_atual = 100;
           }
           calcula_enriquecimento_aceleracao(tempo_pulso);
           tempo_injecao = tempo_pulso_corrigido + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;

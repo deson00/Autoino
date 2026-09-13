@@ -28,10 +28,26 @@ static inline byte montar_flags_estado_motor() {
 enum ProtocoloTempoReal : byte {
   TELEMETRIA_CABECALHO_1 = 0xA5,
   TELEMETRIA_CABECALHO_2 = 0x5A,
+// A Nano fica na V2 por falta de espaco, nao por escolha.
+//
+// Os tres campos novos custam 156 bytes de flash e a Nano tinha 136 livres -
+// faltaram 20. Nao inventei economia no escuro para caber; a UI aceita as duas
+// versoes e o laudo marca as secoes que dependem dos campos novos como "sem
+// dados" quando o quadro e V2, que e o mesmo tratamento que ele ja da a
+// qualquer coluna ausente.
+//
+// Quando sobrar flash na Nano, basta tirar a flag do platformio.ini.
+#if TELEMETRIA_SEM_V3
   TELEMETRIA_VERSAO = 2,
   TELEMETRIA_TAMANHO_QUADRO = 40,
   TELEMETRIA_TAMANHO_CABECALHO = 4,
   TELEMETRIA_TAMANHO_PAYLOAD = 35,
+#else
+  TELEMETRIA_VERSAO = 3,
+  TELEMETRIA_TAMANHO_QUADRO = 44,
+  TELEMETRIA_TAMANHO_CABECALHO = 4,
+  TELEMETRIA_TAMANHO_PAYLOAD = 39,
+#endif
   TELEMETRIA_TAMANHO_CRC = 1,
   TELEMETRIA_EXTENSAO_MAGIC = 0xA2,
   TELEMETRIA_BYTES_RESERVADOS = TELEMETRIA_TAMANHO_QUADRO
@@ -39,6 +55,28 @@ enum ProtocoloTempoReal : byte {
       - TELEMETRIA_TAMANHO_PAYLOAD
       - TELEMETRIA_TAMANHO_CRC
 };
+
+// TETO DO QUADRO: 64 bytes, e nao e a banda que manda.
+//
+// A 9600 baud o link entrega 960 bytes/s e um quadro de 40 a cada 200 ms usa
+// 21% dele - sobra banda. O que limita e o buffer de transmissao do
+// HardwareSerial, que tem 64 bytes: Serial.write devolve na hora enquanto ha
+// espaco nele e passa a GIRAR ESPERANDO quando enche. Cada byte acima de 64
+// custa 1,04 ms de laco principal parado.
+//
+// E laco parado neste firmware vira centelha atrasada: foi por isso que o
+// delayMicroseconds(100) saiu do leitor serial, quando 6,4 ms de latencia
+// apareceram como atraso no primeiro canal depois do gap.
+//
+// Se um dia 64 nao bastar, o buffer e configuravel por -D
+// SERIAL_TX_BUFFER_SIZE=128, ao custo de 64 bytes de RAM. Subir o baud NAO
+// move este teto - o buffer continua do mesmo tamanho.
+static_assert(TELEMETRIA_TAMANHO_QUADRO <= 64,
+              "Quadro de telemetria acima de 64 bytes: Serial.write passa a bloquear o laco "
+              "principal e isso vira atraso de centelha. Ver SERIAL_TX_BUFFER_SIZE.");
+static_assert(TELEMETRIA_TAMANHO_QUADRO == TELEMETRIA_TAMANHO_CABECALHO
+                  + TELEMETRIA_TAMANHO_PAYLOAD + TELEMETRIA_TAMANHO_CRC,
+              "Tamanho do quadro nao bate com cabecalho + payload + CRC.");
 
 static inline byte obter_abertura_marcha_lenta_telemetria() {
   if (modo_marcha_lenta == 0) return 0;
@@ -119,6 +157,18 @@ void envia_dados_tempo_real(int indice_envio){
   enviar_u16_telemetria((uint16_t)rpm_alvo_marcha_lenta, crc);
   enviar_u8_telemetria(calcular_duty_cycle_telemetria(), crc);
   enviar_u8_telemetria(TELEMETRIA_EXTENSAO_MAGIC, crc);
+
+#if !TELEMETRIA_SEM_V3
+  // Campos da V3, depois da marca de extensao de proposito: assim o mapa da V2
+  // fica intacto e so o tamanho do quadro muda.
+  // Sem constrain: os dois ja nascem dentro de um byte. O enriquecimento por
+  // temperatura sai de limitar_enriquecimento_temperatura(), que corta em 250,
+  // e o de partida vem de acrescimo_injecao_partida, que e byte. Um constrain
+  // aqui custaria flash numa placa que tem 136 bytes livres.
+  enviar_u8_telemetria((byte)enriquecimento_temperatura_atual, crc);
+  enviar_u16_telemetria((uint16_t)valor_map_adc, crc);
+  enviar_u8_telemetria((byte)enriquecimento_partida_atual, crc);
+#endif
 
   for (byte i = 0; i < TELEMETRIA_BYTES_RESERVADOS; i++) {
     enviar_u8_telemetria(0, crc);

@@ -247,6 +247,20 @@ int rpm_maximo_corte = 6500;
 int numero_base_corte = 10;
 int qtd_corte = 3;
 int status_corte = 0;
+
+// Valores que existiam so dentro da conta e agora vao para a telemetria.
+//
+// O enriquecimento por temperatura era calculado e consumido na mesma linha,
+// entao o log mostrava o PW ja corrigido e nao dava para separar quanto vinha
+// da tabela de VE e quanto vinha do aquecimento. Ficamos sem conseguir dizer
+// se a curva de aquecimento estava entregando o que devia - foi exatamente o
+// que faltou para fechar o diagnostico de uma lenta que empobrecia ao aquecer.
+//
+// O ADC bruto do MAP vai junto pelo mesmo motivo que o do TPS ja ia: com o
+// valor convertido nao da para medir ruido do sensor, e foi medindo o ADC do
+// TPS que achamos 52 contagens de ruido com a borboleta parada.
+int enriquecimento_temperatura_atual = 100;  // 100 = sem correcao
+int valor_map_adc = 0;
 int tps_anterior = 0;   // Variável para armazenar o valor anterior do sensor de TPS
 byte tipo_verificacao_aceleracao_rapida = 0; //0 para TPS e  1 para MAP 
 int intervalo_tempo_aceleracao = 100; // valor em ms
