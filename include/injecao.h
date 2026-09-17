@@ -91,7 +91,9 @@ static inline bool existe_outro_evento_injecao_ativo_no_pino(int evento_atual, b
 }
 
 static inline int calcular_angulo_injecao_indice(int i) {
-      int angulo_base_injecao = ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i) - grau_fechamento_injetor;
+      // A injecao nao tem o caso especial da centelha perdida, entao vai direto
+      // pela tabela - que com ela desligada e a mesma multiplicacao de antes.
+      int angulo_base_injecao = ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + separacao_evento_base(i) - grau_fechamento_injetor;
       while (angulo_base_injecao < 0) {
         angulo_base_injecao += 360;
       }

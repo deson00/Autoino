@@ -87,11 +87,17 @@ void atualizar_ajuste_pms_ignicao() {
 static inline int calcular_angulo_ignicao_indice(int i) {
   int grau_pms_referencia = grau_pms;
   int grau_avanco_referencia = graus_avanco_para_referencia_sensor(grau_avanco);
-  int separacao_eventos = grau_entre_cada_cilindro;
+  // Centelha perdida no virabrequim tem regra propria: divide 360 pelos canais
+  // FISICOS e nao pelos cilindros. Esse caso e uniforme por natureza - os canais
+  // de centelha perdida sao sempre equidistantes -, entao a tabela de offset nao
+  // se aplica a ele e continua como sempre foi.
+  int separacao;
   if (modo_ignicao == 1 && local_rodafonica == 2) {
-    separacao_eventos = 360 / quantidade_canais_ignicao_fisicos();
+    separacao = (360 / quantidade_canais_ignicao_fisicos()) * i;
+  } else {
+    separacao = separacao_evento_base(i);
   }
-  return ajuste_pms + grau_pms_referencia - offset_referencia_roda_fonica_graus() - grau_avanco_referencia + (separacao_eventos * i);
+  return ajuste_pms + grau_pms_referencia - offset_referencia_roda_fonica_graus() - grau_avanco_referencia + separacao;
 }
 
 static inline unsigned long calcular_tempo_ignicao_indice(int i) {

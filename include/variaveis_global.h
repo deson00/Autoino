@@ -43,7 +43,35 @@ byte grau_avanco_partida = 1; // avanço definido apenas na partida
 // int, nao byte: passa de 255 em motores de 1 ou 2 cilindros (ver
 // calcular_grau_entre_cada_cilindro em util.h). Nao vai para a EEPROM - e
 // sempre recalculado na carga da configuracao.
+// Teto de eventos de ignicao ou injecao por ciclo do sensor.
+//
+// E este numero que dimensiona os dezesseis vetores de agendamento acima E
+// que limita qtd_cilindro na entrada. Os dois PRECISAM sair da mesma fonte:
+// enquanto o limite da serial ficou solto, um valor de 10 ou 12 vindo da tela
+// fazia os lacos indexarem [9] e [11] em vetores de 8 e escreverem por cima da
+// RAM vizinha.
+//
+// Cada posicao custa 46 bytes de RAM: dez vetores de 4 bytes (os de tempo e de
+// tick) e seis de 1 byte (as bandeiras). Baixar de 8 para 6 devolveria 92
+// bytes e ainda cobriria um seis cilindros com roda no comando, que precisa de
+// 6 eventos de injecao; baixar para 4 devolveria 184 e quebraria esse motor.
+#define MAX_EVENTOS_AGENDAMENTO 8
+
 int grau_entre_cada_cilindro = (local_rodafonica == 2) ? ((tipo_motor == 2 ? 360 : 720) / qtd_cilindro) : (360 / qtd_cilindro);
+
+// Angulo de cada evento em relacao ao evento 0, em graus do SENSOR - 360 numa
+// roda de virabrequim, 360 de comando que valem 720 de virabrequim. Nessa
+// escala o valor sempre cabe em 0..359 e nunca precisa de tratamento de volta.
+//
+// Existe porque ate agora o angulo saia de uma multiplicacao, grau_entre_cada_
+// cilindro * i, que assume cilindros IGUALMENTE espacados. Motor de fogo
+// desigual - V2 de moto, alguns V4 - nao tem como ser descrito assim: um V2
+// com eventos a 75 e 285 graus precisa de 0 e 210, e nao de um passo unico.
+//
+// Com usar_offset_personalizado em false o vetor nem e consultado e o caminho
+// e identico ao de antes, instrucao por instrucao.
+int offset_evento[MAX_EVENTOS_AGENDAMENTO];
+bool usar_offset_personalizado = false;
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
 volatile unsigned int qtd_leitura_media = 0;
@@ -60,11 +88,11 @@ volatile unsigned long tempo_inicio_volta_completa = 0;
 volatile unsigned long tempo_final_volta_completa = 0;
 volatile unsigned long tempo_total_volta_completa = 0;
 volatile unsigned long tempo_cada_grau = 0;
-volatile unsigned long tempo_proxima_ignicao[8];
-volatile unsigned long tempo_proxima_injecao[8];
+volatile unsigned long tempo_proxima_ignicao[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_proxima_injecao[MAX_EVENTOS_AGENDAMENTO];
 volatile unsigned long tempo_atual = 0;
-volatile unsigned long tempo_atual_proxima_ignicao[8];
-volatile unsigned long tempo_atual_proxima_injecao[8];
+volatile unsigned long tempo_atual_proxima_ignicao[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_atual_proxima_injecao[MAX_EVENTOS_AGENDAMENTO];
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 // (verifica_falha removida: era escrita a cada dente mas nunca lida em lugar
 // nenhum - uma escrita volatile de 32 bits desperdicada na interrupcao)
@@ -104,20 +132,20 @@ byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array
 // recurso que limita este projeto. Reconsiderar so se a duracao das ISRs do
 // Timer1 se mostrar um problema medido, e ai com implementacao mais barata.
 // Declare as variáveis para controlar o estado do pino de saída
-volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
-volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
-volatile bool captura_req_fuel[8] = {false, false, false, false, false, false, false, false};
-volatile bool inj_acionado[8] = {false, false, false, false, false, false, false, false};
-volatile unsigned long tempo_percorrido[8];
-volatile unsigned long tempo_percorrido_inj[8];
+volatile bool captura_dwell[MAX_EVENTOS_AGENDAMENTO];
+volatile bool ign_acionado[MAX_EVENTOS_AGENDAMENTO];
+volatile bool captura_req_fuel[MAX_EVENTOS_AGENDAMENTO];
+volatile bool inj_acionado[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_percorrido[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_percorrido_inj[MAX_EVENTOS_AGENDAMENTO];
 volatile uint32_t timer1_overflow_count = 0;
 volatile uint32_t tick_base_sincronismo = 0;
-volatile uint32_t ignicao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile uint32_t ignicao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile uint32_t injecao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile uint32_t injecao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile bool ignicao_agendada[8] = {false, false, false, false, false, false, false, false};
-volatile bool injecao_agendada[8] = {false, false, false, false, false, false, false, false};
+volatile uint32_t ignicao_tick_ligar[MAX_EVENTOS_AGENDAMENTO];
+volatile uint32_t ignicao_tick_desligar[MAX_EVENTOS_AGENDAMENTO];
+volatile uint32_t injecao_tick_ligar[MAX_EVENTOS_AGENDAMENTO];
+volatile uint32_t injecao_tick_desligar[MAX_EVENTOS_AGENDAMENTO];
+volatile bool ignicao_agendada[MAX_EVENTOS_AGENDAMENTO];
+volatile bool injecao_agendada[MAX_EVENTOS_AGENDAMENTO];
 //volatile bool flag_interrupcao = false;
 unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
@@ -159,6 +187,7 @@ byte tipo_vetor_avanco_temperatura = 0;
 byte tipo_vetor_parametros_injetor = 0;
 byte tipo_vetor_configuracao_tps = 0;
 byte tipo_vetor_configuracao_map = 0;
+byte tipo_vetor_offset_evento = 0;
 byte tipo_vetor_configuracao_partida = 0;
 byte tipo_vetor_configuracao_marcha_lenta = 0;
 bool status_dados_tempo_real = false;

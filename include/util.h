@@ -139,6 +139,32 @@ static inline int calcular_grau_entre_cada_cilindro() {
   return 360 / qtd_cilindro;
 }
 
+// Preenche a tabela com o espacamento uniforme calculado. E o padrao, e o que
+// mantem motores existentes com o comportamento de sempre; quem tem fogo
+// desigual sobrescreve as posicoes pela tela.
+static inline void preencher_offset_evento_uniforme() {
+  int passo = calcular_grau_entre_cada_cilindro();
+  for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+    // O resto por 360 nao muda NADA nas posicoes que o motor usa: para elas
+    // passo*i e sempre menor que 360, tanto no virabrequim (720/qtd vezes
+    // qtd/2-1 = 360 - 720/qtd) quanto no comando (360/qtd vezes qtd-1).
+    //
+    // Ele arruma a cauda que ninguem indexa. Sem isso um seis no comando dava
+    // 360 e 420 nas posicoes 6 e 7, valores que a validacao da leitura recusa -
+    // e a tabela salva nao voltava igual do reset.
+    offset_evento[i] = (passo * i) % 360;
+  }
+}
+
+// Separacao do evento i em relacao ao evento 0. Com a tabela desligada devolve
+// exatamente a multiplicacao de antes.
+static inline int separacao_evento_base(int i) {
+  if (!usar_offset_personalizado) {
+    return grau_entre_cada_cilindro * i;
+  }
+  return (i >= 0 && i < MAX_EVENTOS_AGENDAMENTO) ? offset_evento[i] : 0;
+}
+
 // log2(valor) em ponto fixo Q16. Substitui o log() de ponto flutuante da
 // biblioteca padrao, que sozinho arrastava ~1150 bytes de rotinas float para
 // o binario (__divsf3x, __mulsf3x, __addsf3x, __fp_powser e conversoes).

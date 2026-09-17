@@ -233,6 +233,18 @@ void gravar_dados_eeprom_configuracao_map() {
     EEPROM.update(endereco++, (valor_map_maximo >> 8) & 0xFF); // Byte mais significativo
 }
 
+// Tabela de offset por cilindro: 860..875 (8 x 16 bits) e a bandeira em 876.
+// Fica no mesmo bloco livre que as tabelas de temperatura receberam - ver a
+// nota abaixo sobre por que nada pode passar de 1023 nas placas de 328P.
+void gravar_dados_eeprom_offset_evento() {
+    int endereco = 860;
+    for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+        escrever_16bits_eeprom(endereco, (uint16_t)offset_evento[i]);
+        endereco += 2;
+    }
+    EEPROM.update(876, usar_offset_personalizado ? 1 : 0);
+}
+
 void gravar_dados_eeprom_enriquecimento_temperatura() {
     // Endereco 840, e nao 1020, porque a ATmega328P da Nano e da Uno tem 1024
     // bytes de EEPROM e o registrador de endereco e de 10 bits: escrever em

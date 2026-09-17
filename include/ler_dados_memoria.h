@@ -287,6 +287,17 @@ void ler_dados_memoria() {
     enviar_byte_config(',');
     enviar_byte_config(';');
 
+  // z) Tabela de offset por cilindro. Laco em vez de oito chamadas soltas:
+  // custa bem menos flash, que na Nano e o recurso apertado.
+  enviar_byte_config('z');
+  enviar_byte_config(',');
+  sendSerialInt(usar_offset_personalizado ? 1 : 0);
+  for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+    enviar_byte_config(',');
+    sendSerialInt(offset_evento[i]);
+  }
+  enviar_byte_config(';');
+
   // p) Configuração TPS
   enviar_byte_config('p');
   enviar_byte_config(',');

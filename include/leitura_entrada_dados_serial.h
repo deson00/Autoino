@@ -54,7 +54,8 @@ void leitura_entrada_dados_serial()
     if (data == 'a' || data == 'b' || data == 'c' || data == 'd' || data == 'e' ||
         data == 'f' || data == 'g' || data == 'j' || data == 'k' || data == 'l' ||
         data == 'u' || data == 'm' || data == 'n' || data == 'o' || data == 'p' ||
-        data == 'q' || data == 'r' || data == 's' || data == 't' || data == 'v' || data == 'w') {
+        data == 'q' || data == 'r' || data == 's' || data == 't' || data == 'v' || data == 'w' ||
+        data == 'z') {
       index = 0;
       memset(buffer, 0, sizeof(buffer));
       memset(values, 0, sizeof(values));
@@ -180,6 +181,9 @@ void leitura_entrada_dados_serial()
     if (data == 'p') {// configuração TPS
       tipo_vetor_configuracao_tps = 1;
     }
+    if (data == 'z') {// tabela de offset por cilindro (motor de fogo desigual)
+      tipo_vetor_offset_evento = 1;
+    }
     if (data == 'q') {// configuração MAP
       tipo_vetor_configuracao_map = 1;
     }
@@ -274,8 +278,19 @@ void leitura_entrada_dados_serial()
           local_rodafonica = values[2]; // 2 para virabrequinho e 1 para comando
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
-          qtd_cilindro = values[5]; // <<< Usa o valor bruto vindo da tela! Não tenta normalizar/adivinhar canais de bobina.
+          // O valor da tela entra como veio - nao se tenta adivinhar canais de
+ // bobina aqui - mas PRECISA caber nos vetores de agendamento. Sem este
+ // limite, um 10 ou 12 fazia os lacos indexarem [9] e [11] em vetores de 8
+ // e escreverem por cima da RAM vizinha. A leitura da EEPROM ja limitava;
+ // a serial era o caminho que ficou aberto.
+          qtd_cilindro = values[5];
+          if (qtd_cilindro < 1) {
+            qtd_cilindro = 1;
+          } else if (qtd_cilindro > MAX_EVENTOS_AGENDAMENTO) {
+            qtd_cilindro = MAX_EVENTOS_AGENDAMENTO;
+          }
           grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro();
+          if (!usar_offset_personalizado) preencher_offset_evento_uniforme();
           resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
@@ -319,7 +334,8 @@ void leitura_entrada_dados_serial()
       if (tipo_vetor_configuracao_injecao == 1){
           referencia_leitura_injecao = values[0];//1 map 2 tps
           tipo_motor = values[1];//4 para motor 4 tempo e 2 para 2 tempo
-          grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro(); // 4T/2T muda o tamanho do ciclo completo em graus
+          grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro();
+          if (!usar_offset_personalizado) preencher_offset_evento_uniforme(); // 4T/2T muda o tamanho do ciclo completo em graus
           resetar_estado_agendamento_motor(); // descarta eventos ja agendados com o ciclo antigo
           modo_injecao = values[2]; // 1 pareado 2 semi e 3 sequencial
           emparelhar_injetor = values[3];// 1 para 1234 para emparelhado 2 para 1423 semi ou sequencial e 3 para 1342 para semi ou sequencial
@@ -375,6 +391,30 @@ void leitura_entrada_dados_serial()
           valor_tps_maximo = values[1];
           gravar_dados_eeprom_configuracao_tps();
           tipo_vetor_configuracao_tps = 0;
+      }
+      if (tipo_vetor_offset_evento == 1){
+          // values[0] liga ou desliga a tabela; values[1..] sao os offsets.
+          // Desligada, o vetor volta ao uniforme e o agendamento fica igual ao
+          // de sempre - e o caminho de todo motor de fogo uniforme.
+          if (values[0] != 1) {
+            usar_offset_personalizado = false;
+            preencher_offset_evento_uniforme();
+          } else {
+            for (int i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+              int graus = values[i + 1];
+              // Grau do SENSOR: 0..359. Fora disso nao existe posicao possivel,
+              // entao prende na faixa em vez de agendar num angulo impossivel.
+              if (graus < 0) {
+                graus = 0;
+              } else if (graus > 359) {
+                graus = 359;
+              }
+              offset_evento[i] = graus;
+            }
+            usar_offset_personalizado = true;
+          }
+          gravar_dados_eeprom_offset_evento();
+          tipo_vetor_offset_evento = 0;
       }
       if (tipo_vetor_configuracao_map == 1){
           valor_map_tipo = values[0];

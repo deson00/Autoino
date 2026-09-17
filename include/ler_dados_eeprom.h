@@ -239,6 +239,37 @@ void ler_dados_eeprom_configuracao_map() {
     endereco += 2;
 }
 
+void ler_dados_eeprom_offset_evento() {
+    // Bandeira diferente de 1 (inclusive 0xFF de memoria virgem) significa
+    // tabela nao configurada: fica o preenchimento uniforme que
+    // ler_dados_eeprom_configuracao_inicial acabou de fazer.
+    if (EEPROM.read(876) != 1) {
+        usar_offset_personalizado = false;
+        return;
+    }
+    int endereco = 860;
+    int lidos[MAX_EVENTOS_AGENDAMENTO];
+    for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+        uint16_t bruto = ler_16bits_eeprom(endereco);
+        endereco += 2;
+        // Fora de 0..359 e memoria corrompida, ou tabela gravada por uma versao
+        // com outra geometria. Nesse caso volta para o uniforme, que sempre
+        // roda, em vez de agendar faisca num angulo sem sentido fisico.
+        if (bruto > 359) {
+            usar_offset_personalizado = false;
+            preencher_offset_evento_uniforme();
+            return;
+        }
+        lidos[i] = (int)bruto;
+    }
+    // So publica depois que TODAS passaram: meia tabela boa e meia velha seria
+    // pior que nenhuma.
+    for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+        offset_evento[i] = lidos[i];
+    }
+    usar_offset_personalizado = true;
+}
+
 void ler_dados_eeprom_enriquecimento_temperatura() {
     // Ver a nota no gravador: 1020 estourava os 1024 bytes da 328P.
     int endereco = 840;
@@ -351,6 +382,7 @@ void ler_dados_eeprom_configuracao_inicial() {
     
     // Removidas as predições forçadas. O valor da tela sobrevive fielmente.
     grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro();
+          if (!usar_offset_personalizado) preencher_offset_evento_uniforme();
     grau_cada_dente = 360 / qtd_dente;
 }
 void ler_dados_eeprom(){
@@ -374,7 +406,10 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_configuracao_map();
     ler_dados_eeprom_enriquecimento_temperatura();
     ler_dados_eeprom_avanco_temperatura();
-    ler_dados_eeprom_configuracao_inicial();    
+    ler_dados_eeprom_configuracao_inicial();
+    // Depois da configuracao inicial de proposito: e la que o preenchimento
+    // uniforme acontece, e a tabela gravada precisa vir por cima dele.
+    ler_dados_eeprom_offset_evento();
     
     // Leitura dos dados de configurações de faisca 
     int endereco = 382;
