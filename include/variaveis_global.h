@@ -64,7 +64,7 @@ int grau_entre_cada_cilindro = (local_rodafonica == 2) ? ((tipo_motor == 2 ? 360
 // escala o valor sempre cabe em 0..359 e nunca precisa de tratamento de volta.
 //
 // Existe porque ate agora o angulo saia de uma multiplicacao, grau_entre_cada_
-// cilindro * i, que assume cilindros IGUALMENTE espacados. Motor de fogo
+// cilindro * i, que assume cilindros IGUALMENTE espacados. Motor de ignicao
 // desigual - V2 de moto, alguns V4 - nao tem como ser descrito assim: um V2
 // com eventos a 75 e 285 graus precisa de 0 e 210, e nao de um passo unico.
 //

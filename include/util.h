@@ -140,7 +140,7 @@ static inline int calcular_grau_entre_cada_cilindro() {
 }
 
 // Preenche a tabela com o espacamento uniforme calculado. E o padrao, e o que
-// mantem motores existentes com o comportamento de sempre; quem tem fogo
+// mantem motores existentes com o comportamento de sempre; quem tem ignicao
 // desigual sobrescreve as posicoes pela tela.
 static inline void preencher_offset_evento_uniforme() {
   int passo = calcular_grau_entre_cada_cilindro();

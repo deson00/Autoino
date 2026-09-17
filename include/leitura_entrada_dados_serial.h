@@ -181,7 +181,7 @@ void leitura_entrada_dados_serial()
     if (data == 'p') {// configuração TPS
       tipo_vetor_configuracao_tps = 1;
     }
-    if (data == 'z') {// tabela de offset por cilindro (motor de fogo desigual)
+    if (data == 'z') {// tabela de offset por cilindro (motor de ignicao desigual)
       tipo_vetor_offset_evento = 1;
     }
     if (data == 'q') {// configuração MAP
@@ -395,7 +395,7 @@ void leitura_entrada_dados_serial()
       if (tipo_vetor_offset_evento == 1){
           // values[0] liga ou desliga a tabela; values[1..] sao os offsets.
           // Desligada, o vetor volta ao uniforme e o agendamento fica igual ao
-          // de sempre - e o caminho de todo motor de fogo uniforme.
+          // de sempre - e o caminho de todo motor de ignicao uniforme.
           if (values[0] != 1) {
             usar_offset_personalizado = false;
             preencher_offset_evento_uniforme();
