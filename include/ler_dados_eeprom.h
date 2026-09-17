@@ -240,7 +240,8 @@ void ler_dados_eeprom_configuracao_map() {
 }
 
 void ler_dados_eeprom_enriquecimento_temperatura() {
-    int endereco = 1020;
+    // Ver a nota no gravador: 1020 estourava os 1024 bytes da 328P.
+    int endereco = 840;
 
     // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
     usar_injecao_temperatura = EEPROM.read(1015) == 1 ? 1 : 0;
@@ -289,7 +290,8 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
 }
 
 void ler_dados_eeprom_avanco_temperatura() {
-    int endereco = 1030;
+    // Ver a nota no gravador: 1030 caia em 6..15 e corrompia vetor_rpm.
+    int endereco = 850;
 
     // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
     usar_avanco_temperatura = EEPROM.read(1016) == 1 ? 1 : 0;

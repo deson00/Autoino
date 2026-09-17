@@ -234,7 +234,19 @@ void gravar_dados_eeprom_configuracao_map() {
 }
 
 void gravar_dados_eeprom_enriquecimento_temperatura() {
-    int endereco = 1020;
+    // Endereco 840, e nao 1020, porque a ATmega328P da Nano e da Uno tem 1024
+    // bytes de EEPROM e o registrador de endereco e de 10 bits: escrever em
+    // 1024 ou acima da a volta e cai no comeco. Nem o EEPROM.h do Arduino nem o
+    // eeprom_write_byte da avr-libc mascaram isso.
+    //
+    // Com o bloco em 1020 os enderecos 1024..1029 caiam em 0..5, que nao sao
+    // usados - passava despercebido. O bloco de avanco por temperatura, em
+    // 1030, caia em 6..15 e corrompia vetor_rpm[0..2], os tres primeiros pontos
+    // do eixo de rotacao da tabela de avanco. Na Mega, com 4096 bytes, nada
+    // disso acontecia, e e nela que se desenvolve.
+    //
+    // 840..899 estava livre e cabem os dois blocos mais a tabela de offset.
+    int endereco = 840;
 
     for (int i = 0; i < 5; i++) {
         EEPROM.update(endereco++, vetor_temperatura_injecao[i] & 0xFF);
@@ -248,7 +260,9 @@ void gravar_dados_eeprom_enriquecimento_temperatura() {
 }
 
 void gravar_dados_eeprom_avanco_temperatura() {
-    int endereco = 1030;
+    // Ver a nota em gravar_dados_eeprom_enriquecimento_temperatura: este era o
+    // bloco que corrompia o eixo de rotacao da tabela de avanco na 328P.
+    int endereco = 850;
 
     for (int i = 0; i < 5; i++) {
         EEPROM.update(endereco++, vetor_temperatura[i] & 0xFF);
