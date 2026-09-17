@@ -296,6 +296,11 @@ void ler_dados_memoria() {
     enviar_byte_config(',');
     sendSerialInt(offset_evento[i]);
   }
+  // Virgula final antes do ponto e virgula: e a convencao de todas as outras
+  // secoes, e o parser da tela conta com ela - ele varre ate values.length-1
+  // justamente para descartar o vazio que sobra. Sem a virgula, o ultimo
+  // offset seria o descartado.
+  enviar_byte_config(',');
   enviar_byte_config(';');
 
   // p) Configuração TPS
