@@ -177,6 +177,53 @@ void desligar_dwell(int i){
 // qualquer jeito, e da histerese para a decisao do agendador nao ser desfeita.
 #define DWELL_CANCELA_ABAIXO_PCT 20UL
 
+/*
+ * PENDENTE: teto de dwell pela separacao entre eventos.
+ *
+ * O encurtamento acima resolve o dwell que nao cabe ENTRE A REFERENCIA E O
+ * ANGULO ALVO. Falta o outro caso: o dwell que cabe nisso mas invade o evento
+ * do OUTRO canal. Em motor de ignicao desigual os eventos podem ficar muito
+ * proximos, e ai a carga de uma bobina atropela a centelha da vizinha.
+ *
+ * MEDIDO EM BANCADA - V-twin de 75 graus, roda 24-1, rampa ate 8736 rpm,
+ * analisador ligado em IGN1, IGN2 e no sensor:
+ *
+ *   dwell 2,95 ms   185 centelhas perdidas, comecando em 6677 rpm
+ *   dwell 1,45 ms   nenhuma perdida, mas a IGN1 dispersava +-25,8 graus e o
+ *                   dwell dela ESTICAVA para 1,76 ms - assinatura do evento
+ *                   saindo atrasado
+ *   dwell 1,05 ms   nenhuma perdida, IGN1 dentro de +-7,1 graus em 3670
+ *                   voltas, dwell firme em 1,06 ms
+ *
+ * A causa e geometrica. Os eventos ficam a 75 e 285 graus um do outro, e a
+ * folga entre a centelha de um canal e a partida de dwell do outro vale
+ *
+ *     folga = 75 graus - graus de dwell
+ *
+ * que fecha conforme a rotacao sobe. A degradacao acompanha a folga, nao a
+ * rotacao: +-10 graus com ~300 us de folga, +-26 graus com ~75 us. Com 1,05 ms
+ * a folga nunca caiu de 370 us e nada quebrou ate o topo da rampa.
+ *
+ * A CORRECAO seria um teto calculado da propria geometria, no laco principal:
+ *
+ *     dwell maximo = menor separacao entre eventos * tempo_cada_grau - 400us
+ *
+ * Nao precisa de tabela, EEPROM, protocolo nem tela: sai da tabela de offset
+ * que ja existe. Num quatro cilindros uniforme o teto e 180 graus e nunca
+ * atrapalha; so morde em motor de ignicao desigual.
+ *
+ * POR QUE NAO ESTA FEITO: prototipado e medido - custa 188 bytes de flash e
+ * zero RAM, e a Nano ficaria com 38 bytes livres. Margem apertada demais para
+ * gastar num problema que so aparece acima de 7000 rpm, faixa em que este
+ * motor nao trabalha. Calcular a separacao uma vez so, em cache, sai MAIOR
+ * (30748 bytes, 28 acima do limite da Nano): cada ponto de chamada custa mais
+ * codigo do que o laco economiza.
+ *
+ * ANTES DE FAZER: baixar MAX_EVENTOS_AGENDAMENTO de 8 para 6 devolve 92 bytes
+ * de RAM e algum flash, e ainda cobre um seis cilindros com roda no comando.
+ * Com esse respiro o teto entra sem apertar.
+ */
+
 volatile unsigned int contagem_protecao_dwell_maximo = 0;
 void protege_dwell_maximo(){
   unsigned long limite_us = (dwell_bobina * MULTIPLICADOR_DWELL_MAX_X10) / 10UL;
