@@ -370,6 +370,73 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 	}
 }
 
+// Correcao do fim do dwell quando o gap real chega, para o canal enrolado.
+//
+// O canal em regime adiantado tem o alvo montado sobre periodo ESTIMADO
+// (rearmar_ignicoes_adiante: ultimo gap real + N periodos). A estimativa erra
+// quando a rotacao muda dentro da volta, e o erro cai inteiro sobre o angulo
+// da centelha, porque o dwell dele termina logo depois do gap seguinte.
+//
+// Medido em bancada 18/09 (6 cilindros, 60-2 no virabrequim, dwell 2,95 ms):
+// a dispersao do ign1 vai de +-0,4 grau a 900 rpm para +-7,8 graus a 2800,
+// enquanto ign2 e ign3 ficam em +-1 a 3 na faixa inteira. Pior caso, centelha
+// 52 graus adiantada. De 2500 a 2750 rpm, 10,3% das centelhas fora do ritmo.
+//
+// Quando o gap chega, tick_base_sincronismo deixa de ser estimativa e vira
+// medida: o alvo exato deste canal e base + angulo, e o angulo se recalcula
+// com o tempo_cada_grau ja atualizado por esta volta. So o DESLIGAMENTO se
+// corrige - o ligamento ja aconteceu e esta no passado. Quem absorve o erro
+// passa a ser o dwell, e nao o ponto, que e a mesma escolha do adjustCrankAngle
+// da Speeduino no ramo isRunning ("this could reduce dwell time & potentially
+// result in a weaker spark").
+//
+// Nao mexe nas duas portas de timer.h:354 e timer.h:448. Elas impedem
+// REPLANEJAR o canal a partir desta referencia, de onde por definicao ele nao
+// cabe, e foi isso que causou a alternancia de regime volta a volta descrita em
+// ba47798. Aqui nao ha replanejamento: o evento continua sendo o mesmo, na
+// mesma volta, so com o instante final corrigido.
+static inline void corrigir_fim_dwell_adiantado(int i, uint32_t base) {
+	if (!(ignicao_regime_adiantado & (uint8_t)(1U << i))) {
+		return;
+	}
+
+	// So faz sentido com a bobina JA carregando. Canal ainda esperando e assunto
+	// do rearme, e canal que ja soltou a centelha nao tem o que corrigir.
+	// captura_dwell sozinho responde isso: ele e ign_acionado sao escritos
+	// sempre juntos, nos tres unicos lugares que os tocam (ignicao.h:117/143 e
+	// timer.h:819), entao testar os dois so gastava flash.
+	if (!captura_dwell[i]) {
+		return;
+	}
+
+	if (tempo_cada_grau == 0) {
+		return;
+	}
+
+	uint32_t alvo = base + us_para_ticks_timer1(calcular_tempo_ignicao_indice(i));
+
+	// Nao ha guarda de alvo no passado nem de alvo distante demais: as duas
+	// seriam codigo morto. O angulo ja vem normalizado em [0,360) e
+	// calcular_tempo_evento_ignicao nunca devolve zero, entao alvo esta sempre
+	// depois de base; e canal em regime adiantado tem, por definicao de entrada,
+	// angulo MENOR que o proprio dwell, entao nunca perto de uma volta inteira.
+	// Na Nano essas duas guardas custavam mais que a correcao inteira.
+
+	// Piso de dwell: encurtar para acertar o ponto vale ate certo ponto. Abaixo
+	// de metade, a bobina nao entrega centelha - e centelha fraca na hora certa e
+	// pior que centelha inteira alguns graus atrasada. O dwell agendado sai da
+	// propria dupla de ticks, sem recalcular de dwell_bobina, e a metade sai por
+	// deslocamento: DWELL_MINIMO_UTIL_PCT e 50, e a multiplicacao de 32 bits que
+	// o valor generico exige nao cabe no que sobra de flash.
+	uint32_t dwell_agendado = ignicao_tick_desligar[i] - ignicao_tick_ligar[i];
+	uint32_t piso = dwell_agendado >> 1;
+	if ((uint32_t)(alvo - ignicao_tick_ligar[i]) < piso) {
+		alvo = ignicao_tick_ligar[i] + piso;
+	}
+
+	ignicao_tick_desligar[i] = alvo;
+}
+
 // Rearme dos canais em regime adiantado, fora do gap.
 //
 // Um canal so e agendado no gap. Quando ele acaba de disparar, o proximo alvo
@@ -1030,9 +1097,14 @@ void agendar_eventos_motor_timer1() {
 	limpar_ignicoes_pendentes_nao_acionadas();
 
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	// O canal enrolado nunca cai no primeiro ramo - ign_acionado o bloqueia - e e
+	// justamente ele quem esta com a bobina carregando agora, sobre alvo
+	// estimado. Com a origem angular ja medida, o fim do dwell dele se acerta.
 	for (int i = 0; i < eventos_ignicao; i++) {
 		if (!ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
 			agendar_ignicao_canal(i, base);
+		} else {
+			corrigir_fim_dwell_adiantado(i, base);
 		}
 	}
 
