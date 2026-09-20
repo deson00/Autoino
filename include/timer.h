@@ -400,12 +400,15 @@ static inline void corrigir_fim_dwell_adiantado(int i, uint32_t base) {
 		return;
 	}
 
-	// So faz sentido com a bobina JA carregando. Canal ainda esperando e assunto
-	// do rearme, e canal que ja soltou a centelha nao tem o que corrigir.
-	// captura_dwell sozinho responde isso: ele e ign_acionado sao escritos
-	// sempre juntos, nos tres unicos lugares que os tocam (ignicao.h:117/143 e
-	// timer.h:819), entao testar os dois so gastava flash.
-	if (!captura_dwell[i]) {
+	// Vale para o canal AGENDADO, tenha a bobina ligado ou nao - sao os dois
+	// estados que o adjustCrankAngle da Speeduino trata, RUNNING e PENDING.
+	// Canal que ja soltou a centelha nao tem o que corrigir, e ignicao_agendada
+	// ja e false nele.
+	//
+	// A primeira versao exigia a bobina carregando (captura_dwell). Medido no
+	// motor, isso cobria so 11,6% das voltas a 2500 rpm e 62,8% a 3000 - e as
+	// voltas de fora eram justamente as que saiam com a centelha atrasada.
+	if (!ignicao_agendada[i]) {
 		return;
 	}
 
@@ -430,8 +433,15 @@ static inline void corrigir_fim_dwell_adiantado(int i, uint32_t base) {
 	// o valor generico exige nao cabe no que sobra de flash.
 	uint32_t dwell_agendado = ignicao_tick_desligar[i] - ignicao_tick_ligar[i];
 	uint32_t piso = dwell_agendado >> 1;
-	if ((uint32_t)(alvo - ignicao_tick_ligar[i]) < piso) {
-		alvo = ignicao_tick_ligar[i] + piso;
+	if (!captura_dwell[i]) {
+		// Pendente: a bobina ainda nao ligou, entao da para mover a ESPERA e
+		// manter o dwell inteiro - o ramo PENDING do adjustCrankAngle.
+		ignicao_tick_ligar[i] = alvo - dwell_agendado;
+	} else {
+		int32_t folga = (int32_t)(alvo - ignicao_tick_ligar[i]);
+		if (folga < (int32_t)piso) {
+			alvo = ignicao_tick_ligar[i] + piso;
+		}
 	}
 
 	ignicao_tick_desligar[i] = alvo;
