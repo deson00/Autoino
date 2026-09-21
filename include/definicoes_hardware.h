@@ -51,6 +51,33 @@
 	#pragma message("marcha lenta por PWM indisponivel nesta combinacao de perfil e MCU (liga/desliga e passo seguem funcionando)")
 #endif
 
+// IDENTIDADE DO FIRMWARE
+//
+// A ECU passa a dizer em que placa ela acha que esta (secao V da resposta do
+// comando h). Sem isso nada impedia gravar o hex de uma revisao numa placa de
+// outra: o quarto bico ia para um pino sem driver, ou o DIR do passo ia para o
+// driver de bico - e nenhum dos dois da erro, so comportamento estranho.
+//
+// PLACA_REVISAO vem do build_flags quando existe mais de uma revisao viva.
+// O padrao e a revisao corrente, entao quem compila sem flag nenhuma leva a
+// placa atual.
+//
+// A revisao NAO e so um rotulo: ela escolhe a pinagem logo abaixo. Se fosse so
+// um numero para exibir, daria para compilar "v2" com pinos de v1 e o campo
+// viraria mentira, que e pior que nao ter campo.
+//
+//   v1  inj4 no D13, DIR do passo no D10
+//   v2  inj4 no D10, DIR do passo no D13  (o D13 e o LED do bootloader)
+#ifndef PLACA_REVISAO
+#define PLACA_REVISAO 2
+#endif
+
+#ifdef Autoino
+#define PERFIL_HARDWARE 1
+#else
+#define PERFIL_HARDWARE 2
+#endif
+
 #ifdef Autoino
 #define pino_sensor_roda_fonica 2
 #define pino_sensor_fase 3
@@ -76,7 +103,11 @@
 // lado, e o motor de passo so anda quando o STEP pulsa. O bootloader
 // mexendo na direcao de um motor que nao esta recebendo passo nao faz
 // nada - e o LED da placa passa a acompanhar a direcao, de brinde.
+#if PLACA_REVISAO >= 2
 #define pino_direcao_marcha_lenta 13
+#else
+#define pino_direcao_marcha_lenta 10
+#endif
 constexpr byte ign1 = 4;
 constexpr byte ign2 = 5;
 constexpr byte ign3 = 6;
@@ -84,7 +115,11 @@ constexpr byte ign4 = 7;
 constexpr byte inj1 = 8;
 constexpr byte inj2 = 9;
 constexpr byte inj3 = 12;
+#if PLACA_REVISAO >= 2
 constexpr byte inj4 = 10;
+#else
+constexpr byte inj4 = 13;
+#endif
 #endif
 #ifdef Speeduino
 #define pino_sensor_roda_fonica 19

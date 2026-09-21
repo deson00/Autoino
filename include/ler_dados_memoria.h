@@ -387,4 +387,20 @@ void ler_dados_memoria() {
   enviar_byte_config(',');
   enviar_byte_config(';');
 
+  // V) Identidade: em que placa este firmware acha que esta.
+  //
+  // Vai por ultimo de proposito: quem le versoes antigas do firmware
+  // simplesmente nao encontra a secao, em vez de encontrar o resto deslocado.
+  //
+  // perfil 1 = Autoino, 2 = Speeduino. A revisao e a da placa, e escolhe a
+  // pinagem em definicoes_hardware.h - nao e rotulo.
+  enviar_byte_config(';');
+  enviar_byte_config('V');
+  enviar_byte_config(',');
+  sendSerialInt(PERFIL_HARDWARE);
+  enviar_byte_config(',');
+  sendSerialInt(PLACA_REVISAO);
+  enviar_byte_config(',');
+  enviar_byte_config(';');
+
 }
