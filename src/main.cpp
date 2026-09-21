@@ -224,17 +224,37 @@ void atualizar_estado_partida() {
 }
 
 void setup(){
+  // Saidas em nivel baixo antes de qualquer outra coisa.
+  //
+  // No reset todo pino do AVR volta a ser entrada de alta impedancia, e so
+  // deixa de ser quando o pinMode roda. Antes, o pinMode das saidas vinha
+  // DEPOIS de ler_dados_eeprom() e de um delay(1000) - ou seja, as quatro
+  // bobinas e os quatro bicos ficavam soltos por mais de um segundo a cada
+  // partida, e o que acontecia ali dependia so de o driver ter pulldown.
+  //
+  // digitalWrite ANTES do pinMode: com DDR ainda em entrada, o write so mexe
+  // no registrador de saida, entao quando o pinMode liga o driver ele ja
+  // encontra o nivel certo. Na ordem inversa haveria um instante com o pino
+  // dirigido pelo que estivesse no PORT.
+  //
+  // HIGH liga bobina e bico (ver iniciar_dwell e injecao.h), entao LOW e o
+  // estado seguro dos dois.
+  //
+  // Isso NAO cobre a janela do bootloader, que roda antes do setup e no
+  // Nano/Uno pisca o D13 - onde hoje esta o inj4. Aquela parte e de hardware:
+  // pulldown no driver, ou atuador fora desse pino.
+  for (byte i = 0; i < 4; i++) {
+    digitalWrite(ignicao_pins[i], LOW);
+    pinMode(ignicao_pins[i], OUTPUT);
+    digitalWrite(injecao_pins[i], LOW);
+    pinMode(injecao_pins[i], OUTPUT);
+  }
+
+  // O delay(1000) que ficava aqui nasceu em dbb9bc0 colado num
+  // inicializar_valores() que ja estava comentado, e nunca teve funcao
+  // propria: ler_dados_eeprom() e sincrono e nada depois dele depende de
+  // tempo. O que ele fazia de fato era esticar a janela de saidas soltas.
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
-  delay(1000);
-    
-  pinMode(ign1, OUTPUT);
-  pinMode(ign2, OUTPUT);
-  pinMode(ign3, OUTPUT);
-  pinMode(ign4, OUTPUT);
-  pinMode(inj1, OUTPUT);
-  pinMode(inj2, OUTPUT);
-  pinMode(inj3, OUTPUT);
-  pinMode(inj4, OUTPUT);
   inicializar_controle_marcha_lenta();
   pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
   pinMode(pino_sensor_map, INPUT);
