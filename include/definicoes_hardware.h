@@ -64,15 +64,27 @@
 #define pino_sensor_pressao_oleo A7
 #define pino_marcha_lenta 11
 #define pino_passo_marcha_lenta 11
-#define pino_direcao_marcha_lenta 10
-byte ign1 = 4;
-byte ign2 = 5;
-byte ign3 = 6;
-byte ign4 = 7;
-byte inj1 = 8;
-byte inj2 = 9;
-byte inj3 = 12;
-byte inj4 = 13;
+// DIR trocou de lugar com o inj4 (era D10, o inj4 era D13).
+//
+// O D13 e o SCK e o LED do bootloader: ele e dirigido a cada reset e a
+// cada gravacao, por volta de 100 ms por pisco. Com bico ali, isso
+// despejava 20 a 50 vezes uma injetada normal (2 a 5 ms) com o motor
+// parado. Pulldown nao resolve - o bootloader DIRIGE o pino, nao o
+// deixa solto -, entao a saida era tirar o atuador de la.
+//
+// DIR e o sinal mais tolerante a isso em todo o sistema: ele so diz o
+// lado, e o motor de passo so anda quando o STEP pulsa. O bootloader
+// mexendo na direcao de um motor que nao esta recebendo passo nao faz
+// nada - e o LED da placa passa a acompanhar a direcao, de brinde.
+#define pino_direcao_marcha_lenta 13
+constexpr byte ign1 = 4;
+constexpr byte ign2 = 5;
+constexpr byte ign3 = 6;
+constexpr byte ign4 = 7;
+constexpr byte inj1 = 8;
+constexpr byte inj2 = 9;
+constexpr byte inj3 = 12;
+constexpr byte inj4 = 10;
 #endif
 #ifdef Speeduino
 #define pino_sensor_roda_fonica 19
@@ -88,14 +100,14 @@ byte inj4 = 13;
 #define pino_marcha_lenta 5 // Saida Idle 1 / IDLE-OUT padrao da Speeduino v0.4.
 #define pino_passo_marcha_lenta 17 // STEP padrao do soquete stepper Speeduino v0.4.
 #define pino_direcao_marcha_lenta 16 // DIR padrao do soquete stepper Speeduino v0.4.
-byte ign1 = 40;
-byte ign2 = 38;
-byte ign3 = 52;
-byte ign4 = 50;
-byte inj1 = 8;
-byte inj2 = 9;
-byte inj3 = 10;
-byte inj4 = 11;
+constexpr byte ign1 = 40;
+constexpr byte ign2 = 38;
+constexpr byte ign3 = 52;
+constexpr byte ign4 = 50;
+constexpr byte inj1 = 8;
+constexpr byte inj2 = 9;
+constexpr byte inj3 = 10;
+constexpr byte inj4 = 11;
 #endif
 
 // #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__) // Uno e Nano
@@ -171,3 +183,46 @@ byte inj4 = 11;
 //   }
 // }
 // #endif
+
+// Guarda de colisao de pinos, em tempo de compilacao.
+//
+// O motivo de existir: ao mover o inj4 do D13 para o D10, o D10 ja era o DIR do
+// motor de passo. Sem perceber, os dois codigos dirigiriam o mesmo pino - o
+// bico abriria a cada troca de direcao e a direcao inverteria a cada injetada.
+// Colisao de pino nao aparece em teste de bancada com uma funcao de cada vez;
+// aparece com fiacao ligada e motor no lugar.
+//
+// Nao custa flash: e tudo avaliado pelo compilador.
+//
+// pino_marcha_lenta e pino_passo_marcha_lenta compartilham pino de proposito -
+// PWM ou passo, nunca os dois -, entao esse par fica fora da conta.
+#define AUTOINO_PINOS_DIFEREM(a, b) static_assert((a) != (b),   "colisao de pino: " #a " e " #b " estao no mesmo pino")
+
+AUTOINO_PINOS_DIFEREM(ign1, ign2); AUTOINO_PINOS_DIFEREM(ign1, ign3);
+AUTOINO_PINOS_DIFEREM(ign1, ign4); AUTOINO_PINOS_DIFEREM(ign2, ign3);
+AUTOINO_PINOS_DIFEREM(ign2, ign4); AUTOINO_PINOS_DIFEREM(ign3, ign4);
+
+AUTOINO_PINOS_DIFEREM(inj1, inj2); AUTOINO_PINOS_DIFEREM(inj1, inj3);
+AUTOINO_PINOS_DIFEREM(inj1, inj4); AUTOINO_PINOS_DIFEREM(inj2, inj3);
+AUTOINO_PINOS_DIFEREM(inj2, inj4); AUTOINO_PINOS_DIFEREM(inj3, inj4);
+
+AUTOINO_PINOS_DIFEREM(ign1, inj1); AUTOINO_PINOS_DIFEREM(ign1, inj2);
+AUTOINO_PINOS_DIFEREM(ign1, inj3); AUTOINO_PINOS_DIFEREM(ign1, inj4);
+AUTOINO_PINOS_DIFEREM(ign2, inj1); AUTOINO_PINOS_DIFEREM(ign2, inj2);
+AUTOINO_PINOS_DIFEREM(ign2, inj3); AUTOINO_PINOS_DIFEREM(ign2, inj4);
+AUTOINO_PINOS_DIFEREM(ign3, inj1); AUTOINO_PINOS_DIFEREM(ign3, inj2);
+AUTOINO_PINOS_DIFEREM(ign3, inj3); AUTOINO_PINOS_DIFEREM(ign3, inj4);
+AUTOINO_PINOS_DIFEREM(ign4, inj1); AUTOINO_PINOS_DIFEREM(ign4, inj2);
+AUTOINO_PINOS_DIFEREM(ign4, inj3); AUTOINO_PINOS_DIFEREM(ign4, inj4);
+
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign1);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign2);
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign3);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign4);
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj1);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj2);
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj3);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj4);
+
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign1); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign2);
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign3); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign4);
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj1); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj2);
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj3); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj4);
+
+AUTOINO_PINOS_DIFEREM(pino_sensor_roda_fonica, pino_sensor_fase);
