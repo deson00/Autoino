@@ -19,6 +19,132 @@ Para gravar na placa configurada em `platformio.ini`:
 platformio run --target upload
 ```
 
+## Pinagem
+
+Os valores abaixo saem de `include/definicoes_hardware.h`, que é a única fonte
+de verdade. Se esta tabela divergir do arquivo, o arquivo está certo.
+
+| função | Autoino (Nano/Uno) | Speeduino (Mega) |
+|---|---|---|
+| sensor da roda fônica | `D2` | `D19` |
+| sensor de fase — declarado, ainda sem uso | `D3` | `D18` |
+| MAP | `A0` | `A3` |
+| TPS | `A1` | `A2` |
+| CLT | `A2` | `A1` |
+| IAT | `A3` | `A0` |
+| sonda O2 | `A4` | `A8` |
+| tensão de bateria | `A5` | `A4` |
+| flex | `A6` | `A6` |
+| pressão de óleo | `A7` | `A7` |
+| IGN 1 | `D4` | `D40` |
+| IGN 2 | `D5` | `D38` |
+| IGN 3 | `D6` | `D52` |
+| IGN 4 | `D7` | `D50` |
+| INJ 1 | `D8` | `D8` |
+| INJ 2 | `D9` | `D9` |
+| INJ 3 | `D12` | `D10` |
+| INJ 4 | `D10` | `D11` |
+| marcha lenta: PWM ou liga-desliga | `D11` | `D5` |
+| marcha lenta: STEP | `D11` | `D17` |
+| marcha lenta: DIR | `D13` | `D16` |
+
+### Perfil de hardware
+
+Quem escolhe é o `build_flags` do `platformio.ini`, um `-D` por ambiente: os
+ambientes de Nano e Uno passam `-D Autoino`, o de Mega com shield Speeduino
+passa `-D Speeduino`. Fora do PlatformIO há um fallback por MCU, para quem
+compila pela IDE do Arduino.
+
+### Revisão de placa
+
+`PLACA_REVISAO` escolhe a pinagem, não é rótulo:
+
+| | INJ 4 | marcha lenta DIR |
+|---|---|---|
+| v1 | `D13` | `D10` |
+| **v2** (padrão) | `D10` | `D13` |
+
+Compilar sem flag nenhuma dá a revisão atual. Para gerar a anterior, acrescente
+`-D PLACA_REVISAO=1` ao `build_flags` de um ambiente próprio.
+
+A ECU informa para qual revisão foi compilada na seção `V` da resposta do
+comando `h;` — veja *Dados recebidos da ECU*. Ela diz o que o **firmware**
+espera encontrar, e não o que a **placa** é: numa v1 rodando firmware v2 o
+campo continua dizendo v2, corretamente.
+
+**Placa v1 com firmware v2** funciona, desde que o INJ 4 não seja usado — é o
+caso das placas de desenvolvimento. A exceção é a marcha lenta por motor de
+passo (`modo_marcha_lenta = 3`): como o firmware dirige o DIR no `D13` e a
+placa v1 tem o DIR no `D10`, o motor só anda para um lado. Marcha lenta por
+PWM e liga/desliga não passam por esses pinos e não são afetadas. O conserto
+na placa v1 é trocar dois fios, `D13` e `D10`.
+
+### Por que o INJ 4 saiu do D13
+
+No Nano e no Uno o `D13` é o `SCK` e o LED do bootloader: ele é **dirigido** a
+cada reset e a cada gravação, cerca de 100 ms por pisco. Com bico ali, isso
+despeja 20 a 50 vezes uma injetada normal (2 a 5 ms) com o motor parado.
+
+Resistor de pulldown não resolve — o bootloader dirige o pino com o driver de
+20 mA do próprio AVR, e um resistor em paralelo com isso é detalhe de consumo.
+A única saída era tirar o atuador de lá.
+
+O `D10` foi escolhido porque o `SS` não é tocado nem pelo bootloader nem por
+ISP, e porque injetor não precisa de PWM: precisa de liga/desliga com instante
+preciso, que o agendador faz por `digitalWrite`. O DIR do motor de passo foi
+para o `D13` no lugar, por ser o sinal mais tolerante a ruído de boot de todo
+o sistema — ele só diz o lado, e o motor só anda quando o STEP pulsa.
+
+### Ressalvas
+
+**Os analógicos trocam de lugar entre os perfis.** MAP é `A0` no Autoino e `A3`
+no Speeduino; IAT e CLT invertem. Quem trocar de placa reaproveitando o chicote
+lê temperatura no lugar de pressão.
+
+**No perfil Autoino, o PWM da marcha lenta e o STEP do motor de passo são o
+mesmo pino, `D11`.** É de propósito: usa-se um ou outro, nunca os dois. O
+driver do atuador PWM está nesse pino.
+
+**`A6` e `A7` não existem no Uno.** Valem no Nano, que é TQFP e tem ADC6 e
+ADC7; o Uno é DIP e não tem. Compila, mas `analogRead` devolve lixo — a
+telemetria de flex e de pressão de óleo não significa nada no ambiente `uno`.
+
+**A marcha lenta por PWM não existe no ambiente `megaatmega2560_autoino`.** No
+Mega o `D11` é `OC1A`, do Timer1, que pertence ao agendador de ignição, e usar
+o Timer2 poria o PWM num pino onde a fiação não está. Liga/desliga e motor de
+passo continuam funcionando, porque não dependem de timer.
+
+**A roda fônica precisa de pino de interrupção.** No 328P são só o `D2` e o
+`D3`; no Mega, o `D18` e o `D19`. O `pino_sensor_fase` está declarado mas ainda
+não é usado em lugar nenhum do código.
+
+### Estado das saídas na partida
+
+No reset todo pino do AVR volta a ser entrada de alta impedância. A primeira
+coisa que o `setup()` faz é pôr as oito saídas em `LOW` e `OUTPUT`, antes de
+ler a EEPROM — `HIGH` liga bobina e bico, então `LOW` é o estado seguro dos
+dois.
+
+Isso **não cobre a janela do bootloader**, que roda antes do `setup()` existir.
+Essa parte é de hardware: toda saída de atuador deveria ter pulldown no gate do
+driver, para o caso de o microcontrolador estar em reset, travado ou sem
+alimentação com os drivers energizados.
+
+### Guarda de colisão
+
+`definicoes_hardware.h` termina com um `static_assert` para cada par de saída.
+Duas funções no mesmo pino param a compilação com o nome das duas:
+
+```text
+error: static assertion failed: colisao de pino:
+       pino_direcao_marcha_lenta e inj4 estao no mesmo pino
+```
+
+Colisão de pino não aparece em bancada testando uma função de cada vez; aparece
+com a fiação ligada e o motor no lugar. `pino_marcha_lenta` e
+`pino_passo_marcha_lenta` ficam fora da conta, porque compartilham pino por
+projeto.
+
 ## Comunicação serial
 
 - Velocidade: **9600 baud**.
@@ -330,7 +456,7 @@ A ECU retorna uma sequência ASCII de blocos separados por `;`. A resposta come�
 com `;` e cada bloco também possui vírgula depois do último valor:
 
 ```text
-;a,...,;b,...,;c,...,;g,...,;j,...,;k,...,;l,...,;u,...,;d,...,;e,...,;f,...,;m,...,;t,...,;n,...,;o,...,;p,...,;q,...,;r,...,;s,...,;v,...,;w,...,;
+;a,...,;b,...,;c,...,;g,...,;j,...,;k,...,;l,...,;u,...,;d,...,;e,...,;f,...,;m,...,;t,...,;n,...,;o,...,;p,...,;q,...,;r,...,;s,...,;v,...,;w,...,;z,...,;V,...,;
 ```
 
 Ordem atual dos blocos:
@@ -356,6 +482,18 @@ Ordem atual dos blocos:
 19. `s`: 5 temperaturas, 5 avanços e a flag de ativação.
 20. `v`: RPM de partida, TPS de limpeza, atraso da injeção e tempo de redução.
 21. `w`: modo, abertura, alvos de RPM e parâmetros do motor de passo.
+22. `z`: flag da tabela de offset por cilindro e os 8 ângulos.
+23. `V`: identidade — perfil de hardware e revisão de placa.
+
+O bloco `V` é o último de propósito. Firmware anterior a ele simplesmente não o
+envia, e quem lê encontra a ausência em vez de encontrar o resto deslocado.
+A UI trata "a ECU não disse" como desconhecido, nunca como um valor padrão.
+
+```text
+;V,<perfil>,<revisão>,;      perfil 1 = Autoino, 2 = Speeduino
+```
+
+A revisão é a da placa para a qual o firmware foi **compilado** — ver *Pinagem*.
 
 Exemplo parcial:
 
