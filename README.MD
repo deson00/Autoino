@@ -33,8 +33,8 @@ de verdade. Se esta tabela divergir do arquivo, o arquivo está certo.
 | CLT | `A2` | `A1` |
 | IAT | `A3` | `A0` |
 | sonda O2 | `A4` | `A8` |
-| tensão de bateria | `A5` | `A4` |
-| flex | `A6` | `A6` |
+| tensão de bateria | `A6` | `A4` |
+| flex | `A5` | `A6` |
 | pressão de óleo | `A7` | `A7` |
 | IGN 1 | `D4` | `D40` |
 | IGN 2 | `D5` | `D38` |
@@ -59,10 +59,10 @@ compila pela IDE do Arduino.
 
 `PLACA_REVISAO` escolhe a pinagem, não é rótulo:
 
-| | INJ 4 | marcha lenta DIR |
-|---|---|---|
-| v1 | `D13` | `D10` |
-| **v2** (padrão) | `D10` | `D13` |
+| | INJ 4 | marcha lenta DIR | flex | bateria |
+|---|---|---|---|---|
+| v1 | `D13` | `D10` | `A6` | `A5` |
+| **v2** (padrão) | `D10` | `D13` | `A5` | `A6` |
 
 Compilar sem flag nenhuma dá a revisão atual. Para gerar a anterior, acrescente
 `-D PLACA_REVISAO=1` ao `build_flags` de um ambiente próprio.
@@ -95,6 +95,26 @@ preciso, que o agendador faz por `digitalWrite`. O DIR do motor de passo foi
 para o `D13` no lugar, por ser o sinal mais tolerante a ruído de boot de todo
 o sistema — ele só diz o lado, e o motor só anda quando o STEP pulsa.
 
+### Por que o flex e a bateria trocaram de pino
+
+No 328P o `A6` e o `A7` são **só ADC**: não têm entrada digital nem interrupção
+de mudança de pino. Um sensor de flex de **frequência** precisa das duas coisas,
+então não podia ficar no `A6`. O `A5` tem `PCINT13` e serve. A tensão de bateria
+é analógica pura e não perde nada num pino só de ADC, então assumiu o `A6`.
+
+A placa v2 ganhou o **JP4 (PU FLEX)**, que liga um pull-up de 1 kΩ para 5 V:
+fechado para sensor de frequência, aberto para sensor analógico. O pull-up é
+externo, e o firmware não deve ligar o interno — e não liga: não há `pinMode`
+para essa linha, e o padrão no reset já é entrada sem pull-up.
+
+O filtro dessa linha passou para 1 nF e 10 nF, para não arredondar a onda
+quadrada. Com sensor **analógico** isso deixa a leitura mais crua: **faça a média
+no firmware**, porque não há mais capacitor segurando.
+
+O pull-up de 2,4 kΩ da linha de óleo passou para trás do **JP5 (PU OLEO)**:
+fechado para sensor resistivo ou pressostato, aberto para transdutor de 0–5 V de
+três fios.
+
 ### Ressalvas
 
 **Os analógicos trocam de lugar entre os perfis.** MAP é `A0` no Autoino e `A3`
@@ -113,6 +133,10 @@ telemetria de flex e de pressão de óleo não significa nada no ambiente `uno`.
 Mega o `D11` é `OC1A`, do Timer1, que pertence ao agendador de ignição, e usar
 o Timer2 poria o PWM num pino onde a fiação não está. Liga/desliga e motor de
 passo continuam funcionando, porque não dependem de timer.
+
+**Não sobra I2C no perfil Autoino.** No 328P o `SDA` e o `SCL` são o `A4` e o
+`A5`, ocupados pela sonda O2 e pelo flex. Qualquer periférico I2C exigiria
+realocar um dos dois.
 
 **A roda fônica precisa de pino de interrupção.** No 328P são só o `D2` e o
 `D3`; no Mega, o `D18` e o `D19`. O `pino_sensor_fase` está declarado mas ainda

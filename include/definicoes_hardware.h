@@ -86,8 +86,28 @@
 #define pino_sensor_clt A2
 #define pino_sensor_iat A3
 #define pino_sensor_o2  A4
-#define pino_sensor_brv A5
+// Flex e bateria trocaram de pino na v2.
+//
+// O flex de FREQUENCIA precisa de pino com entrada digital e interrupcao de
+// mudanca; a bateria e analogica pura e nao perde nada num pino so de ADC.
+// No 328P o A6 e o A7 sao exatamente isso - so ADC, sem entrada digital e sem
+// PCINT -, entao o flex nao podia ficar la. O A5 tem PCINT13 e serve.
+//
+// A placa v2 ganhou o JP4 (PU FLEX) com pull-up de 1k para 5 V: fechado para
+// sensor de frequencia, aberto para sensor analogico. O pull-up e EXTERNO,
+// entao o firmware nao deve ligar o interno - e nao liga: nao ha pinMode para
+// esta linha, e o padrao no reset ja e entrada sem pull-up.
+//
+// O filtro dessa linha passou para 1 nF e 10 nF para nao arredondar a onda
+// quadrada. Em sensor analogico isso deixa a leitura mais crua, e a media tem
+// que ser feita no firmware - nao ha capacitor segurando mais.
+#if PLACA_REVISAO >= 2
+#define pino_sensor_flex A5
+#define pino_sensor_brv  A6
+#else
+#define pino_sensor_brv  A5
 #define pino_sensor_flex A6
+#endif
 #define pino_sensor_pressao_oleo A7
 #define pino_marcha_lenta 11
 #define pino_passo_marcha_lenta 11
@@ -261,3 +281,28 @@ AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj1); AUTOINO_PINOS_DIFEREM(pi
 AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj3); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj4);
 
 AUTOINO_PINOS_DIFEREM(pino_sensor_roda_fonica, pino_sensor_fase);
+
+// Os analogicos entraram na guarda quando o flex e a bateria trocaram de pino
+// na v2: embaralhar pino de sensor e tao facil de errar quanto embaralhar
+// saida, e o sintoma e pior de achar - a ECU le um sensor achando que e outro.
+#define AUTOINO_SENSOR_UNICO(a) \
+  AUTOINO_PINOS_DIFEREM(a, pino_sensor_map);  AUTOINO_PINOS_DIFEREM(a, pino_sensor_tps); \
+  AUTOINO_PINOS_DIFEREM(a, pino_sensor_clt);  AUTOINO_PINOS_DIFEREM(a, pino_sensor_iat); \
+  AUTOINO_PINOS_DIFEREM(a, pino_sensor_o2)
+
+AUTOINO_SENSOR_UNICO(pino_sensor_flex);
+AUTOINO_SENSOR_UNICO(pino_sensor_brv);
+AUTOINO_SENSOR_UNICO(pino_sensor_pressao_oleo);
+AUTOINO_PINOS_DIFEREM(pino_sensor_flex, pino_sensor_brv);
+AUTOINO_PINOS_DIFEREM(pino_sensor_flex, pino_sensor_pressao_oleo);
+AUTOINO_PINOS_DIFEREM(pino_sensor_brv, pino_sensor_pressao_oleo);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_tps);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_clt);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_iat);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_o2);
+AUTOINO_PINOS_DIFEREM(pino_sensor_tps, pino_sensor_clt);
+AUTOINO_PINOS_DIFEREM(pino_sensor_tps, pino_sensor_iat);
+AUTOINO_PINOS_DIFEREM(pino_sensor_tps, pino_sensor_o2);
+AUTOINO_PINOS_DIFEREM(pino_sensor_clt, pino_sensor_iat);
+AUTOINO_PINOS_DIFEREM(pino_sensor_clt, pino_sensor_o2);
+AUTOINO_PINOS_DIFEREM(pino_sensor_iat, pino_sensor_o2);
