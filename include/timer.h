@@ -1026,7 +1026,7 @@ void agendar_eventos_motor_timer1() {
 	//
 	// Cheguei a trocar por TIMSK1 &= ~(OCIE1A|OCIE1B) achando que a interrupcao
 	// do dente, sendo externa (EIMSK), nao disputaria estes vetores. Estava
-	// ERRADO: abaixo de RECALCULO_AGENDAMENTO_RPM_MAXIMO a ISR do dente chama
+	// ERRADO: enquanto refino_por_dente_ativo() vale, a ISR do dente chama
 	// atualizar_agendamentos_ignicao_por_dente(), que mexe nos MESMOS arrays -
 	// processar_cortes_vencidos, os recalcular_* e atualizar_compare_b_ligar.
 	// Sem o cli() ela entra no meio deste calculo e o agendamento sai duplicado.
@@ -1037,7 +1037,7 @@ void agendar_eventos_motor_timer1() {
 	// disso, onde o reagendamento por dente nao roda, a injecao acertava 100%.
 	// Em rotacao FIXA o problema nao aparece, e foi por isso que passou pelos
 	// testes anteriores.
-	// Acima de RECALCULO_AGENDAMENTO_RPM_MAXIMO a ISR do dente NAO chama
+	// Quando refino_por_dente_ativo() deixa de valer, a ISR do dente NAO chama
 	// atualizar_agendamentos_ignicao_por_dente(), entao o conflito descrito
 	// acima nao pode acontecer - e ali o cli() global sai caro demais.
 	//
@@ -1066,7 +1066,7 @@ void agendar_eventos_motor_timer1() {
 	// escrito no loop (calcularRPM), nunca na interrupcao, entao esta decisao
 	// nao muda no meio da secao critica.
 	const bool proteger_contra_isr_do_dente =
-		(rpm < (RECALCULO_AGENDAMENTO_RPM_MAXIMO + 200U));
+		refino_por_dente_ativo(PERIODO_DENTE_MIN_PROTECAO_US);
 
 	uint8_t sreg = SREG;
 	uint8_t timsk_salvo;

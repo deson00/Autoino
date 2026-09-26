@@ -62,11 +62,43 @@ volatile byte rejeicoes_dente_consecutivas = 0;
 #define TEMPO_CADA_GRAU_ALPHA_DEN 4UL
 #define TEMPO_CADA_GRAU_ALPHA_NUM 1UL
 
-// Reagendamento fino por dente: roda em TODO dente, mas so abaixo desse RPM.
-// Em RPM baixo ha CPU de sobra pra recalcular sempre (mais precisao durante
-// partida/marcha lenta); acima disso fica so com o calculo unico por volta
-// (no dente de falha), pra nao competir por tempo com a interrupcao em RPM alto.
-#define RECALCULO_AGENDAMENTO_RPM_MAXIMO 1000U
+// Refino por dente: o limite e DENTE POR SEGUNDO, nao rotacao.
+//
+// Era um 1000 rpm fixo, e isso media a coisa errada. O que disputa tempo com a
+// interrupcao e a frequencia de dentes, e ela depende da roda tanto quanto da
+// rotacao: uma 60-2 no virabrequim a 1000 rpm entrega 1000 dentes por segundo,
+// uma 12-1 no comando a 1500 rpm entrega 150. A segunda era barrada com um
+// setimo da carga da primeira - e e justamente ela que mais precisa do refino,
+// porque uma volta do sensor cobre 720 graus de virabrequim e o ultimo evento
+// do ciclo e previsto a mais de 600 graus de distancia.
+//
+// Medido em motor real (ranger, 12-1 no comando, 1000-1500 rpm): o erro tipico
+// cresce de 1,0 grau no primeiro evento para 5,8 no sexto, e a cauda de 5% vai
+// de 1,9 para 18,9 graus. Na F75 (60-2, evento mais distante ainda) o sexto
+// evento SOME em 19,9% das voltas. O mesmo desenho aparece no simulador com
+// rotacao suave, entao nao e variacao de combustao - e previsao projetada longe.
+//
+// Dentes por segundo e o INVERSO do periodo do dente, entao o limite vira uma
+// comparacao direta de periodo: sem divisao, sem variavel nova, sem depender da
+// configuracao. E 1000 us reproduz exatamente o limiar antigo na 60-2, que e a
+// roda onde o custo da secao critica foi medido:
+//
+//   60-2 no virabrequim a 1000 rpm -> 1000 dentes/s -> periodo 1000 us
+//   12-1 no comando a 1500 rpm     ->  150 dentes/s -> periodo 6667 us
+//
+// Usa periodo_dente_anterior_us, que e o ultimo dente NORMAL sem filtro: no gap
+// o intervalo e 2 a 3 vezes maior e enganaria a conta.
+#define PERIODO_DENTE_MIN_REFINO_US 1000UL
+
+// A margem existe porque a protecao com cli() global em
+// agendar_eventos_motor_timer1 precisa estar ativa sempre que o refino PUDER
+// rodar dentro da ISR do dente - as duas decisoes tem que ser a mesma, ou uma
+// hora divergem. 850 us equivale aos 200 rpm de histerese que havia antes.
+#define PERIODO_DENTE_MIN_PROTECAO_US 850UL
+
+static inline bool refino_por_dente_ativo(unsigned long periodo_min_us) {
+  return periodo_dente_anterior_us > periodo_min_us;
+}
 
 void agendar_eventos_motor_timer1();
 void atualizar_agendamentos_ignicao_por_dente();
@@ -535,7 +567,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       if (tempo_instante_grau > 0) {
         tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
         // Reagendamento fino por dente: em todo dente, mas so em RPM baixo.
-        if (rpm < RECALCULO_AGENDAMENTO_RPM_MAXIMO) {
+        if (refino_por_dente_ativo(PERIODO_DENTE_MIN_REFINO_US)) {
           atualizar_agendamentos_ignicao_por_dente();
         }
       }
