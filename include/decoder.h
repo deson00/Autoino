@@ -19,6 +19,10 @@ volatile uint32_t intervalo_dente_referencia_us = 0; // media filtrada - filtro 
 // e o oposto: ignorar um dente anomalo isolado.
 volatile uint32_t periodo_dente_anterior_us = 0;
 
+// O dente anterior AO anterior. Serve de regua para reconhecer o par
+// inflado+esmagado que um atraso de ISR produz: ele e o ultimo intervalo que o
+// atraso ainda nao tocou. Ver o filtro de ruido adiante.
+
 // Tempo da volta que acabou de fechar, ANTES de saber se a contagem de dentes
 // bateu. So e publicado em tempo_total_volta_completa quando bater - ver o
 // comentario na validacao de contagem, mais abaixo.
@@ -335,8 +339,6 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     tempo_anterior = tempo_agora;
     tempo_atual = tempo_agora;
     intervalo_tempo_entre_dente = 0;
-    tempo_dente_anterior[0] = 0;
-    tempo_dente_anterior[1] = 0;
     intervalo_dente_referencia_us = 0;
     periodo_dente_anterior_us = 0;
     amostras_intervalo_validas = 0;
@@ -349,6 +351,36 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 
   // Filtro adaptativo: rejeita dente espurio muito curto em relacao ao ultimo dente valido.
   unsigned long intervalo_candidato = (tempo_agora - tempo_anterior);
+
+  // HISTORICO: tres tentativas de nao descartar o dente bom quando a ISR atrasa,
+  // todas medidas em bancada reproduzindo 60-2 real, e todas revertidas.
+  //
+  //   1) isentar do filtro quando o anterior vinha inflado >25% da referencia.
+  //      Rejeicoes cairam de 280 para 5, mas a perda de centelha quase DOBROU
+  //      (6,76% -> 11,65% das voltas entre 3500 e 4000 rpm). A rejeicao tambem
+  //      era protetora: aceito, o intervalo corrompido (89us num dente de 297us)
+  //      alimentava periodo_dente_anterior_us, que e a base do limiar de gap -
+  //      com o limiar em 178us o dente normal seguinte virava GAP FALSO.
+  //
+  //   2) o mesmo teste, mas CONTANDO o dente e poupando a referencia,
+  //      tempo_cada_grau e periodo_dente_anterior_us. As rejeicoes nao cairam
+  //      (2,06 por mil contra 2,32 da base): o dente inflado alimenta a propria
+  //      referencia contra a qual ele era comparado, entao o limiar subia junto
+  //      e a margem fechava.
+  //
+  //   3) teste do par com regua limpa: soma do curto com o anterior contra 1,5x
+  //      o dente de DOIS antes, que o atraso ainda nao tocou. Reconstruindo com
+  //      os intervalos do analisador a condicao passaria em 99% dos casos - e
+  //      mesmo assim as rejeicoes ficaram em 2,71 por mil. O que o firmware ve
+  //      internamente nao e o que se reconstroi de fora, e ate saber onde esta a
+  //      diferenca nao vale tentar de novo.
+  //
+  // O QUE ESTA ESTABELECIDO, isso sim medido: em 100% das rejeicoes a ISR
+  // anterior tinha atrasado (mediana 180us num dente de 258us), o intervalo
+  // medido caiu para 89us contra limiar de 99us, e rejeicao numa volta leva a
+  // perda de centelha na volta SEGUINTE em 11,9% dos casos contra 2,3% sem.
+  // O proximo passo util e instrumentar a DECISAO - codificar na largura do
+  // pulso qual ramo o filtro tomou e com que valores -, nao adivinhar a condicao.
   if (intervalo_dente_referencia_us > 0 &&
       (intervalo_candidato * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
     // ESCAPE OBRIGATORIO. Este return acontece ANTES de qtd_leitura++ e ANTES
@@ -361,9 +393,9 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     // mais) e a referencia nao pode se autocorrigir (quem a atualiza esta
     // depois deste return). O estado vira permanente e insensivel ao RPM -
     // era esta a morte com o sinal do sensor perfeitamente limpo.
-    if (rejeicoes_dente_consecutivas < 255) {
-      rejeicoes_dente_consecutivas++;
-    }
+    // Sem guarda de 255: o contador reseta em REJEICOES_DENTE_MAX (6) logo abaixo,
+    // entao nunca chega perto de estourar o byte.
+    rejeicoes_dente_consecutivas++;
     if (rejeicoes_dente_consecutivas >= REJEICOES_DENTE_MAX) {
       intervalo_dente_referencia_us = 0; // libera o filtro
       periodo_dente_anterior_us = 0;
@@ -450,9 +482,6 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     }
   }
 
-  // Mantem histórico simples para diagnostico/telemetria.
-  tempo_dente_anterior[1] = tempo_dente_anterior[0];
-  tempo_dente_anterior[0] = intervalo_tempo_entre_dente;
   //Serial.print("|");
   //Serial.print(qtd_leitura);
 
@@ -641,9 +670,9 @@ void decoder_sem_falha() {
   // atualizar_referencia_dente).
   if (intervalo_dente_referencia_us > 0 &&
       (intervalo * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
-    if (rejeicoes_dente_consecutivas < 255) {
-      rejeicoes_dente_consecutivas++;
-    }
+    // Sem guarda de 255: o contador reseta em REJEICOES_DENTE_MAX (6) logo abaixo,
+    // entao nunca chega perto de estourar o byte.
+    rejeicoes_dente_consecutivas++;
     if (rejeicoes_dente_consecutivas >= REJEICOES_DENTE_MAX) {
       intervalo_dente_referencia_us = 0;
     periodo_dente_anterior_us = 0;

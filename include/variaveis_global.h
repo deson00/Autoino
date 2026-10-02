@@ -74,7 +74,6 @@ int offset_evento[MAX_EVENTOS_AGENDAMENTO];
 bool usar_offset_personalizado = false;
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
-volatile unsigned int qtd_leitura_media = 0;
 volatile uint16_t qtd_leitura = 0;
 byte referencia_leitura_ignicao = 1;//map 1 e tps 2
 byte referencia_leitura_injecao = 1;//map 1 e tps 2
@@ -83,7 +82,6 @@ byte avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
 byte grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
 byte tipo_sinal_bobina = 1 ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
 volatile unsigned long tempo_anterior = 0;
-volatile unsigned long tempo_dente_anterior[2] = {0,0};
 volatile unsigned long tempo_inicio_volta_completa = 0;
 volatile unsigned long tempo_final_volta_completa = 0;
 volatile unsigned long tempo_total_volta_completa = 0;
@@ -96,7 +94,6 @@ volatile unsigned long tempo_atual_proxima_injecao[MAX_EVENTOS_AGENDAMENTO];
 volatile unsigned long intervalo_tempo_entre_dente = 0;
 // (verifica_falha removida: era escrita a cada dente mas nunca lida em lugar
 // nenhum - uma escrita volatile de 32 bits desperdicada na interrupcao)
-unsigned long tempo_check = 0;
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
 volatile byte falhas_sync_consecutivas = 0;
@@ -104,13 +101,9 @@ volatile unsigned int qtd_revolucoes = 0;
 volatile unsigned long ultimo_pulso_rpm_us = 0;
 byte qtd_perda_sincronia = 0;
 int qtd_loop = 0;
-int loop_timer = 0; //variavel para ser incrementada a cada chamada da função timer
-int loop_timer2 = 0; 
-int verifica_posicao_sensor = 0;
 byte intervalo_execucao = 200; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
-unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
 unsigned int rpm_partida = 400;
 byte nivel_limpeza_afogamento = 70; // TPS minimo (%) para cortar injecao durante a partida
@@ -211,8 +204,6 @@ int valor_tps_maximo = 1023;
 int valor_referencia_busca_avanco = 0;
 int valor_referencia_busca_tempo_injecao = 0;
 int ajuste_pms =  0;
-byte usar_metodo_unificado_vira = 0; // 0: usa ajuste dinâmico legado no vira, 1: usa offset fixo
-int offset_fase_vira_graus = 0; // usado quando usar_metodo_unificado_vira = 1
 int busca_avanco_linear = true;
 byte usar_avanco_temperatura = 0; // 0 desativado, 1 aplica correcao somente sobre o avanco da tabela
 int referencia_temperatura_clt1 = 20;
@@ -261,10 +252,7 @@ bool status_primeira_injecao = false;
 int REQ_FUEL = 10000; // us
 int dreq_fuel = 10000; // us
 int VE = 0;
-int GammaE = 100;
 unsigned long tempo_injecao = 0;
-byte temperatura_trabalho = 70;
-byte correcao_maxima_temperatura = 50; // % de enriquecimento a 0 graus
 byte vetor_temperatura_injecao[5] = {0, 20, 40, 60, 80};
 byte vetor_enriquecimento_temperatura[5] = {140, 130, 120, 110, 100}; // 100 = sem correcao, maximo 250
 byte usar_injecao_temperatura = 0; // 0 desativado, 1 aplica correcao de injecao por temperatura
