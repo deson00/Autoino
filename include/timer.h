@@ -572,12 +572,6 @@ static inline void recalcular_injecao_canal_por_dente(int i, uint32_t tick_atual
 	injecao_tick_desligar[i] = tick_inicio_injecao + tempo_injecao_ticks;
 }
 
-// Refinamento por dente processa 1 canal de ignicao por vez, alternando em
-// sequencia, em vez de recalcular todos a cada chamada. O calculo cheio de
-// todos os canais continua acontecendo 1x por volta no evento de gap
-// (agendar_eventos_motor_timer1) - isto aqui e so a correcao fina entre um
-// gap e outro, entao nao ha problema em espacar um pouco mais por canal.
-volatile byte proximo_canal_ignicao_recalculo = 0;
 
 void atualizar_agendamentos_ignicao_por_dente() {
 	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 ||
@@ -590,13 +584,26 @@ void atualizar_agendamentos_ignicao_por_dente() {
 	uint32_t tick_atual = ler_tick32_timer1();
 	bool algo_desligou = processar_cortes_vencidos(tick_atual);
 
+	// TODOS os canais a cada dente, como a injecao logo abaixo sempre fez.
+	//
+	// Antes era um canal por dente, em revezamento, para poupar tempo dentro
+	// da interrupcao. O preco era que o evento disparava com o agendamento
+	// refinado ate 5 dentes antes - e na roda do comando cada dente vale 60
+	// graus de virabrequim. Medido em bancada reproduzindo 12-1 real da
+	// ranger: o erro do evento dobrava conforme a defasagem do refino (2,1
+	// grau com o canal refinado no dente anterior, 4,4 com 5 dentes de
+	// atraso), e a ECU deixava de ser deterministica - a mesma entrada dava
+	// saidas diferentes entre passadas (mediana 2,53 grau), contra 0,01 grau
+	// quando o refino nao roda.
+	//
+	// O custo cabe: este refino so roda com dente mais longo que
+	// PERIODO_DENTE_MIN_REFINO_US (1 ms), e na 12-1 o dente dura 5 a 20 ms.
+	// Canal que ja disparou, esta carregando ou nao esta agendado sai na
+	// primeira linha de recalcular_ignicao_canal_por_dente, entao so os
+	// pendentes fazem a conta inteira.
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
-	if (eventos_ignicao > 0) {
-		if (proximo_canal_ignicao_recalculo >= eventos_ignicao) {
-			proximo_canal_ignicao_recalculo = 0;
-		}
-		recalcular_ignicao_canal_por_dente(proximo_canal_ignicao_recalculo, tick_atual);
-		proximo_canal_ignicao_recalculo++;
+	for (byte i = 0; i < eventos_ignicao; i++) {
+		recalcular_ignicao_canal_por_dente(i, tick_atual);
 	}
 
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
