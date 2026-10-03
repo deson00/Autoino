@@ -483,8 +483,33 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   // falso - o gap rejeitado faz a contagem seguir e so se recuperar pelo
   // re-arme, enquanto o falso e pego pela validacao de contagem logo em
   // seguida. O piso vale sempre que for mais permissivo que o percentual.
+  //
+  // COM O MOTOR FUNCIONANDO a margem cai para os mesmos 3 dentes do piso, em
+  // qualquer roda. O argumento acima - "o falso e pego pela validacao de
+  // contagem logo em seguida" - e verdadeiro, mas pega TARDE: a validacao so
+  // roda no gap SEGUINTE, e ate la o gap falso ja zerou posicao_atual_sensor e
+  // ja agendou as tres centelhas a partir do lugar errado.
+  //
+  // Medido em bancada reproduzindo 60-2 real a ~3900 rpm: gap falso sempre nos
+  // dentes 43 a 47 - dentro da janela antiga, que aceitava desde o 44 -, que e
+  // onde o IGN3 carrega e a ISR do Timer1 dele atrasa a do dente. A ECU zerava a
+  // posicao ali e o IGN1 carregava a 264+20 = 284 graus: DISPARO DUPLO na mesma
+  // volta, em 2,5% das voltas, e a volta seguinte saia quebrada em 113 de 117
+  // casos. O IGN2 fora de lugar (30-90 graus em vez de 138) era o mesmo gap
+  // falso.
+  //
+  // So muda roda com 16 dentes reais ou mais - nas menores o piso de 3 ja valia.
+  // E sao justamente as finas que correm risco: atraso de ISR de 242us infla em
+  // 58 a 145% um dente de 167 a 417us, mas so 5 a 29% os dentes de milissegundo
+  // das rodas grossas. O pior gap falso que ainda passa cai de 84 para 18 graus
+  // na 60-2, de 80 para 30 na 36-1/36-2 e de 75 para 45 na 24-1.
+  //
+  // Na PARTIDA fica a regra antiga: ali a velocidade oscila muito dentro da
+  // volta, dente rejeitado e mais comum, e rejeitar o gap verdadeiro e o risco
+  // maior. O risco de gap falso por atraso de ISR e nulo nessa rotacao, porque o
+  // dente e longo.
   uint16_t margem_pct = dentes_esperados >> 2;
-  uint16_t margem_gap = (margem_pct > 3U) ? margem_pct : 3U;
+  uint16_t margem_gap = (margem_pct > 3U && rpm < rpm_partida) ? margem_pct : 3U;
   uint16_t posicao_minima_gap = (dentes_esperados > margem_gap)
                                     ? (uint16_t)(dentes_esperados - margem_gap)
                                     : 1U;
