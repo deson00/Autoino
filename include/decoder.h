@@ -379,8 +379,25 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   // anterior tinha atrasado (mediana 180us num dente de 258us), o intervalo
   // medido caiu para 89us contra limiar de 99us, e rejeicao numa volta leva a
   // perda de centelha na volta SEGUINTE em 11,9% dos casos contra 2,3% sem.
-  // O proximo passo util e instrumentar a DECISAO - codificar na largura do
-  // pulso qual ramo o filtro tomou e com que valores -, nao adivinhar a condicao.
+  //   4) reparar periodo_dente_anterior_us no instante em que o par se revela,
+  //      com a metade da soma - para desenvenenar o limiar de gap, que era a
+  //      peca que as tres anteriores nunca tocaram. Voltas sem gap foram de
+  //      3,15% para 3,40% e a perda total de 3,55% para 3,80%. Sem efeito.
+  //
+  // INSTRUMENTACAO QUE FECHOU A QUESTAO (DEBUG_PULSO_ISR_ALVO 8, 431 rejeicoes em
+  // 53 s): em 99,1% delas periodo_dente_anterior_us ESTAVA inflado alem de 1,25x.
+  // A premissa das quatro tentativas estava certa e as condicoes disparavam.
+  //
+  // CONCLUSAO: o atraso da ISR e CAUSA COMUM, e a rejeicao de dente e sintoma
+  // irmao da falha, nao o caminho ate ela. Por isso quatro correcoes no filtro e
+  // nos consumidores do intervalo nao mudaram nada - tratavam o sintoma errado. A
+  // correlacao medida (rejeicao numa volta -> perda na seguinte em 11,9% contra
+  // 2,3%) e de causa comum, nao de causalidade.
+  //
+  // O que resta atacar e o atraso em si: ou encurtar as ISRs de Timer1 que
+  // disputam com esta, ou parar de cronometrar dente por software - capturar a
+  // borda por hardware no ICP1 (D8), que e imune a latencia e exige mudar a
+  // entrada do sensor de pino.
   if (intervalo_dente_referencia_us > 0 &&
       (intervalo_candidato * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
     // ESCAPE OBRIGATORIO. Este return acontece ANTES de qtd_leitura++ e ANTES
