@@ -151,13 +151,30 @@ static inline void atualizar_referencia_dente(unsigned long intervalo_us) {
 // grau_cada_dente vem da configuracao e praticamente nunca muda, entao o
 // reciproco fica em cache e so e recalculado quando o valor muda - no caminho
 // quente sobra uma comparacao de byte e uma multiplicacao 32x16.
-// Precisao (verificada contra a divisao inteira em toda a faixa util, para
-// grau de 1 a 360): reciproco arredondado em Q18 com resultado truncado da
-// resultado IDENTICO a divisao para as rodas usuais - inclusive grau=6 da
-// 60-2. So rodas de 1 a 2 dentes (grau 180/360) chegam a divergir 3us, e
-// mesmo esse valor ainda passa pelo filtro IIR de tempo_cada_grau. Q18 e o
-// maior expoente seguro: o produto maximo e 10000*2^18 = 2,6e9, dentro de
-// 32 bits para qualquer grau, porque a entrada ja e limitada logo abaixo.
+// O resultado e ARREDONDADO, nao truncado. Truncar parecia inofensivo - erro
+// menor que 1us por grau - mas o erro tinha SINAL FIXO, sempre para baixo, e o
+// agendamento multiplica este valor pela distancia angular ate o evento. Meio
+// microsegundo perdido por grau vira erro de ponto crescente nos eventos longe
+// da referencia.
+//
+// Medido com A/B pareado na bancada de reproducao (12-1 no comando, mesmo sinal
+// gravado nas duas gravacoes, 8104 amostras casadas por posicao da tabela E por
+// fase do revezamento do refino): o arredondamento desloca +0,319 grau de
+// virabrequim por evento acima de 2000 rpm, com intervalo de 90% entre +0,239 e
+// +0,379 por bootstrap. A direcao e a prevista; a magnitude ficou em 54% do
+// previsto e o intervalo exclui a previsao, o que continua sem explicacao.
+//
+// RESSALVA MEDIDA: isolada, a correcao melhora o |erro| em 4 das 6 faixas de
+// rotacao (ate -1,1 grau acima de 3500 rpm) mas PIORA os eventos 5 e 6 entre
+// 2000 e 3500 rpm, em ate +1,6 grau. Naquele motor o desvio desses eventos ja
+// era positivo, e a truncagem o cancelava em parte; removido o cancelamento, o
+// erro maior aparece inteiro. Mantida assim mesmo: erro com sinal fixo e divida
+// que cobra juros em outra rotacao, e o erro maior - revezamento do refino e
+// atraso da ISR do dente - tem causa propria e correcao propria.
+//
+// Q18 e o maior expoente seguro: o produto maximo e 10000*2^18 = 2,6e9 e,
+// somando o meio bit do arredondamento (2^17), 2,62e9 - dentro de 32 bits para
+// qualquer grau, porque a entrada ja e limitada logo abaixo.
 #define GRAU_RECIPROCO_SHIFT 18
 static inline unsigned long dividir_por_grau_cada_dente(unsigned long intervalo_us) {
   static int grau_em_cache = 0;
@@ -179,7 +196,8 @@ static inline unsigned long dividir_por_grau_cada_dente(unsigned long intervalo_
     return TEMPO_CADA_GRAU_MAX_US;
   }
 
-  return (intervalo_us * reciproco) >> GRAU_RECIPROCO_SHIFT;
+  return (intervalo_us * reciproco + (1UL << (GRAU_RECIPROCO_SHIFT - 1))) >>
+         GRAU_RECIPROCO_SHIFT;
 }
 
 static inline unsigned long limita_tempo_cada_grau(unsigned long valor_us) {
