@@ -726,6 +726,28 @@ static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 				continue;
 			}
 			iniciar_dwell(i);
+			// Evento vencido SEMPRE sai daqui consumido: ou a bobina ligou, ou o
+			// agendamento cai.
+			//
+			// iniciar_dwell recusa sem sincronismo, com o corte de giro ativo e no
+			// teste de compressao - e antes o evento ficava agendado e vencido.
+			// atualizar_compare_b_ligar o achava de novo com delta zero, entrava
+			// na prevencao de deadlock, chamava esta funcao, e a recusa se
+			// repetia ate estourar TIMER1_MAX_REPLAN_LOOPS: 32 voltas de ~68us,
+			// 2,18ms dentro da interrupcao.
+			//
+			// Medido em bancada (60-2 no virabrequim, 6 cilindros, so ignicao,
+			// varredura ate 7900rpm, pulso das ISRs do Timer1 no D7): 53 ISRs de
+			// 2,08 a 2,20ms, nenhuma mudando saida, todas acima de 5000rpm. A 7000
+			// rpm sao ~15 dentes sem contagem - o sincronismo cai de novo, o
+			// proximo evento e recusado de novo, e o ciclo se alimenta. Sao as
+			// voltas que perdiam 12 a 18 dentes de uma vez.
+			//
+			// Cancelar e seguro: o gap seguinte reagenda o canal normalmente, e
+			// sem sincronismo ou com corte a bobina nao ligaria de qualquer jeito.
+			if (!ign_acionado[i]) {
+				ignicao_agendada[i] = false;
+			}
 		}
 	}
 
@@ -736,6 +758,12 @@ static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 				continue;
 			}
 			ligar_injetor(i);
+			// Mesma regra da ignicao: ligar_injetor recusa sem sincronismo, com
+			// corte e na limpeza de afogamento, e o evento recusado prendia o
+			// laco de atualizar_compare_b_ligar do mesmo jeito.
+			if (!inj_acionado[i]) {
+				injecao_agendada[i] = false;
+			}
 		}
 	}
 }
