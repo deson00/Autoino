@@ -693,12 +693,28 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 }
 
 static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_atual) {
-	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
-	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
-	uint32_t dwell_minimo_util_ticks = (dwell_ticks * DWELL_CANCELA_ABAIXO_PCT) / 100UL;
-	if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
-		dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
+	// O piso so muda quando o dwell muda (partida <-> funcionamento), entao a
+	// conta fica guardada e esta funcao, que roda em TODO inicio de dwell dentro
+	// da ISR do compare B, so compara.
+	//
+	// A conta era uma multiplicacao e uma divisao de 32 bits (__udivmodsi4), uns
+	// 45us no ATmega328. Medido em bancada (60-2 no virabrequim, so ignicao,
+	// pulso das ISRs do Timer1 no D7): a ISR que liga a bobina levava ~160us,
+	// contra ~80us a da centelha. Acima de 6000rpm o dente da 60-2 dura menos
+	// que isso (167us a 6000, 133us a 7500), e dois dentes chegando dentro da
+	// mesma ISR sao um dente perdido - de 366 a 1202 ocorrencias por faixa de
+	// 500rpm entre 6000 e 7900.
+	static unsigned long dwell_em_cache = 0;
+	static uint32_t dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
+	if (dwell_bobina != dwell_em_cache) {
+		dwell_em_cache = dwell_bobina;
+		uint32_t dwell_ticks = us_para_ticks_timer1(dwell_em_cache);
+		dwell_minimo_util_ticks = (dwell_ticks * DWELL_CANCELA_ABAIXO_PCT) / 100UL;
+		if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
+			dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
+		}
 	}
+	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
 
 	if (tempo_restante_ticks >= dwell_minimo_util_ticks) {
 		return false;

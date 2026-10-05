@@ -60,7 +60,20 @@ static inline byte indice_pino_ignicao(int i) {
     if (local_rodafonica == 1 && i >= canais) {
       return (byte)(i - canais);
     }
-    return (byte)(i % canais);
+    // Subtracao em vez de i % canais: esta funcao roda dentro das ISRs do
+    // Timer1, ao ligar a bobina e ao soltar a centelha, e o modulo era uma
+    // chamada a __divmodhi4 (~12us) em cada uma. i nunca passa de 8 eventos,
+    // entao o laco da no maximo algumas voltas.
+    // canais == 0 so com qtd_cilindro 0 (configuracao invalida); sem a guarda
+    // o laco nao terminaria, onde o modulo apenas devolvia lixo.
+    if (canais == 0) {
+      return 0;
+    }
+    byte indice = (byte)i;
+    while (indice >= canais) {
+      indice -= canais;
+    }
+    return indice;
   }
 
   // Comportamento do fase/comando que era antigo (ignições emparelhadas)
