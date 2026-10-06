@@ -336,3 +336,28 @@ void escrever_8bits_eeprom(int endereco, uint8_t valor) {
 uint8_t ler_8bits_eeprom(int endereco) {
     return EEPROM.read(endereco);
 }
+
+// Leitura sequencial: a configuracao e lida em blocos de campos colados, e
+// cada "le e avanca o endereco" escrito por extenso custava a conta de
+// endereco inline em cada um dos ~45 campos. Com o cursor compartilhado e uma
+// chamada so. Mesmo motivo de enviar_campo em ler_dados_memoria.h: flash.
+int eeprom_cursor;
+
+uint8_t __attribute__((noinline)) eeprom_ler8_seguinte() {
+    return EEPROM.read(eeprom_cursor++);
+}
+
+uint16_t __attribute__((noinline)) eeprom_ler16_seguinte() {
+    uint16_t valor = ler_16bits_eeprom(eeprom_cursor);
+    eeprom_cursor += 2;
+    return valor;
+}
+
+void __attribute__((noinline)) eeprom_gravar8_seguinte(uint8_t valor) {
+    EEPROM.update(eeprom_cursor++, valor);
+}
+
+void __attribute__((noinline)) eeprom_gravar16_seguinte(uint16_t valor) {
+    escrever_16bits_eeprom(eeprom_cursor, valor);
+    eeprom_cursor += 2;
+}

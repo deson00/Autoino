@@ -26,52 +26,46 @@ bool eeprom_configuracao_inicial_valida() {
 }
 
 void ler_dados_eeprom_tabela_ignicao_map_rpm() {
-    int endereco = 10; // Endereço base
+    eeprom_cursor = 10; // Endereço base
 
     // 1. Ler vetor_rpm (16 valores de 16 bits cada)
     for (int i = 0; i < 16; i++) {
-        vetor_rpm[i] = ler_16bits_eeprom(endereco);
-        endereco += 2;
+        vetor_rpm[i] = eeprom_ler16_seguinte();
     }
 
     // 2. Ler vetor_map_tps (16 valores de 8 bits cada)
-    endereco = 50; // Força endereço como no código original
+    eeprom_cursor = 50; // Força endereço como no código original
     for (int i = 0; i < 16; i++) {
-        vetor_map_tps[i] = ler_8bits_eeprom(endereco);
-        endereco++;
+        vetor_map_tps[i] = eeprom_ler8_seguinte();
     }
 
     // 3. Ler matriz_avanco (16x16 valores de 8 bits cada = 256 bytes)
-    endereco = 100; // Força endereço como no código original
+    eeprom_cursor = 100; // Força endereço como no código original
     for (int i = 0; i < 16; i++) {
         for (int j = 0; j < 16; j++) {
-            matriz_avanco[i][j] = ler_8bits_eeprom(endereco);
-            endereco++;
+            matriz_avanco[i][j] = eeprom_ler8_seguinte();
         }
     }
 }
 void ler_dados_eeprom_tabela_ve_map_rpm() {
-    int endereco = 500; // Endereço base
+    eeprom_cursor = 500; // Endereço base
 
     // 1. Ler vetor_rpm_ve (16 valores de 16 bits cada)
     for (int i = 0; i < 16; i++) {
-        vetor_rpm_ve[i] = ler_16bits_eeprom(endereco);
-        endereco += 2;
+        vetor_rpm_ve[i] = eeprom_ler16_seguinte();
     }
     // endereco agora = 532
 
     // 2. Ler vetor_map_tps_ve (16 valores de 8 bits cada)
     for (int i = 0; i < 16; i++) {
-        vetor_map_tps_ve[i] = ler_8bits_eeprom(endereco);
-        endereco++;
+        vetor_map_tps_ve[i] = eeprom_ler8_seguinte();
     }
     // endereco agora = 548
 
     // 3. Ler matriz_ve (16x16 valores de 8 bits cada = 256 bytes)
     for (int i = 0; i < 16; i++) {
         for (int j = 0; j < 16; j++) {
-            matriz_ve[i][j] = ler_8bits_eeprom(endereco);
-            endereco++;
+            matriz_ve[i][j] = eeprom_ler8_seguinte();
         }
     }
     // endereco final = 804
@@ -109,42 +103,37 @@ void ler_dados_eeprom_configuracao_marcha_lenta() {
 }
 
 void ler_dados_eeprom_configuracao_injecao(){
-  int endereco = 900; // Inicializa o endereço de memória
+  eeprom_cursor = 900; // Inicializa o endereço de memória
 
   // Ler os valores divididos em bytes
-  referencia_leitura_injecao = EEPROM.read(endereco++);
-  tipo_motor = EEPROM.read(endereco++);
-  modo_injecao = EEPROM.read(endereco++);
-  emparelhar_injetor = EEPROM.read(endereco++);
+  referencia_leitura_injecao = eeprom_ler8_seguinte();
+  tipo_motor = eeprom_ler8_seguinte();
+  modo_injecao = eeprom_ler8_seguinte();
+  emparelhar_injetor = eeprom_ler8_seguinte();
   
   // Para deslocamento_motor, combinamos os bytes lidos
   // deslocamento_motor (16 bits)
-  deslocamento_motor = ler_16bits_eeprom(endereco);
-  endereco += 2;
+  deslocamento_motor = eeprom_ler16_seguinte();
   
-  numero_cilindro_injecao = EEPROM.read(endereco++);
-  numero_injetor = EEPROM.read(endereco++);
-  numero_esguicho = EEPROM.read(endereco++);
+  numero_cilindro_injecao = eeprom_ler8_seguinte();
+  numero_injetor = eeprom_ler8_seguinte();
+  numero_esguicho = eeprom_ler8_seguinte();
   
   // Para tamanho_injetor, combinamos os bytes lidos
   // tamanho_injetor (16 bits)
-  tamanho_injetor = ler_16bits_eeprom(endereco);
-  endereco += 2;
+  tamanho_injetor = eeprom_ler16_seguinte();
   
-  tipo_acionamento_injetor = EEPROM.read(endereco++);
+  tipo_acionamento_injetor = eeprom_ler8_seguinte();
   // tipo_combustivel (16 bits)
-  tipo_combustivel = ler_16bits_eeprom(endereco);
-  endereco += 2;
+  tipo_combustivel = eeprom_ler16_seguinte();
   
   // REQ_FUEL (16 bits)
-  REQ_FUEL = ler_16bits_eeprom(endereco);
-  endereco += 2;
+  REQ_FUEL = eeprom_ler16_seguinte();
   
   // dreq_fuel (16 bits)
-  dreq_fuel = ler_16bits_eeprom(endereco);
-  endereco += 2;
+  dreq_fuel = eeprom_ler16_seguinte();
 
-    byte tipo_sonda_eeprom = EEPROM.read(endereco++);
+    byte tipo_sonda_eeprom = eeprom_ler8_seguinte();
     if (tipo_sonda_eeprom <= 1) {
         tipo_sonda_o2 = tipo_sonda_eeprom;
     } else {
@@ -177,66 +166,55 @@ void ler_dados_eeprom_configuracao_iat() {
 
 
 void ler_dados_eeprom_configuracao_protecao(){
-  int endereco =  950; // Inicializa o endereço de memória
+  eeprom_cursor = 950; // Inicializa o endereço de memória
   // Ler os valores e atribuir às variáveis correspondentes
-  tipo_protecao = EEPROM.read(endereco++);
+  tipo_protecao = eeprom_ler8_seguinte();
   // rpm_pre_corte (16 bits)
-  rpm_pre_corte = ler_16bits_eeprom(endereco);
-  endereco += 2;
-  avanco_corte = EEPROM.read(endereco++);
-  tempo_corte = EEPROM.read(endereco++);
+  rpm_pre_corte = eeprom_ler16_seguinte();
+  avanco_corte = eeprom_ler8_seguinte();
+  tempo_corte = eeprom_ler8_seguinte();
   // rpm_maximo_corte (16 bits)
-  rpm_maximo_corte = ler_16bits_eeprom(endereco);
-  endereco += 2;
-  numero_base_corte = EEPROM.read(endereco++);
-  qtd_corte = EEPROM.read(endereco++);
+  rpm_maximo_corte = eeprom_ler16_seguinte();
+  numero_base_corte = eeprom_ler8_seguinte();
+  qtd_corte = eeprom_ler8_seguinte();
 }
 
 void ler_dados_eeprom_enriquecimento_aceleracao() {
-    int endereco = 970; // Inicializa o endereço de memória
+    eeprom_cursor = 970; // Inicializa o endereço de memória
 
     // Ler os valores de enriquecimento_aceleracao (1 byte cada)
     for (int i = 0; i < 5; i++) {
-        enriquecimento_aceleracao[i] = EEPROM.read(endereco++);
+        enriquecimento_aceleracao[i] = eeprom_ler8_seguinte();
     }
 
     // Ler os valores de tps_dot_escala (2 bytes cada)
     for (int i = 0; i < 5; i++) {
-      tps_dot_escala[i] = ler_16bits_eeprom(endereco);
-      endereco += 2;
+      tps_dot_escala[i] = eeprom_ler16_seguinte();
     }
 
     // Ler os valores dos parâmetros restantes
-    tipo_verificacao_aceleracao_rapida = EEPROM.read(endereco++);
-    tps_mudanca_minima = EEPROM.read(endereco++);
+    tipo_verificacao_aceleracao_rapida = eeprom_ler8_seguinte();
+    tps_mudanca_minima = eeprom_ler8_seguinte();
         // Valores de 16 bits
-    intervalo_tempo_aceleracao = ler_16bits_eeprom(endereco);
-    endereco += 2;
-    duracao_enriquecimento = ler_16bits_eeprom(endereco);
-    endereco += 2;
-    rpm_minimo_enriquecimento = ler_16bits_eeprom(endereco);
-    endereco += 2;
-    rpm_maximo_enriquecimento = ler_16bits_eeprom(endereco);
-    endereco += 2;    
-    enriquecimento_desaceleracao = EEPROM.read(endereco++);
+    intervalo_tempo_aceleracao = eeprom_ler16_seguinte();
+    duracao_enriquecimento = eeprom_ler16_seguinte();
+    rpm_minimo_enriquecimento = eeprom_ler16_seguinte();
+    rpm_maximo_enriquecimento = eeprom_ler16_seguinte();
+    enriquecimento_desaceleracao = eeprom_ler8_seguinte();
 
 }
 void leitura_dados_eeprom_configuracao_tps() {
-    int endereco = 1000; // Inicializa o endereço de memória
+    eeprom_cursor = 1000; // Inicializa o endereço de memória
     // Ler os valores dos parâmetros
-    valor_tps_minimo = ler_16bits_eeprom(endereco);
-    endereco += 2;
+    valor_tps_minimo = eeprom_ler16_seguinte();
     
-    valor_tps_maximo = ler_16bits_eeprom(endereco);
-    endereco += 2;
+    valor_tps_maximo = eeprom_ler16_seguinte();
 }
 void ler_dados_eeprom_configuracao_map() {
-    int endereco = 1010; // ENDEREÇO CORRIGIDO
-    valor_map_tipo = EEPROM.read(endereco++);
-    valor_map_minimo = ler_16bits_eeprom(endereco);
-    endereco += 2;
-    valor_map_maximo = ler_16bits_eeprom(endereco);
-    endereco += 2;
+    eeprom_cursor = 1010; // ENDEREÇO CORRIGIDO
+    valor_map_tipo = eeprom_ler8_seguinte();
+    valor_map_minimo = eeprom_ler16_seguinte();
+    valor_map_maximo = eeprom_ler16_seguinte();
 }
 
 void ler_dados_eeprom_offset_evento() {
@@ -247,11 +225,10 @@ void ler_dados_eeprom_offset_evento() {
         usar_offset_personalizado = false;
         return;
     }
-    int endereco = 860;
+    eeprom_cursor = 860;
     int lidos[MAX_EVENTOS_AGENDAMENTO];
     for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
-        uint16_t bruto = ler_16bits_eeprom(endereco);
-        endereco += 2;
+        uint16_t bruto = eeprom_ler16_seguinte();
         // Fora de 0..359 e memoria corrompida, ou tabela gravada por uma versao
         // com outra geometria. Nesse caso volta para o uniforme, que sempre
         // roda, em vez de agendar faisca num angulo sem sentido fisico.
@@ -272,7 +249,7 @@ void ler_dados_eeprom_offset_evento() {
 
 void ler_dados_eeprom_enriquecimento_temperatura() {
     // Ver a nota no gravador: 1020 estourava os 1024 bytes da 328P.
-    int endereco = 840;
+    eeprom_cursor = 840;
 
     // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
     usar_injecao_temperatura = EEPROM.read(1015) == 1 ? 1 : 0;
@@ -281,10 +258,10 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
     byte enriquecimento_local[5];
 
     for (int i = 0; i < 5; i++) {
-        temperaturas_local[i] = EEPROM.read(endereco++);
+        temperaturas_local[i] = eeprom_ler8_seguinte();
     }
     for (int i = 0; i < 5; i++) {
-        enriquecimento_local[i] = EEPROM.read(endereco++);
+        enriquecimento_local[i] = eeprom_ler8_seguinte();
     }
 
     // Valida bloco vazio (EEPROM sem gravação).
@@ -322,7 +299,7 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
 
 void ler_dados_eeprom_avanco_temperatura() {
     // Ver a nota no gravador: 1030 caia em 6..15 e corrompia vetor_rpm.
-    int endereco = 850;
+    eeprom_cursor = 850;
 
     // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
     usar_avanco_temperatura = EEPROM.read(1016) == 1 ? 1 : 0;
@@ -331,10 +308,10 @@ void ler_dados_eeprom_avanco_temperatura() {
     byte avanco_local[5];
 
     for (int i = 0; i < 5; i++) {
-        temperaturas_local[i] = EEPROM.read(endereco++);
+        temperaturas_local[i] = eeprom_ler8_seguinte();
     }
     for (int i = 0; i < 5; i++) {
-        avanco_local[i] = EEPROM.read(endereco++);
+        avanco_local[i] = eeprom_ler8_seguinte();
     }
 
     bool bloco_vazio = true;
@@ -412,13 +389,13 @@ void ler_dados_eeprom(){
     ler_dados_eeprom_offset_evento();
     
     // Leitura dos dados de configurações de faisca 
-    int endereco = 382;
-    referencia_leitura_ignicao = ler_8bits_eeprom(endereco); endereco += 2;
-    modo_ignicao = ler_8bits_eeprom(endereco); endereco += 2;
-    grau_avanco_partida = ler_8bits_eeprom(endereco); endereco += 2;
-    avanco_fixo = ler_8bits_eeprom(endereco); endereco += 2;
-    grau_avanco_fixo = ler_8bits_eeprom(endereco); endereco += 2;
-    tipo_sinal_bobina = ler_8bits_eeprom(endereco);
+    eeprom_cursor = 382;
+    referencia_leitura_ignicao = ler_8bits_eeprom(eeprom_cursor); eeprom_cursor += 2;
+    modo_ignicao = ler_8bits_eeprom(eeprom_cursor); eeprom_cursor += 2;
+    grau_avanco_partida = ler_8bits_eeprom(eeprom_cursor); eeprom_cursor += 2;
+    avanco_fixo = ler_8bits_eeprom(eeprom_cursor); eeprom_cursor += 2;
+    grau_avanco_fixo = ler_8bits_eeprom(eeprom_cursor); eeprom_cursor += 2;
+    tipo_sinal_bobina = ler_8bits_eeprom(eeprom_cursor);
 
     // Leitura dos dados de configurações de dwell
     // Com o marcador em 406, 402/404 sao 16 bits em us. Sem ele a EEPROM ainda
