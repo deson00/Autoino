@@ -106,6 +106,7 @@ static inline bool refino_por_dente_ativo(unsigned long periodo_min_us) {
 
 void agendar_eventos_motor_timer1();
 void atualizar_agendamentos_ignicao_por_dente();
+void refinar_centelha_no_dente();
 static inline uint32_t ler_tick32_timer1();
 
 // TESTE: agendar_eventos_motor_timer1() e pesada (calcula todos os canais de
@@ -659,6 +660,9 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
         if (refino_por_dente_ativo(PERIODO_DENTE_MIN_REFINO_US)) {
           atualizar_agendamentos_ignicao_por_dente();
         }
+        // Este roda em qualquer rotacao: e uma conta por centelha, nao por
+        // dente (ver timer.h).
+        refinar_centelha_no_dente();
       }
     }
     // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);

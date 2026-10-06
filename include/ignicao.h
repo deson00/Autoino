@@ -117,9 +117,41 @@ static inline unsigned long calcular_tempo_ignicao_indice(int i) {
   return calcular_tempo_evento_ignicao(calcular_angulo_ignicao_indice(i));
 }
 
+// Refino da CENTELHA no dente anterior a ela (ver refinar_centelha_no_dente em
+// timer.h). Anotado aqui, onde o angulo ja e calculado para o agendamento, e
+// lido pela ISR do dente. Dente 0 = sem refino: a ISR so chama o refino nos
+// dentes normais, e o dente 0 e o do gap.
+// Quantos graus antes da centelha o refino roda - o porque esta em timer.h.
+#define MARGEM_REFINO_CENTELHA_GRAUS 30
+volatile int angulo_refino_centelha[8];
+volatile uint8_t dente_refino_centelha[8];
+
 void calcula_grau_ignicao(int i){
 if((captura_dwell[i] == false) && (ign_acionado[i] == false)){
-  tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
+  int angulo = calcular_angulo_ignicao_indice(i);
+  tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo);
+
+  // Dente MARGEM_REFINO_CENTELHA_GRAUS antes da centelha (ver timer.h). Alvo
+  // perto demais do gap fica sem refino: a projecao a partir dele ja e curta.
+  // Alvo dentro do gap e limitado ao ultimo dente antes dele.
+  int alvo = normalizar_angulo_minimo_zero(angulo);
+  int dente = 0;
+  if (!sensor_sem_falha() && grau_cada_dente > 0) {
+    int ultimo = (int)qtd_dente - (int)qtd_dente_faltante - 1;
+    int base = (alvo > 0 ? alvo : 360) - MARGEM_REFINO_CENTELHA_GRAUS - 1;
+    if (base > 0) {
+      dente = base / grau_cada_dente;
+    }
+    if (dente > ultimo) {
+      dente = ultimo;
+    }
+  }
+  // A ISR do dente pode entrar aqui no meio (o agendador roda com ela livre
+  // acima de ~1200 rpm na 60-2). Escrita de byte e atomica: desliga o refino do
+  // canal, troca o angulo e so entao religa - a ISR nunca le meio angulo.
+  dente_refino_centelha[i] = 0;
+  angulo_refino_centelha[i] = alvo;
+  dente_refino_centelha[i] = (uint8_t)dente;
     } 
 }
 void iniciar_dwell(int i){

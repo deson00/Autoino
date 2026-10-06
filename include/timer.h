@@ -1065,6 +1065,119 @@ static void atualizar_compare_a_desligar() {
 	}
 }
 
+// Refino da centelha a partir de um dente proximo dela.
+//
+// Acima do limiar do refino por dente (1 ms de dente: 1000 rpm na 60-2) a
+// centelha so e projetada a partir do gap, e o canal mais longe dele percorre
+// quase uma volta inteira de projecao. Com o motor mudando de rotacao, o erro
+// cresce junto. Medido na F75 (60-2 no virabrequim, 6 cilindros, so ignicao,
+// firmware de 03/10), pelo espacamento entre canais na mesma volta, que devia
+// ser 120 graus independente do avanco:
+//
+//   faixa        estavel   acelerando          desacelerando
+//   < 1000 rpm   +-0,3     +-5                 +-2      (refino por dente ligado)
+//   1000-2000    +-2       IGN3 ate +25        IGN3 -5,5
+//   3000-3900    -         IGN3 -10            IGN3 -18 (ate -22)
+//
+// Reproduzindo esse sinal na bancada com a versao 1498931 o padrao se repetiu
+// (+11,5 acelerando, ate -24 desacelerando acima de 3000). Nao e defeito
+// escondido: a ~6000 rpm/s a 1500 rpm a rotacao sobe ~12% durante os ~280
+// graus de projecao do IGN3, e a conta da ~15 graus.
+//
+// O refino por dente que ja existe nao serve aqui: so mexe em canal que ainda
+// NAO ligou a bobina e recalcula todos os canais em todo dente - caro demais
+// para a 60-2 acima de 1000 rpm. Este faz uma conta por centelha: ao agendar o
+// canal, calcula_grau_ignicao anota o angulo e um dente MARGEM_REFINO_CENTELHA
+// _GRAUS antes dele; na ISR do dente, so esse dente refaz o agendamento a
+// partir dele mesmo.
+//
+// Por que a margem e nao o dente imediatamente anterior: a primeira versao
+// refinava no dente anterior e, na bancada, consertou a aceleracao (IGN3 de
+// +11,5 para +0,1 entre 2000 e 3000) mas nao a desaceleracao (-5,9 e -10,4,
+// iguais a antes). Desacelerando a projecao do gap sai ADIANTADA, e quando o
+// erro passa de um dente a centelha ja saiu antes de o dente do refino chegar.
+// Com 30 graus de margem cobre os erros medidos (p10 de -20 acima de 3000), e
+// uma projecao de 30 a 36 graus erra menos de meio grau na pior aceleracao
+// medida.
+//
+// Com a bobina carregando, so o fim do dwell se move e o dwell absorve a
+// correcao. Ainda nao ligada (rotacao baixa, dwell menor que a margem), move
+// inicio e fim juntos, como o refino por dente. (A margem esta em ignicao.h.)
+//
+// Chamada pela ISR do dente, em todo dente. O caso comum e so comparar um byte
+// por canal.
+void refinar_centelha_no_dente() {
+	// tempo_cada_grau nunca e zero aqui: o chamador acabou de atualiza-lo com um
+	// valor valido. Corte de giro so impede LIGAR a bobina; uma que ja esta
+	// carregando ou agendada continua valendo ser refinada.
+	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 || agendador_em_execucao) {
+		return;
+	}
+
+	bool mexeu = false;
+	// Os 8 indices direto: canal fora da configuracao nunca tem dente anotado
+	// com bobina ligada ou agendada.
+	for (byte i = 0; i < 8; i++) {
+		if (dente_refino_centelha[i] != (uint8_t)posicao_atual_sensor) {
+			continue;
+		}
+		bool carregando = ign_acionado[i];
+		// Canal em regime adiantado tem alvo uma referencia a frente enquanto
+		// espera; so entra aqui depois de ligar a bobina.
+		if (!carregando && (!ignicao_agendada[i] || (ignicao_regime_adiantado & (uint8_t)(1U << i)))) {
+			continue;
+		}
+
+		int graus = angulo_refino_centelha[i] - posicao_atual_sensor * (int)grau_cada_dente;
+		if (graus <= 0) {
+			graus += 360;
+		}
+
+		// O dente chegou em tempo_atual (micros na entrada da ISR); desconta o
+		// que ja passou desde entao para nao atrasar a centelha pelo tempo de
+		// processamento do proprio dente. >> 2: o tick do Timer1 e de 4us.
+		uint32_t alvo_us = (uint32_t)graus * tempo_cada_grau;
+		uint32_t decorrido = micros() - tempo_atual;
+		uint32_t alvo = ler_tick32_timer1() +
+		                ((alvo_us > decorrido ? alvo_us - decorrido : 0UL) >> 2);
+
+		uint32_t ligou = ignicao_tick_ligar[i];
+		uint32_t dwell = ignicao_tick_desligar[i] - ligou;
+		if (carregando) {
+			// O dwell pode encolher ate metade do agendado, nao menos - mesmo piso
+			// de corrigir_fim_dwell_adiantado. Para cima o limite e o
+			// protege_dwell_maximo (1,5x). Alvo ja vencido nao e problema:
+			// atualizar_compare_a_desligar dispara na hora pela prevencao de
+			// deadlock.
+			uint32_t piso = ligou + (dwell >> 1);
+			if ((int32_t)(alvo - piso) < 0) {
+				alvo = piso;
+			}
+		} else {
+			ignicao_tick_ligar[i] = alvo - dwell;
+		}
+		ignicao_tick_desligar[i] = alvo;
+		mexeu = true;
+	}
+
+	// As duas, sempre, B antes de A - pelo mesmo motivo do fim de
+	// agendar_eventos_motor_timer1: se o inicio refinado ja passou,
+	// atualizar_compare_b_ligar liga a bobina NA HORA pela prevencao de
+	// deadlock, e esse desligamento novo so fica armado se o compare A for
+	// refeito depois.
+	//
+	// A primeira versao do refino chamava so a do compare B quando movia um
+	// canal ainda nao ligado. Medido na bancada com o sinal da F75: entre 2000
+	// e 3000 rpm, onde o dwell (~30 graus) fica do tamanho da margem e o inicio
+	// refinado cai no passado, 10 a 20% das centelhas sairam ~20 graus
+	// atrasadas com dwell de 3,8 a 4,2ms - soltas pelo protege_dwell_maximo,
+	// nao pelo compare A.
+	if (mexeu) {
+		atualizar_compare_b_ligar();
+		atualizar_compare_a_desligar();
+	}
+}
+
 void agendar_eventos_motor_timer1() {
 	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1) {
 		limpar_agendamentos_timer1();
