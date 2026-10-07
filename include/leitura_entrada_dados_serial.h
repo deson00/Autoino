@@ -366,16 +366,12 @@ void leitura_entrada_dados_serial()
           tipo_vetor_protecao = 0;
       }
       if (tipo_vetor_enriquecimento_aceleracao == 1){
-          enriquecimento_aceleracao[0] = values[0];
-          enriquecimento_aceleracao[1] = values[1];
-          enriquecimento_aceleracao[2] = values[2]; 
-          enriquecimento_aceleracao[3] = values[3]; 
-          enriquecimento_aceleracao[4] = values[4];
-          tps_dot_escala[0] = values[5];
-          tps_dot_escala[1] = values[6];
-          tps_dot_escala[2] = values[7];
-          tps_dot_escala[3] = values[8];
-          tps_dot_escala[4] = values[9];
+          // Laco em vez de dez atribuicoes por extenso: mesmo resultado, menos
+          // flash na Nano.
+          for (byte i = 0; i < 5; i++) {
+            enriquecimento_aceleracao[i] = values[i];
+            tps_dot_escala[i] = values[i + 5];
+          }
           tipo_verificacao_aceleracao_rapida = values[10];
           tps_mudanca_minima = values[11];
           intervalo_tempo_aceleracao = values[12];

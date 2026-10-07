@@ -94,6 +94,9 @@ static inline uint32_t ler_tick32_timer1() {
 // proprio agendador chama essa funcao no fim, entao nada se perde.
 volatile bool agendador_em_execucao = false;
 
+// Uma ISR do Timer1 entrou durante replanejar_timer1 e mexeu no estado.
+volatile bool timer1_refazer = false;
+
 // Canais em REGIME ADIANTADO: a centelha deles esta agendada uma referencia a
 // frente, porque o angulo alvo fica perto demais da referencia para o dwell
 // caber a partir dela.
@@ -150,6 +153,7 @@ static inline void desabilitar_timer1_compare_b() {
 
 static void atualizar_compare_b_ligar();
 static void atualizar_compare_a_desligar();
+static void replanejar_timer1(bool a_primeiro);
 static inline void agendar_injecao_canal(int i, uint32_t tick_atual);
 static inline bool processar_cortes_vencidos(uint32_t tick_atual);
 
@@ -509,8 +513,7 @@ static void rearmar_ignicoes_adiante() {
 		ignicao_tick_ligar[i] = alvo - dwell_ticks;
 		ignicao_tick_desligar[i] = alvo;
 		ignicao_agendada[i] = true;
-		atualizar_compare_b_ligar();
-		atualizar_compare_a_desligar();
+		replanejar_timer1(false);
 		SREG = sreg;
 	}
 }
@@ -1178,6 +1181,66 @@ void refinar_centelha_no_dente() {
 	}
 }
 
+// O que a ISR do dente faz de agendamento, num lugar so: chamado por ela e,
+// quando ela teve de adiar, pelo fim de replanejar_timer1. Uma funcao so para
+// o compilador nao duplicar os dois refinos (~1,2 KB) na Nano.
+void __attribute__((noinline)) refinos_do_dente() {
+	if (refino_por_dente_ativo(PERIODO_DENTE_MIN_REFINO_US)) {
+		atualizar_agendamentos_ignicao_por_dente();
+	}
+	// Este roda em qualquer rotacao: e uma conta por centelha, nao por dente.
+	refinar_centelha_no_dente();
+}
+
+// Reagendamento dos comparadores com a interrupcao do dente LIVRE.
+//
+// No AVR uma interrupcao bloqueia todas as outras ate terminar. As ISRs do
+// Timer1 ligam ou desligam o pino da bobina em poucos us, mas depois varrem
+// os canais para rearmar os comparadores - e era nessa varredura que o dente
+// esperava. Medido na bancada (60-2 no virabrequim, so ignicao, firmware
+// f49ac8b, varredura ate 7900 rpm, pulso da ISR do dente no D8): nenhum dente
+// perdido ate 7500 rpm, mas o dente 57 - o ultimo antes do gap - chegava ~67us
+// atrasado sempre que o inicio do dwell do IGN1 caia em cima dele. O dente
+// atrasado parece longo, o gap parece curto, e a razao gap/dente medida caia
+// abaixo do limiar de 2,0: em 228 das 289 voltas em que IGN2 e IGN3 faltaram
+// juntos (5500 a 7500 rpm), contra nenhuma nas voltas normais. Gap nao visto
+// e volta sem agendamento.
+//
+// Aqui o trabalho urgente ja foi feito com tudo bloqueado, e o rearme roda com
+// as interrupcoes LIGADAS. Duas regras mantem isso seguro:
+//
+// - Uma ISR do Timer1 que entre no meio faz so o urgente (o pino), marca
+//   timer1_refazer e sai. So este laco escreve em OCR1x/TIMSK1, entao nao ha
+//   dois rearmes se atropelando; e o laco repete a varredura enquanto houver
+//   algo novo.
+// - A ISR do dente que entre no meio so mede e marca refino_dente_adiado; o
+//   refino (que mexe nos mesmos horarios) roda aqui no fim, com tudo
+//   bloqueado.
+//
+// Entra e sai com as interrupcoes desligadas. a_primeiro preserva a ordem de
+// cada chamador - a ISR do compare A rearma A antes de B, e isso foi medido
+// (ver a ISR).
+static void __attribute__((noinline)) replanejar_timer1(bool a_primeiro) {
+	timer1_replanejando = true;
+	do {
+		timer1_refazer = false;
+		sei();
+		if (a_primeiro) {
+			atualizar_compare_a_desligar();
+			atualizar_compare_b_ligar();
+		} else {
+			atualizar_compare_b_ligar();
+			atualizar_compare_a_desligar();
+		}
+		cli();
+		if (refino_dente_adiado) {
+			refino_dente_adiado = false;
+			refinos_do_dente();
+		}
+	} while (timer1_refazer);
+	timer1_replanejando = false;
+}
+
 void agendar_eventos_motor_timer1() {
 	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1) {
 		limpar_agendamentos_timer1();
@@ -1327,9 +1390,8 @@ void agendar_eventos_motor_timer1() {
 	PULSO_FASE_ALTO();    // inicio da fase 2: atualizacao dos comparadores
 	uint8_t sreg_arme = SREG;
 	cli();
-	atualizar_compare_b_ligar();
-	atualizar_compare_a_desligar();
 	agendador_em_execucao = false;
+	replanejar_timer1(false);
 	SREG = sreg_arme;
 	PULSO_FASE_BAIXO();
 	(void)algo_desligou;
@@ -1376,8 +1438,14 @@ ISR(TIMER1_COMPB_vect) {
 	processar_ligamentos_vencidos(tick_atual);
 	processar_cortes_vencidos(tick_atual);
 
-	atualizar_compare_b_ligar();
-	atualizar_compare_a_desligar();
+	// Entrou no meio de um rearme interrompivel: quem esta rearmando repete a
+	// varredura (ver replanejar_timer1).
+	if (timer1_replanejando) {
+		timer1_refazer = true;
+		PULSO_TIMER1_BAIXO();
+		return;
+	}
+	replanejar_timer1(false);
 	PULSO_TIMER1_BAIXO();
 }
 
@@ -1385,6 +1453,12 @@ ISR(TIMER1_COMPA_vect) {
 	PULSO_TIMER1_ALTO();
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_atual);
+
+	if (timer1_replanejando) {
+		timer1_refazer = true;
+		PULSO_TIMER1_BAIXO();
+		return;
+	}
 
 	// Com o agendador em curso, faz so o desligamento e o proprio rearme. O
 	// planejamento de quem LIGA e do agendador, que o refaz no fim - reentrar
@@ -1404,7 +1478,6 @@ ISR(TIMER1_COMPA_vect) {
 	// Nao tenho explicacao medida para o porque, e por isso a ordem fica como
 	// estava e este comentario fica aqui: e um ponto sensivel que ja custou uma
 	// regressao, nao um detalhe de estilo. Quem for mexer, meça antes.
-	atualizar_compare_a_desligar();
-	atualizar_compare_b_ligar();
+	replanejar_timer1(true);
 	PULSO_TIMER1_BAIXO();
 }
