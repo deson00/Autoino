@@ -2,7 +2,7 @@
 // resistencia -> Beta -> Steinhart-Hart, so muda o pino e a calibracao).
 #define NTC_RESISTENCIA_TOTAL 2400UL
 
-int ler_temperatura_ntc(byte pino, int resistencia_ref1, int temperatura_ref1,
+int __attribute__((noinline)) ler_temperatura_ntc(byte pino, int resistencia_ref1, int temperatura_ref1,
                         int resistencia_ref2, int temperatura_ref2) {
   int sensor = analogRead(pino);
   if (sensor <= 0) {

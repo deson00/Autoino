@@ -285,7 +285,7 @@ void setup(){
 // trecho atual". Nao encolhe o trabalho do loop; encolhe a espera.
 //
 // A funcao e barata quando nao ha nada pendente: um teste de bool volatile.
-// ponto: qual chamada do loop e esta (1 a 9, na ordem do arquivo). So o
+// ponto: qual chamada do loop e esta (1 a 10, na ordem do arquivo). So o
 // diagnostico 9 usa: cada chamada impar liga o D7 e cada par desliga, entao na
 // captura o D7 mostra em que trecho do loop o processador estava quando o gap
 // chegou, e o pulso do D8 (gap ate o agendamento) mostra quando ele saiu. Fora
@@ -506,12 +506,29 @@ void loop(){
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
   processar_agendamento_pendente(7);
-  temperatura_motor = temperatura_clt();
-  temperatura_ar = temperatura_iat();
-  atualizar_controle_marcha_lenta();
+  // Uma temperatura por passada, alternando: cada uma atualiza a cada 400 ms,
+  // de sobra para temperatura, e o trecho cai pela metade.
+  //
+  // Cada leitura sao tres log2 de 16 multiplicacoes de 32 bits, ~0,5 ms de
+  // conta pura, e com a 60-2 a 7000 rpm as interrupcoes tomam mais da metade do
+  // processador. Medido na bancada (pulso do gap ate o agendamento no D8,
+  // trechos do loop no D7): este trecho, com as duas leituras e a marcha lenta
+  // juntas, durava 4 a 7,6 ms de 4000 a 8000 rpm, e TODAS as 160 voltas em que
+  // o agendamento atrasou mais de 1,5 ms tinham o gap caindo nele. Era a causa
+  // do IGN1 saindo 30 a 60 graus atrasado de vez em quando entre 4000 e 5000
+  // rpm: o dwell dele comeca ~0,7 ms depois do gap, antes de o agendador rodar.
+  static bool ler_ar = false;
+  if (ler_ar) {
+    temperatura_ar = temperatura_iat();
+  } else {
+    temperatura_motor = temperatura_clt();
+  }
+  ler_ar = !ler_ar;
   processar_agendamento_pendente(8);
-  envia_dados_tempo_real(1);
+  atualizar_controle_marcha_lenta();
   processar_agendamento_pendente(9);
+  envia_dados_tempo_real(1);
+  processar_agendamento_pendente(10);
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 
