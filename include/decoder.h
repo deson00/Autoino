@@ -274,6 +274,7 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 //   6 = QUEM desarma o OCIE1A com bobina ligada (largura identifica o local)
 #include <util/delay.h>
 //   7 = reparticao interna do agendamento (2 pulsos: canais / compare)
+//  10 = quem descarta uma injecao (largura do pulso, ver PULSO_INJ_DESCARTE)
 //   9 = como o 3, e o D7 marca o trecho do loop (liga nas chamadas impares
 //       de processar_agendamento_pendente, desliga nas pares - main.cpp)
 #define DEBUG_PULSO_ISR_ALVO 0
@@ -318,6 +319,17 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 // tick de referencia e capturado) e desce quando agendar_eventos_motor_timer1
 // termina, no loop(). A largura do pulso e o atraso total ate os eventos
 // ficarem armados - latencia do loop mais a duracao do proprio calculo.
+// Alvo 10: quem descarta uma injecao. Pulso no pino de depuracao com largura
+// que identifica o caminho: 10us = reagendar_injecao_se_pulso_ficou_curto
+// empurrou para a volta seguinte; 30us = o refino por dente achou a injecao
+// atras do dente e somou 360 graus; 50us = ligar_injetor recusou e o evento
+// foi cancelado.
+#if DEBUG_PULSO_ISR_ALVO == 10
+  #define PULSO_INJ_DESCARTE(us) do { PULSO_ALTO(); _delay_us(us); PULSO_BAIXO(); } while (0)
+#else
+  #define PULSO_INJ_DESCARTE(us)
+#endif
+
 // Alvo 9: o mesmo pulso do 3; o D7 marca o trecho do loop (ver
 // processar_agendamento_pendente, main.cpp).
 #if DEBUG_PULSO_ISR_ALVO == 3 || DEBUG_PULSO_ISR_ALVO == 9

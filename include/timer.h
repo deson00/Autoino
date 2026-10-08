@@ -565,6 +565,7 @@ static inline void recalcular_injecao_canal_por_dente(int i, uint32_t tick_atual
 	int graus_ate_evento = angulo_alvo - angulo_sensor_atual;
 	if (graus_ate_evento <= 0) {
 		graus_ate_evento += 360;
+		PULSO_INJ_DESCARTE(30);
 	}
 
 	uint32_t ticks_ate_inicio = us_para_ticks_timer1((unsigned long)graus_ate_evento * tempo_cada_grau);
@@ -668,17 +669,38 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 	injecao_agendada[i] = true;
 }
 
+// Chamada na hora de abrir o bico. Decide entre abrir agora ou empurrar a
+// injecao para a volta seguinte.
+//
+// O criterio e o ATRASO do proprio inicio: so empurra se a abertura esta sendo
+// processada mais de 20% do pulso agendado depois do horario. No horario, abre
+// e o fim passa a sair do tempo_injecao ATUAL.
+//
+// Antes comparava o que restava do pulso agendado com 80% do tempo_injecao
+// atual. Parece a mesma coisa, mas nao e: o pulso foi agendado no dente
+// anterior, e se o tempo_injecao SOBE no meio - que e exatamente o que o
+// enriquecimento de aceleracao faz - o pulso agendado "fica curto" sem atraso
+// nenhum, e a injecao era jogada para a volta seguinte. O enriquecimento, que
+// devia por mais combustivel, tirava uma injecao inteira.
+//
+// Medido na bancada com a configuracao da ranger (12-1 no comando, 1 bico,
+// pareado, enriquecimento de aceleracao de 5 ms ativo acima de 800 rpm),
+// 1000 rpm fixos: faltava uma injecao em 6% (05/10) a 36% (08/10) das voltas,
+// conforme o ruido do TPS da bancada. Com pulso de diagnostico em cada caminho
+// de descarte, todas as faltas eram este empurrao, disparado no horario certo
+// da abertura (8,53 ms depois do dente, sem atraso) e com as larguras das
+// injecoes vizinhas normais (1,88 a 2,09 ms).
 static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_atual) {
 	uint32_t tempo_injecao_ticks = us_para_ticks_timer1(tempo_injecao);
-	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, injecao_tick_desligar[i]);
-	uint32_t pulso_minimo_util_ticks = (tempo_injecao_ticks * 80UL) / 100UL;
-	if (pulso_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
-		pulso_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
-	}
+	uint32_t ligar = injecao_tick_ligar[i];
+	uint32_t pulso_agendado = injecao_tick_desligar[i] - ligar;
+	uint32_t atraso = tick_ja_passou(tick_atual, ligar) ? (tick_atual - ligar) : 0;
 
-	if (tempo_restante_ticks >= pulso_minimo_util_ticks) {
+	if (atraso * 5UL <= pulso_agendado) {
+		injecao_tick_desligar[i] = tick_atual + tempo_injecao_ticks;
 		return false;
 	}
+	PULSO_INJ_DESCARTE(10);
 
 	if (tempo_cada_grau == 0) {
 		injecao_tick_ligar[i] = tick_atual + TIMER1_MIN_DELTA_TICKS;
@@ -687,7 +709,7 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 	}
 
 	uint32_t periodo_ticks_360 = ticks_entre_referencias();
-	injecao_tick_ligar[i] = alinhar_tick_para_futuro_com_margem(injecao_tick_ligar[i],
+	injecao_tick_ligar[i] = alinhar_tick_para_futuro_com_margem(ligar,
 	                                                            tick_atual,
 	                                                            periodo_ticks_360,
 	                                                            tempo_injecao_ticks + TIMER1_MIN_DELTA_TICKS);
@@ -782,6 +804,7 @@ static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 			// laco de atualizar_compare_b_ligar do mesmo jeito.
 			if (!inj_acionado[i]) {
 				injecao_agendada[i] = false;
+				PULSO_INJ_DESCARTE(50);
 			}
 		}
 	}
