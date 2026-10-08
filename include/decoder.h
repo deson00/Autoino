@@ -274,6 +274,8 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 //   6 = QUEM desarma o OCIE1A com bobina ligada (largura identifica o local)
 #include <util/delay.h>
 //   7 = reparticao interna do agendamento (2 pulsos: canais / compare)
+//   9 = como o 3, e o D7 marca o trecho do loop (liga nas chamadas impares
+//       de processar_agendamento_pendente, desliga nas pares - main.cpp)
 #define DEBUG_PULSO_ISR_ALVO 0
 
 // Onde sai o pulso.  0 = pino 7 (ign4)   1 = pino 8 (inj1)
@@ -316,7 +318,9 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 // tick de referencia e capturado) e desce quando agendar_eventos_motor_timer1
 // termina, no loop(). A largura do pulso e o atraso total ate os eventos
 // ficarem armados - latencia do loop mais a duracao do proprio calculo.
-#if DEBUG_PULSO_ISR_ALVO == 3
+// Alvo 9: o mesmo pulso do 3; o D7 marca o trecho do loop (ver
+// processar_agendamento_pendente, main.cpp).
+#if DEBUG_PULSO_ISR_ALVO == 3 || DEBUG_PULSO_ISR_ALVO == 9
   #define PULSO_AGENDA_ALTO()  PULSO_ALTO()
   #define PULSO_AGENDA_BAIXO() PULSO_BAIXO()
 #else

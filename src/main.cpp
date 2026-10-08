@@ -285,7 +285,20 @@ void setup(){
 // trecho atual". Nao encolhe o trabalho do loop; encolhe a espera.
 //
 // A funcao e barata quando nao ha nada pendente: um teste de bool volatile.
-static inline void processar_agendamento_pendente() {
+// ponto: qual chamada do loop e esta (1 a 9, na ordem do arquivo). So o
+// diagnostico 9 usa: cada chamada impar liga o D7 e cada par desliga, entao na
+// captura o D7 mostra em que trecho do loop o processador estava quando o gap
+// chegou, e o pulso do D8 (gap ate o agendamento) mostra quando ele saiu. Fora
+// do diagnostico o parametro some na compilacao.
+static inline void processar_agendamento_pendente(uint8_t ponto) {
+#if DEBUG_PULSO_ISR_ALVO == 9
+  if (ponto & 1) {
+    PORTD |= _BV(PD7);
+  } else {
+    PORTD &= ~_BV(PD7);
+  }
+#endif
+  (void)ponto;
   if (agendamento_pendente) {
     agendamento_pendente = false;
     agendar_eventos_motor_timer1();
@@ -301,11 +314,11 @@ void loop(){
    // O calculo pesado de agendamento (todos os canais de ignicao/injecao) roda
    // fora da interrupcao do dente de falha - la so se captura o tick de
    // referencia. Processa aqui, o quanto antes no loop, pra minimizar o atraso.
-   processar_agendamento_pendente();
+   processar_agendamento_pendente(1);
    protege_dwell_maximo();
    calcularRPM();
     processar_motor_passo_marcha_lenta();
-    processar_agendamento_pendente();
+    processar_agendamento_pendente(2);
     qtd_loop++;
   
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
@@ -348,7 +361,7 @@ void loop(){
       proximo_adc = 0;
     }
     atualizar_estado_partida();
-    processar_agendamento_pendente();
+    processar_agendamento_pendente(3);
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
@@ -416,7 +429,7 @@ void loop(){
       status_corte = 0;
     }
 
-    processar_agendamento_pendente();
+    processar_agendamento_pendente(4);
     if (usar_avanco_temperatura == 1 && avanco_baseado_em_tabela && status_corte == 0) {
       byte correcao_avanco_temp = avanco_por_temperatura((int)temperatura_motor);
       unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
@@ -483,22 +496,22 @@ void loop(){
 // calcula_grau_ignicao(i);
 // }
 // }
-    processar_agendamento_pendente();
+    processar_agendamento_pendente(5);
     leitura_entrada_dados_serial();
     teste_compressao_verificar_tempo(); 
     captura_bateria_processar();
-    processar_agendamento_pendente();
+    processar_agendamento_pendente(6);
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
-  processar_agendamento_pendente();
+  processar_agendamento_pendente(7);
   temperatura_motor = temperatura_clt();
   temperatura_ar = temperatura_iat();
   atualizar_controle_marcha_lenta();
-  processar_agendamento_pendente();
+  processar_agendamento_pendente(8);
   envia_dados_tempo_real(1);
-  processar_agendamento_pendente();
+  processar_agendamento_pendente(9);
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 

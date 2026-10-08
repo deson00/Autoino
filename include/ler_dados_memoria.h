@@ -38,6 +38,8 @@ void __attribute__((noinline)) enviar_campo(int value) {
 }
 
 void ler_dados_memoria() {
+#ifndef DIAG_SEM_DUMP  // so para diagnostico que nao cabe na Nano com o dump
+
   // ========== PRIMEIRO: LER TODOS OS DADOS DA EEPROM ==========
   ler_dados_eeprom(); // Esta chamada estava faltando!
   // ========== TABELA IGNIÇÃO
@@ -313,4 +315,5 @@ void ler_dados_memoria() {
   enviar_campo(PLACA_REVISAO);
   enviar_byte_config(';');
 
+#endif
 }
