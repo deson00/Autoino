@@ -98,7 +98,8 @@ void calcularRPM() {
   static byte timeout_consecutivo = 0;
   static byte rpm_amostras_validas = 0;
 
-  unsigned long tempo_atual_local = micros();
+  // Mesma base de tempo dos instantes do decoder (ver agora_decoder_us).
+  unsigned long tempo_atual_local = agora_decoder_us();
   unsigned long tempo_volta_snapshot;
   unsigned long ultimo_pulso_snapshot;
 
@@ -264,11 +265,16 @@ void setup(){
   pinMode(pino_sensor_o2, INPUT);
   pinMode(pino_sensor_brv, INPUT);
 
+#if SENSOR_ROTACAO_ICP1
+  setupTimer1();
+  configurar_captura_sensor();
+#else
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   setupTimer1();
+#endif
   Serial.begin(9600);
   delay(200);
-  tempo_inicial_rpm = micros();
+  tempo_inicial_rpm = agora_decoder_us();
   ultimo_pulso_rpm_us = tempo_inicial_rpm;
   inicio_espera_injecao_inicial_ms = millis();
   sei(); // Habilita interrupções globais

@@ -587,6 +587,13 @@ void atualizar_agendamentos_ignicao_por_dente() {
 	cli();
 	uint32_t tick_atual = ler_tick32_timer1();
 	bool algo_desligou = processar_cortes_vencidos(tick_atual);
+#if SENSOR_ROTACAO_ICP1
+	// Projeta a partir do instante em que o dente CHEGOU, e nao de agora: a
+	// conta abaixo e "graus ate o evento a partir deste dente".
+	const uint32_t tick_dente = tick_borda_sensor;
+#else
+	const uint32_t tick_dente = tick_atual;
+#endif
 
 	// TODOS os canais a cada dente, como a injecao logo abaixo sempre fez.
 	//
@@ -607,12 +614,12 @@ void atualizar_agendamentos_ignicao_por_dente() {
 	// pendentes fazem a conta inteira.
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (byte i = 0; i < eventos_ignicao; i++) {
-		recalcular_ignicao_canal_por_dente(i, tick_atual);
+		recalcular_ignicao_canal_por_dente(i, tick_dente);
 	}
 
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_injecao; i++) {
-		recalcular_injecao_canal_por_dente(i, tick_atual);
+		recalcular_injecao_canal_por_dente(i, tick_dente);
 	}
 
 	// A segunda chamada a processar_cortes_vencidos(tick_atual) foi removida:
@@ -1163,9 +1170,14 @@ void refinar_centelha_no_dente() {
 		// que ja passou desde entao para nao atrasar a centelha pelo tempo de
 		// processamento do proprio dente. >> 2: o tick do Timer1 e de 4us.
 		uint32_t alvo_us = (uint32_t)graus * tempo_cada_grau;
+#if SENSOR_ROTACAO_ICP1
+		// Instante exato do dente, registrado pelo hardware.
+		uint32_t alvo = tick_borda_sensor + (alvo_us >> 2);
+#else
 		uint32_t decorrido = micros() - tempo_atual;
 		uint32_t alvo = ler_tick32_timer1() +
 		                ((alvo_us > decorrido ? alvo_us - decorrido : 0UL) >> 2);
+#endif
 
 		uint32_t ligou = ignicao_tick_ligar[i];
 		uint32_t dwell = ignicao_tick_desligar[i] - ligou;
@@ -1449,6 +1461,42 @@ void agendar_eventos_motor_timer1() {
 ISR(TIMER1_OVF_vect) {
 	timer1_overflow_count++;
 }
+
+#if SENSOR_ROTACAO_ICP1
+// Captura de entrada: o Timer1 copiou para ICR1 o valor do contador no ciclo
+// exato da borda do sensor. Aqui so se estende para 32 bits e entrega ao
+// decoder, que usa este instante no lugar do micros() da hora em que a
+// interrupcao rodou.
+//
+// Estouro pendente: esta interrupcao tem prioridade sobre a de estouro, entao
+// se o contador acabou de dar a volta a contagem de estouros ainda nao subiu.
+// Captura pequena com estouro pendente aconteceu DEPOIS da volta; captura
+// grande, antes - mesma regra de ler_tick32_timer1.
+ISR(TIMER1_CAPT_vect) {
+	uint16_t captura = ICR1;
+	uint32_t estouros = timer1_overflow_count;
+	if ((TIFR1 & (1 << TOV1)) && captura < 0x8000U) {
+		estouros++;
+	}
+	tick_borda_sensor = (estouros << 16) | captura;
+	tempo_borda_sensor_us = tick_borda_sensor << 2;
+	leitor_sensor_roda_fonica();
+}
+
+// Liga a captura: borda de subida (a mesma do attachInterrupt RISING de antes)
+// e o cancelador de ruido do hardware, que so aceita a borda depois de 4
+// amostras iguais seguidas (0,25us) - descarta os picos mais curtos que a
+// centelha induz no fio do sensor. Chamar DEPOIS de setupTimer1, que zera
+// TCCR1B.
+void configurar_captura_sensor() {
+	uint8_t sreg = SREG;
+	cli();
+	TCCR1B |= (1 << ICNC1) | (1 << ICES1);
+	TIFR1 = (1 << ICF1);
+	TIMSK1 |= (1 << ICIE1);
+	SREG = sreg;
+}
+#endif
 
 // As duas ISRs compartilham o mesmo pino de medicao: o que se quer saber e o
 // tempo TOTAL em que o Timer1 bloqueia o resto do sistema, nao qual das duas

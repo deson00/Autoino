@@ -118,6 +118,28 @@ static inline uint32_t ler_tick32_timer1();
 // esse tick na interrupcao (barato) e deixar o calculo pesado rodar no loop().
 volatile bool agendamento_pendente = false;
 
+// Base de tempo do decoder.
+//
+// Com o sensor no ICP1 (placa revisao 3) o instante de cada dente e o que o
+// HARDWARE registrou na borda, em ticks do Timer1 (4us), e nao o micros() lido
+// quando a interrupcao conseguiu rodar. Era esse atraso que deformava a medida
+// dos dentes: medido na bancada (60-2, so ignicao), o dente 57 chegando ~55us
+// atrasado fazia a razao gap/dente cair abaixo de 2,0 e o gap nao ser
+// reconhecido em ~1-2% das voltas acima de 6000 rpm.
+//
+// Tudo que compara tempo com os instantes do decoder (deteccao de motor
+// parado, refino da centelha) precisa usar agora_decoder_us(), a mesma base.
+// Os dois relogios tem resolucao de 4us e voltam a zero a cada ~71 min.
+#if SENSOR_ROTACAO_ICP1
+volatile uint32_t tick_borda_sensor = 0;
+volatile uint32_t tempo_borda_sensor_us = 0;
+static inline uint32_t agora_decoder_us() { return ler_tick32_timer1() << 2; }
+static inline uint32_t instante_borda_sensor_us() { return tempo_borda_sensor_us; }
+#else
+static inline uint32_t agora_decoder_us() { return micros(); }
+static inline uint32_t instante_borda_sensor_us() { return micros(); }
+#endif
+
 // Reagendamento do Timer1 INTERROMPIVEL em curso (ver replanejar_timer1 em
 // timer.h). Enquanto vale, a ISR do dente so mede: o refino de agendamento que
 // ela faria mexe nos mesmos horarios que o reagendamento esta varrendo, entao
@@ -287,7 +309,12 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 #define DEBUG_PULSO_PINO 1
 
 #if DEBUG_PULSO_ISR_ALVO && defined(__AVR_ATmega328P__)
-  #if DEBUG_PULSO_PINO == 1
+  #if DEBUG_PULSO_PINO == 1 && SENSOR_ROTACAO_ICP1
+    // Na revisao 3 o D8 e a ENTRADA do sensor: escrever em PORTB0 ligaria e
+    // desligaria o pull-up dela. O inj1 foi para o D2, e o pulso vai junto.
+    #define PULSO_ALTO()  (PORTD |= _BV(PD2))
+    #define PULSO_BAIXO() (PORTD &= ~_BV(PD2))
+  #elif DEBUG_PULSO_PINO == 1
     #define PULSO_ALTO()  (PORTB |= _BV(PB0))
     #define PULSO_BAIXO() (PORTB &= ~_BV(PB0))
   #else
@@ -370,7 +397,7 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
 
 void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente - dente faltante
   // tempo_inicial_codigo = micros(); // Registra o tempo inicial
-  uint32_t tempo_agora = micros();
+  uint32_t tempo_agora = instante_borda_sensor_us();
   if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
     return; // Ignora o pulso, é ruído. Não faz nada, pois não é um pulso válido.
   }
@@ -667,7 +694,12 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
       tempo_atual_proxima_injecao[0] = tempo_atual;
       // So captura o tick de referencia aqui (barato) - o calculo pesado
       // (agendar_eventos_motor_timer1) roda depois, no loop().
+#if SENSOR_ROTACAO_ICP1
+      // O instante exato do gap, e nao o de quando esta linha rodou.
+      tick_base_sincronismo = tick_borda_sensor;
+#else
       tick_base_sincronismo = ler_tick32_timer1();
+#endif
       agendamento_pendente = true;
       PULSO_AGENDA_ALTO();
     }
@@ -732,7 +764,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 // offset_referencia_roda_fonica_graus() retorna 0 neste modo.
 // ---------------------------------------------------------------------------
 void decoder_sem_falha() {
-  uint32_t tempo_agora = micros();
+  uint32_t tempo_agora = instante_borda_sensor_us();
   if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
     return; // repique
   }
@@ -796,7 +828,11 @@ void decoder_sem_falha() {
   if (revolucoes_sincronizada >= 2 && tipo_ignicao_sequencial == 0) {
     tempo_atual_proxima_ignicao[0] = tempo_atual;
     tempo_atual_proxima_injecao[0] = tempo_atual;
+#if SENSOR_ROTACAO_ICP1
+    tick_base_sincronismo = tick_borda_sensor;
+#else
     tick_base_sincronismo = ler_tick32_timer1();
+#endif
     agendamento_pendente = true;
   }
 

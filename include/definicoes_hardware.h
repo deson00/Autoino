@@ -68,9 +68,11 @@
 //
 //   v1  inj4 no D13, DIR do passo no D10
 //   v2  inj4 no D10, DIR do passo no D13  (o D13 e o LED do bootloader)
+//   v3  sensor de rotacao no D8 (ICP1) e inj1 no D2 - so ATmega328P
 #ifndef PLACA_REVISAO
 #define PLACA_REVISAO 2
 #endif
+
 
 #ifdef Autoino
 #define PERFIL_HARDWARE 1
@@ -79,7 +81,24 @@
 #endif
 
 #ifdef Autoino
+// Padrao: sensor de rotacao em interrupcao externa (D2/D19). A revisao 3
+// troca abaixo.
+#define SENSOR_ROTACAO_ICP1 0
+
+// Placa revisao 3: sensor de rotacao no D8, que e o ICP1 (captura de entrada
+// do Timer1) - o proprio hardware registra o instante da borda, e o atraso da
+// interrupcao deixa de virar erro de medida do dente. O injetor 1 vai para o
+// D2, que ficou livre. So existe no ATmega328P: no Mega o D8 nao e ICP.
+#if PLACA_REVISAO >= 3
+#if !defined(__AVR_ATmega328P__)
+#error "PLACA_REVISAO 3 (sensor no ICP1/D8) so existe no ATmega328P (Nano/Uno)"
+#endif
+#undef SENSOR_ROTACAO_ICP1
+#define SENSOR_ROTACAO_ICP1 1
+#define pino_sensor_roda_fonica 8
+#else
 #define pino_sensor_roda_fonica 2
+#endif
 #define pino_sensor_fase 3
 #define pino_sensor_map A0
 #define pino_sensor_tps A1
@@ -132,7 +151,11 @@ constexpr byte ign1 = 4;
 constexpr byte ign2 = 5;
 constexpr byte ign3 = 6;
 constexpr byte ign4 = 7;
+#if PLACA_REVISAO >= 3
+constexpr byte inj1 = 2;
+#else
 constexpr byte inj1 = 8;
+#endif
 constexpr byte inj2 = 9;
 constexpr byte inj3 = 12;
 #if PLACA_REVISAO >= 2
