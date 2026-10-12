@@ -34,6 +34,11 @@ static inline byte quantidade_canais_ignicao_fisicos() {
 }
 
 static inline byte quantidade_eventos_ignicao_por_ciclo_sensor() {
+  if (sensor_sem_falha()) {
+    // Cada pulso do sensor ja e um evento de cilindro - nao ha N eventos
+    // espalhados por uma volta, ha um evento por referencia.
+    return 1;
+  }
   if (modo_ignicao == 1 && local_rodafonica == 2) {
     return quantidade_canais_ignicao_fisicos();
   }
@@ -41,6 +46,12 @@ static inline byte quantidade_eventos_ignicao_por_ciclo_sensor() {
 }
 
 static inline byte indice_pino_ignicao(int i) {
+  if (sensor_sem_falha()) {
+    // Bobina unica: o distribuidor faz o roteamento mecanico, e no volante de
+    // um dente (moto) ha uma bobina so, eventualmente dupla em paralelo para
+    // gemeas - centelha perdida cobre os dois casos.
+    return 0;
+  }
   // Se estiver lendo virabrequim (2 voltas), as saídas espelham-se pela metade!
   // No caso de 4 cilindros em Wasted Spark (centelha perdida no Vira), i=0 e i=2 vão para bobina A (indice 0);
   // i=1 e i=3 vão para bobina B (indice 1). Não passa do limite e não pisca a IGN3.
@@ -49,7 +60,20 @@ static inline byte indice_pino_ignicao(int i) {
     if (local_rodafonica == 1 && i >= canais) {
       return (byte)(i - canais);
     }
-    return (byte)(i % canais);
+    // Subtracao em vez de i % canais: esta funcao roda dentro das ISRs do
+    // Timer1, ao ligar a bobina e ao soltar a centelha, e o modulo era uma
+    // chamada a __divmodhi4 (~12us) em cada uma. i nunca passa de 8 eventos,
+    // entao o laco da no maximo algumas voltas.
+    // canais == 0 so com qtd_cilindro 0 (configuracao invalida); sem a guarda
+    // o laco nao terminaria, onde o modulo apenas devolvia lixo.
+    if (canais == 0) {
+      return 0;
+    }
+    byte indice = (byte)i;
+    while (indice >= canais) {
+      indice -= canais;
+    }
+    return indice;
   }
 
   // Comportamento do fase/comando que era antigo (ignições emparelhadas)
@@ -76,62 +100,222 @@ void atualizar_ajuste_pms_ignicao() {
 static inline int calcular_angulo_ignicao_indice(int i) {
   int grau_pms_referencia = grau_pms;
   int grau_avanco_referencia = graus_avanco_para_referencia_sensor(grau_avanco);
-  int separacao_eventos = grau_entre_cada_cilindro;
+  // Centelha perdida no virabrequim tem regra propria: divide 360 pelos canais
+  // FISICOS e nao pelos cilindros. Esse caso e uniforme por natureza - os canais
+  // de centelha perdida sao sempre equidistantes -, entao a tabela de offset nao
+  // se aplica a ele e continua como sempre foi.
+  int separacao;
   if (modo_ignicao == 1 && local_rodafonica == 2) {
-    separacao_eventos = 360 / quantidade_canais_ignicao_fisicos();
+    separacao = (360 / quantidade_canais_ignicao_fisicos()) * i;
+  } else {
+    separacao = separacao_evento_base(i);
   }
-  return ajuste_pms + grau_pms_referencia - offset_referencia_roda_fonica_graus() - grau_avanco_referencia + (separacao_eventos * i);
+  return ajuste_pms + grau_pms_referencia - offset_referencia_roda_fonica_graus() - grau_avanco_referencia + separacao;
 }
 
 static inline unsigned long calcular_tempo_ignicao_indice(int i) {
   return calcular_tempo_evento_ignicao(calcular_angulo_ignicao_indice(i));
 }
 
+// Refino da CENTELHA no dente anterior a ela (ver refinar_centelha_no_dente em
+// timer.h). Anotado aqui, onde o angulo ja e calculado para o agendamento, e
+// lido pela ISR do dente. Dente 0 = sem refino: a ISR so chama o refino nos
+// dentes normais, e o dente 0 e o do gap.
+// Quantos graus antes da centelha o refino roda - o porque esta em timer.h.
+#define MARGEM_REFINO_CENTELHA_GRAUS 30
+volatile int angulo_refino_centelha[8];
+volatile uint8_t dente_refino_centelha[8];
+
 void calcula_grau_ignicao(int i){
 if((captura_dwell[i] == false) && (ign_acionado[i] == false)){
-  tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
+  int angulo = calcular_angulo_ignicao_indice(i);
+  tempo_proxima_ignicao[i] = calcular_tempo_evento_ignicao(angulo);
+
+  // Dente MARGEM_REFINO_CENTELHA_GRAUS antes da centelha (ver timer.h). Alvo
+  // perto demais do gap fica sem refino: a projecao a partir dele ja e curta.
+  // Alvo dentro do gap e limitado ao ultimo dente antes dele.
+  int alvo = normalizar_angulo_minimo_zero(angulo);
+  int dente = 0;
+  if (!sensor_sem_falha() && grau_cada_dente > 0) {
+    int ultimo = (int)qtd_dente - (int)qtd_dente_faltante - 1;
+    int base = (alvo > 0 ? alvo : 360) - MARGEM_REFINO_CENTELHA_GRAUS - 1;
+    if (base > 0) {
+      dente = base / grau_cada_dente;
+    }
+    if (dente > ultimo) {
+      dente = ultimo;
+    }
+  }
+  // A ISR do dente pode entrar aqui no meio (o agendador roda com ela livre
+  // acima de ~1200 rpm na 60-2). Escrita de byte e atomica: desliga o refino do
+  // canal, troca o angulo e so entao religa - a ISR nunca le meio angulo.
+  dente_refino_centelha[i] = 0;
+  angulo_refino_centelha[i] = alvo;
+  dente_refino_centelha[i] = (uint8_t)dente;
     } 
 }
 void iniciar_dwell(int i){
     if ((captura_dwell[i] == false) && (ign_acionado[i] == false) &&
-        revolucoes_sincronizada >= 1 && status_corte == 0){ 
+        revolucoes_sincronizada >= 1 && status_corte == 0 &&
+        !TESTE_COMPRESSAO_SUPRIME){ 
         byte pino = indice_pino_ignicao(i);
         captura_dwell[i] = true;
         tempo_percorrido[i] = micros();
         digitalWrite(ignicao_pins[pino], HIGH);
-        // setPinHigh(ignicao_pins[i]);
         ign_acionado[i] = true;
     }
 }
 
+// Guarda por ign_acionado, e ele e o PRIMEIRO a ser limpo.
+//
+// Antes exigia captura_dwell E ign_acionado, com ign_acionado limpo por ultimo.
+// Entre as duas escritas havia uma janela de uma instrucao com ign_acionado
+// verdadeiro e captura_dwell ja falso. Quem varre pedindo so ign_acionado -
+// processar_cortes_vencidos e atualizar_compare_a_desligar - via "precisa
+// desligar", chamava esta funcao, e ela nao fazia NADA porque captura_dwell ja
+// era falso. A flag nao caia, a varredura reencontrava o mesmo canal, e o laco
+// de replanejamento girava ate estourar as 32 tentativas.
+//
+// Janela de uma instrucao, o que explica a faixa estreita de rotacao em que o
+// defeito aparecia: so pega quando a interrupcao cai exatamente ali.
+//
+// Limpar ign_acionado primeiro fecha a janela pelo outro lado: quem varre
+// passa a ver "nao ha o que desligar", que e verdade, em vez de ver um pedido
+// que ninguem atende.
 void desligar_dwell(int i){
-      if ((captura_dwell[i] == true) && (ign_acionado[i] == true)) {
+      if (ign_acionado[i] == true) {
         byte pino = indice_pino_ignicao(i);
-        captura_dwell[i] = false;
         ign_acionado[i] = false;
+        captura_dwell[i] = false;
         digitalWrite(ignicao_pins[pino], LOW);
-        // setPinLow(ignicao_pins[i]);
-    
-  }  
-}
-
-void calcula_dwell_comando(int i){
-      if ( i < qtd_cilindro/2){
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
-      tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
-    }
-  }
-    if (i >= qtd_cilindro / 2){
-    if ((captura_dwell[i] == false) && (ign_acionado[i] == false)){
-      tempo_proxima_ignicao[i] = calcular_tempo_ignicao_indice(i);
-    }
+        PULSO_ORFAO_BAIXO();
   }
 }
 
-void iniciar_dwell_comando(int i){
-    iniciar_dwell(i);
+// Protecao de dwell maximo: independente da causa (ainda em investigacao), garante
+// que nenhuma bobina fique carregando por mais que MULTIPLICADOR_DWELL_MAX_X10/10
+// vezes o dwell configurado. Margem relativa (nao um valor fixo em ms) para
+// acompanhar automaticamente qualquer dwell_bobina configurado pela UI.
+#define MULTIPLICADOR_DWELL_MAX_X10 15UL // 1.5x
+
+// Fracao do dwell configurado abaixo da qual a centelha e considerada fraca
+// demais para valer a pena. Usada nos DOIS lugares que decidem o que fazer
+// quando o dwell nao cabe entre a referencia e o angulo alvo - eles precisam
+// concordar, senao um encurta o dwell e o outro cancela o evento em seguida.
+//
+// Era 80%, valor pensado para "cancelar o evento". Para "encurtar o dwell" 80%
+// e restritivo demais: a corrente na bobina sobe de forma exponencial, entao
+// metade do dwell ainda entrega bem mais que metade da energia.
+#define DWELL_MINIMO_UTIL_PCT 50UL
+
+// Piso do CANCELAMENTO, deliberadamente bem abaixo de DWELL_MINIMO_UTIL_PCT.
+//
+// Os dois pisos decidem em momentos diferentes: o agendador decide no gap
+// ("cabe 50%, mantem o angulo") e reagendar_ignicao_se_dwell_ficou_curto
+// reavalia quando o evento vence, ja com a janela encolhida pela latencia. Com
+// os dois em 50% o segundo CANCELAVA o que o primeiro tinha acabado de
+// aprovar - medido em bancada: 1336 voltas sem centelha na ign1 em 5772,
+// com o dwell minimo caindo em 1,43ms contra um piso de 1,50ms.
+//
+// Cancelar entrega centelha NENHUMA, que e pior que centelha fraca. Este piso
+// mais baixo so barra o caso em que a bobina nao teria energia para faiscar de
+// qualquer jeito, e da histerese para a decisao do agendador nao ser desfeita.
+#define DWELL_CANCELA_ABAIXO_PCT 20UL
+
+/*
+ * PENDENTE: teto de dwell pela separacao entre eventos.
+ *
+ * O encurtamento acima resolve o dwell que nao cabe ENTRE A REFERENCIA E O
+ * ANGULO ALVO. Falta o outro caso: o dwell que cabe nisso mas invade o evento
+ * do OUTRO canal. Em motor de ignicao desigual os eventos podem ficar muito
+ * proximos, e ai a carga de uma bobina atropela a centelha da vizinha.
+ *
+ * MEDIDO EM BANCADA - V-twin de 75 graus, roda 24-1, rampa ate 8736 rpm,
+ * analisador ligado em IGN1, IGN2 e no sensor:
+ *
+ *   dwell 2,95 ms   185 centelhas perdidas, comecando em 6677 rpm
+ *   dwell 1,45 ms   nenhuma perdida, mas a IGN1 dispersava +-25,8 graus e o
+ *                   dwell dela ESTICAVA para 1,76 ms - assinatura do evento
+ *                   saindo atrasado
+ *   dwell 1,05 ms   nenhuma perdida, IGN1 dentro de +-7,1 graus em 3670
+ *                   voltas, dwell firme em 1,06 ms
+ *
+ * A causa e geometrica. Os eventos ficam a 75 e 285 graus um do outro, e a
+ * folga entre a centelha de um canal e a partida de dwell do outro vale
+ *
+ *     folga = 75 graus - graus de dwell
+ *
+ * que fecha conforme a rotacao sobe. A degradacao acompanha a folga, nao a
+ * rotacao: +-10 graus com ~300 us de folga, +-26 graus com ~75 us. Com 1,05 ms
+ * a folga nunca caiu de 370 us e nada quebrou ate o topo da rampa.
+ *
+ * A CORRECAO seria um teto calculado da propria geometria, no laco principal:
+ *
+ *     dwell maximo = menor separacao entre eventos * tempo_cada_grau - 400us
+ *
+ * Nao precisa de tabela, EEPROM, protocolo nem tela: sai da tabela de offset
+ * que ja existe. Num quatro cilindros uniforme o teto e 180 graus e nunca
+ * atrapalha; so morde em motor de ignicao desigual.
+ *
+ * POR QUE NAO ESTA FEITO: prototipado e medido - custa 188 bytes de flash e
+ * zero RAM, e a Nano ficaria com 38 bytes livres. Margem apertada demais para
+ * gastar num problema que so aparece acima de 7000 rpm, faixa em que este
+ * motor nao trabalha. Calcular a separacao uma vez so, em cache, sai MAIOR
+ * (30748 bytes, 28 acima do limite da Nano): cada ponto de chamada custa mais
+ * codigo do que o laco economiza.
+ *
+ * ANTES DE FAZER: baixar MAX_EVENTOS_AGENDAMENTO de 8 para 6 devolve 92 bytes
+ * de RAM e algum flash, e ainda cobre um seis cilindros com roda no comando.
+ * Com esse respiro o teto entra sem apertar.
+ */
+
+volatile unsigned int contagem_protecao_dwell_maximo = 0;
+void protege_dwell_maximo(){
+  unsigned long limite_us = (dwell_bobina * MULTIPLICADOR_DWELL_MAX_X10) / 10UL;
+  byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+  for (byte i = 0; i < eventos_ignicao; i++) {
+    // Protegido contra corrida com as interrupcoes (mesmo padrao usado no resto
+    // do agendamento): sem isso, uma interrupcao podia rearmar o canal para a
+    // proxima centelha bem no meio desta checagem, e o "ignicao_agendada[i] = false"
+    // logo em seguida apagava esse novo agendamento valido por engano.
+    uint8_t sreg = SREG;
+    cli();
+    bool precisa_forcar = ign_acionado[i] && (micros() - tempo_percorrido[i] > limite_us);
+#if DEBUG_PULSO_ISR_ALVO == 5
+    // Diagnostico da bobina presa, codificado na LARGURA do pulso. Uma captura
+    // responde as duas perguntas que faltam:
+    //
+    //   40us -> compare A DESARMADO. Ninguem ia desligar, e o caso e de arme
+    //           perdido - problema em quem deveria armar.
+    //   25us -> compare A armado, mas OCR1A NAO aponta para este canal. O
+    //           timer esta esperando outro evento e este ficou orfao na fila.
+    //   10us -> compare A armado E apontando para ca. O arme esta certo e a
+    //           interrupcao simplesmente nao chegou a tempo - problema de
+    //           latencia, nao de logica.
+    uint8_t diag = 0;
+    if (precisa_forcar) {
+      if (!(TIMSK1 & (1 << OCIE1A))) diag = 1;
+      else if (OCR1A != (uint16_t)ignicao_tick_desligar[i]) diag = 2;
+      else diag = 3;
+    }
+#endif
+    if (precisa_forcar) {
+      desligar_dwell(i);
+      ignicao_agendada[i] = false;
+    }
+    SREG = sreg;
+#if DEBUG_PULSO_ISR_ALVO == 5
+    if (diag) {
+      PULSO_ALTO();
+      if (diag == 1) _delay_us(40);
+      else if (diag == 2) _delay_us(25);
+      else _delay_us(10);
+      PULSO_BAIXO();
+    }
+#endif
+    if (precisa_forcar && contagem_protecao_dwell_maximo < 65535) {
+      contagem_protecao_dwell_maximo++;
+    }
+  }
 }
 
-void desligar_dwell_comando(int i){
-    desligar_dwell(i);
-}

@@ -3,20 +3,77 @@ byte qtd_dente = 12; //60
 byte qtd_dente_faltante = 1; //2
 byte local_rodafonica = 2; // 2 para virabrequinho e 1 para comando
 byte qtd_cilindro = 4; // Removido calculo magico. Default absoluto agora é 4 cilindros.
+byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
 int grau_pms = 60;
-volatile unsigned long dwell_bobina = 3;
-int dwell_partida = 4;
-int dwell_funcionamento = 3;
+volatile unsigned long dwell_bobina = 3000;
+// Dwell configurado pela tela, em MICROSSEGUNDOS. Ate a versao anterior era
+// gravado em ms inteiro (0..8), o que impedia ajustes quebrados tipo 2,3 ms.
+// Guardar em us segue o mesmo caminho ja usado pelo dead time do injetor
+// (tempo_abertura_injetor), que a tela envia multiplicado por 1000.
+unsigned int dwell_partida_us = 4000;
+unsigned int dwell_funcionamento_us = 3000;
+#define DWELL_US_MAXIMO 8000UL
+// Marcador gravado na EEPROM (endereco 406) sinalizando que 402/404 ja estao
+// no formato de 16 bits em us. Sem ele a EEPROM ainda tem o formato antigo.
+#define DWELL_EEPROM_MARCADOR_US 0xA5
+
+// Fecha o dwell na faixa util. Aceita tambem o formato antigo em ms: nenhum
+// dwell real cabe em 20 us, entao um valor tao baixo so pode ter vindo de uma
+// tela/backup anteriores a mudanca de unidade e e convertido de ms para us.
+static inline unsigned int normalizar_dwell_us(long valor) {
+  if (valor <= 0) {
+    return 0;
+  }
+  unsigned long us = (valor <= 20) ? ((unsigned long)valor * 1000UL) : (unsigned long)valor;
+  if (us > DWELL_US_MAXIMO) {
+    us = DWELL_US_MAXIMO;
+  }
+  return (unsigned int)us;
+}
 
 byte tipo_ignicao_sequencial = 0;// sequencial 1 semi-sequencial 0
 volatile unsigned int qtd_voltas = 0;
-byte grau_cada_dente = 360 / qtd_dente;
+// int, nao byte: com um unico dente no volante (moto) o valor e 360 e um byte
+// truncaria para 104. Mesma classe do bug de grau_entre_cada_cilindro.
+int grau_cada_dente = 360 / qtd_dente;
 byte grau_avanco = 0;
 byte grau_avanco_partida = 1; // avanço definido apenas na partida
-byte grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
+// Com sensor no virabrequinho, o ciclo completo de combustao dura 720 graus
+// (2 voltas) num motor 4 tempos, mas so 360 graus (1 volta) num motor 2 tempos.
+// int, nao byte: passa de 255 em motores de 1 ou 2 cilindros (ver
+// calcular_grau_entre_cada_cilindro em util.h). Nao vai para a EEPROM - e
+// sempre recalculado na carga da configuracao.
+// Teto de eventos de ignicao ou injecao por ciclo do sensor.
+//
+// E este numero que dimensiona os dezesseis vetores de agendamento acima E
+// que limita qtd_cilindro na entrada. Os dois PRECISAM sair da mesma fonte:
+// enquanto o limite da serial ficou solto, um valor de 10 ou 12 vindo da tela
+// fazia os lacos indexarem [9] e [11] em vetores de 8 e escreverem por cima da
+// RAM vizinha.
+//
+// Cada posicao custa 46 bytes de RAM: dez vetores de 4 bytes (os de tempo e de
+// tick) e seis de 1 byte (as bandeiras). Baixar de 8 para 6 devolveria 92
+// bytes e ainda cobriria um seis cilindros com roda no comando, que precisa de
+// 6 eventos de injecao; baixar para 4 devolveria 184 e quebraria esse motor.
+#define MAX_EVENTOS_AGENDAMENTO 8
+
+int grau_entre_cada_cilindro = (local_rodafonica == 2) ? ((tipo_motor == 2 ? 360 : 720) / qtd_cilindro) : (360 / qtd_cilindro);
+
+// Angulo de cada evento em relacao ao evento 0, em graus do SENSOR - 360 numa
+// roda de virabrequim, 360 de comando que valem 720 de virabrequim. Nessa
+// escala o valor sempre cabe em 0..359 e nunca precisa de tratamento de volta.
+//
+// Existe porque ate agora o angulo saia de uma multiplicacao, grau_entre_cada_
+// cilindro * i, que assume cilindros IGUALMENTE espacados. Motor de ignicao
+// desigual - V2 de moto, alguns V4 - nao tem como ser descrito assim: um V2
+// com eventos a 75 e 285 graus precisa de 0 e 210, e nao de um passo unico.
+//
+// Com usar_offset_personalizado em false o vetor nem e consultado e o caminho
+// e identico ao de antes, instrucao por instrucao.
+int offset_evento[MAX_EVENTOS_AGENDAMENTO];
+bool usar_offset_personalizado = false;
 int posicao_atual_sensor = 0;
 volatile unsigned int leitura = 0;
-volatile unsigned int qtd_leitura_media = 0;
 volatile uint16_t qtd_leitura = 0;
 byte referencia_leitura_ignicao = 1;//map 1 e tps 2
 byte referencia_leitura_injecao = 1;//map 1 e tps 2
@@ -25,19 +82,18 @@ byte avanco_fixo = 0; // avanço fixo 0 desligado e 1 ligado
 byte grau_avanco_fixo = 0; // grau de avanço fixo de 0 a 360 mais usado para calibrar o pms
 byte tipo_sinal_bobina = 1 ; // 1 alto e 0 baixo tipo de sinal enviado para bobina ente alto ou baixo conforme modelo da bobina
 volatile unsigned long tempo_anterior = 0;
-volatile unsigned long tempo_dente_anterior[2] = {0,0};
 volatile unsigned long tempo_inicio_volta_completa = 0;
 volatile unsigned long tempo_final_volta_completa = 0;
 volatile unsigned long tempo_total_volta_completa = 0;
 volatile unsigned long tempo_cada_grau = 0;
-volatile unsigned long tempo_proxima_ignicao[8];
-volatile unsigned long tempo_proxima_injecao[8];
+volatile unsigned long tempo_proxima_ignicao[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_proxima_injecao[MAX_EVENTOS_AGENDAMENTO];
 volatile unsigned long tempo_atual = 0;
-volatile unsigned long tempo_atual_proxima_ignicao[8];
-volatile unsigned long tempo_atual_proxima_injecao[8];
+volatile unsigned long tempo_atual_proxima_ignicao[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_atual_proxima_injecao[MAX_EVENTOS_AGENDAMENTO];
 volatile unsigned long intervalo_tempo_entre_dente = 0;
-volatile unsigned long verifica_falha = 0;
-unsigned long tempo_check = 0;
+// (verifica_falha removida: era escrita a cada dente mas nunca lida em lugar
+// nenhum - uma escrita volatile de 32 bits desperdicada na interrupcao)
 byte inicia_tempo_sensor_roda_fonica = 1;
 volatile long revolucoes_sincronizada = 0;
 volatile byte falhas_sync_consecutivas = 0;
@@ -45,15 +101,10 @@ volatile unsigned int qtd_revolucoes = 0;
 volatile unsigned long ultimo_pulso_rpm_us = 0;
 byte qtd_perda_sincronia = 0;
 int qtd_loop = 0;
-int loop_timer = 0; //variavel para ser incrementada a cada chamada da função timer
-int loop_timer2 = 0; 
-int verifica_posicao_sensor = 0;
 byte intervalo_execucao = 200; // intervalo em milissegundos
 unsigned long ultima_execucao = 0;       // variável para armazenar o tempo da última execução
 unsigned long tempo_inicial_rpm; // Variáveis para registrar o tempo inicial do rpm
-unsigned long tempo_final_rpm;  // Variáveis para registrar o tempo final do rpm
 volatile unsigned int rpm = 0;
-volatile int rpm_anterior = 0;
 unsigned int rpm_partida = 400;
 byte nivel_limpeza_afogamento = 70; // TPS minimo (%) para cortar injecao durante a partida
 unsigned int atraso_injecao_inicial = 0; // atraso do pulso inicial em ms
@@ -66,21 +117,28 @@ unsigned long inicio_reducao_enriquecimento_partida_ms = 0;
 unsigned long inicio_espera_injecao_inicial_ms = 0;
 byte ignicao_pins[] = {ign1, ign2, ign3, ign4, ign1, ign2, ign3, ign4}; // Array com os pinos de ignição
 byte injecao_pins[] = {inj1, inj2, inj3, inj4, inj1, inj2, inj3, inj4}; // Array com os pinos de injecao
+
+// Escrita direta de porta (tabelas de porta/mascara resolvidas no setup) foi
+// testada e revertida: economizava ~4,5us por escrita, mas sao apenas 14
+// escritas por volta - 63us, ou 0,7% da CPU a 7000rpm, abaixo do ruido de
+// medicao. Em troca custava 284 bytes de flash e 48 de RAM, e a flash e o
+// recurso que limita este projeto. Reconsiderar so se a duracao das ISRs do
+// Timer1 se mostrar um problema medido, e ai com implementacao mais barata.
 // Declare as variáveis para controlar o estado do pino de saída
-volatile bool captura_dwell[8] = {false, false, false, false, false, false, false, false};
-volatile bool ign_acionado[8] = {false, false, false, false, false, false, false, false};
-volatile bool captura_req_fuel[8] = {false, false, false, false, false, false, false, false};
-volatile bool inj_acionado[8] = {false, false, false, false, false, false, false, false};
-volatile unsigned long tempo_percorrido[8];
-volatile unsigned long tempo_percorrido_inj[8];
+volatile bool captura_dwell[MAX_EVENTOS_AGENDAMENTO];
+volatile bool ign_acionado[MAX_EVENTOS_AGENDAMENTO];
+volatile bool captura_req_fuel[MAX_EVENTOS_AGENDAMENTO];
+volatile bool inj_acionado[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_percorrido[MAX_EVENTOS_AGENDAMENTO];
+volatile unsigned long tempo_percorrido_inj[MAX_EVENTOS_AGENDAMENTO];
 volatile uint32_t timer1_overflow_count = 0;
 volatile uint32_t tick_base_sincronismo = 0;
-volatile uint32_t ignicao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile uint32_t ignicao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile uint32_t injecao_tick_ligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile uint32_t injecao_tick_desligar[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-volatile bool ignicao_agendada[8] = {false, false, false, false, false, false, false, false};
-volatile bool injecao_agendada[8] = {false, false, false, false, false, false, false, false};
+volatile uint32_t ignicao_tick_ligar[MAX_EVENTOS_AGENDAMENTO];
+volatile uint32_t ignicao_tick_desligar[MAX_EVENTOS_AGENDAMENTO];
+volatile uint32_t injecao_tick_ligar[MAX_EVENTOS_AGENDAMENTO];
+volatile uint32_t injecao_tick_desligar[MAX_EVENTOS_AGENDAMENTO];
+volatile bool ignicao_agendada[MAX_EVENTOS_AGENDAMENTO];
+volatile bool injecao_agendada[MAX_EVENTOS_AGENDAMENTO];
 //volatile bool flag_interrupcao = false;
 unsigned long tempo_inicial_codigo, tempo_final_codigo, tempo_decorrido_codigo;
 // variaveis reverente a entrada de dados pela serial
@@ -122,9 +180,16 @@ byte tipo_vetor_avanco_temperatura = 0;
 byte tipo_vetor_parametros_injetor = 0;
 byte tipo_vetor_configuracao_tps = 0;
 byte tipo_vetor_configuracao_map = 0;
+byte tipo_vetor_offset_evento = 0;
 byte tipo_vetor_configuracao_partida = 0;
 byte tipo_vetor_configuracao_marcha_lenta = 0;
 bool status_dados_tempo_real = false;
+// CRC8 "impressao digital" da configuracao atual (ver comando 'x' em
+// leitura_entrada_dados_serial.h) - deixa a tela comparar se o mapa
+// selecionado localmente bate com o que esta gravado na ECU sem precisar
+// pedir o dump inteiro de novo.
+byte crc_config_atual = 0;
+bool modo_somente_crc_config = false;
 //int leituras_map[10]={0};
 //int leituras_tps[10]={0};
 //int contador_leitura = 0;
@@ -139,8 +204,6 @@ int valor_tps_maximo = 1023;
 int valor_referencia_busca_avanco = 0;
 int valor_referencia_busca_tempo_injecao = 0;
 int ajuste_pms =  0;
-byte usar_metodo_unificado_vira = 0; // 0: usa ajuste dinâmico legado no vira, 1: usa offset fixo
-int offset_fase_vira_graus = 0; // usado quando usar_metodo_unificado_vira = 1
 int busca_avanco_linear = true;
 byte usar_avanco_temperatura = 0; // 0 desativado, 1 aplica correcao somente sobre o avanco da tabela
 int referencia_temperatura_clt1 = 20;
@@ -174,8 +237,8 @@ int numero_esguicho = 4;
 int tamanho_injetor = 32;// lbs/hora por injetor
 byte tipo_acionamento_injetor = 1;// 1 - simultaneo 2 alternado
 int tipo_combustivel = 14700; // 14700 - Gasolina
-byte tipo_motor = 4;// 4 - motor 4 tempo, 2 - motor 2 tempo
-byte modo_injecao = 1; // 1 - pareado, 2 semi-sequencial, 3 - sequencial
+// 0 - desligada (carburador / so ignicao), 1 - pareado, 2 semi-sequencial, 3 - sequencial
+byte modo_injecao = 1;
 byte emparelhar_injetor = 1; // 1 - para 1 e 4 | 2 e 3, 2 - para 1 e 3 | 2 e 4
 byte limite_injetor = 100; // 90% valor em porcentagem
 int tempo_abertura_injetor = 0;// Dead time, tempo que o injetor leva para abrir
@@ -183,13 +246,13 @@ byte acrescimo_injecao_partida = 50;// valor de acrecimo da ve na partida em por
 byte acrescimo_injecao_funcionamento = 0;// valor em porcentagem acrecimo da ve
 int tempo_primeira_injecao = 10;//em ms
 bool status_primeira_injecao = false;
-int REQ_FUEL = 10000; //em ms
-int dreq_fuel = 10000;//em ms
+// Em MICROSSEGUNDOS, nao em ms: o padrao 10000 equivale a 10ms, e a tela
+// envia 3600 para 3,6ms. O comentario anterior dizia "em ms" e foi o que
+// levou o chamador a dividir por 1000, truncando 3600 para 3.
+int REQ_FUEL = 10000; // us
+int dreq_fuel = 10000; // us
 int VE = 0;
-int GammaE = 100;
 unsigned long tempo_injecao = 0;
-byte temperatura_trabalho = 70;
-byte correcao_maxima_temperatura = 50; // % de enriquecimento a 0 graus
 byte vetor_temperatura_injecao[5] = {0, 20, 40, 60, 80};
 byte vetor_enriquecimento_temperatura[5] = {140, 130, 120, 110, 100}; // 100 = sem correcao, maximo 250
 byte usar_injecao_temperatura = 0; // 0 desativado, 1 aplica correcao de injecao por temperatura
@@ -201,17 +264,31 @@ int rpm_maximo_corte = 6500;
 int numero_base_corte = 10;
 int qtd_corte = 3;
 int status_corte = 0;
+
+// Valores que existiam so dentro da conta e agora vao para a telemetria.
+//
+// O enriquecimento por temperatura era calculado e consumido na mesma linha,
+// entao o log mostrava o PW ja corrigido e nao dava para separar quanto vinha
+// da tabela de VE e quanto vinha do aquecimento. Ficamos sem conseguir dizer
+// se a curva de aquecimento estava entregando o que devia - foi exatamente o
+// que faltou para fechar o diagnostico de uma lenta que empobrecia ao aquecer.
+//
+// O ADC bruto do MAP vai junto pelo mesmo motivo que o do TPS ja ia: com o
+// valor convertido nao da para medir ruido do sensor, e foi medindo o ADC do
+// TPS que achamos 52 contagens de ruido com a borboleta parada.
+int enriquecimento_temperatura_atual = 100;  // 100 = sem correcao
+int valor_map_adc = 0;
 int tps_anterior = 0;   // Variável para armazenar o valor anterior do sensor de TPS
 byte tipo_verificacao_aceleracao_rapida = 0; //0 para TPS e  1 para MAP 
 int intervalo_tempo_aceleracao = 100; // valor em ms
 int duracao_enriquecimento = 5; // valor em ms
 unsigned long tempo_anterior_aceleracao = 0;  // Variável para armazenar o tempo anterior de leitura do sensor
 unsigned long tempo_ultima_mudanca = 0; // Tempo da última mudança significativa no TPS
-float tps_dot_porcentagem_aceleracao = 0;
-float tps_dot_porcentagem_desaceleracao = 0;
+int tps_dot_porcentagem_aceleracao = 0; // % de enriquecimento (inteiro)
+int tps_dot_porcentagem_desaceleracao = 0;
 unsigned long incremento_aceleracao = 0;
 unsigned long decremento_desaceleracao = 0;
-float tps_mudanca_minima = 5; // Threshold para detectar mudança significativa no TPS
+int tps_mudanca_minima = 5; // Threshold para detectar mudanca significativa no TPS (TPS%/s)
 byte enriquecimento_aceleracao[5] = {50, 100, 150, 200, 250}; // Quantidade de enriquecimento de combustível em porcentagem
 int tps_dot_escala[5] = {200, 400, 600, 800, 1000}; //escala de velocidade no acionamento do tps 
 int rpm_minimo_enriquecimento = 1000;

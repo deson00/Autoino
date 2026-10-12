@@ -15,12 +15,65 @@ int procura_indice(int value, int *arr, int size){
   }
   return index;
 }
+// Interpolacao linear entre dois pontos da tabela de avanco, em aritmetica
+// inteira: multiplica antes de dividir para nao perder resolucao. Trunca em
+// direcao a zero, como a versao anterior em float ja fazia ao converter para
+// int no retorno.
+// Interpola o avanco entre dois pontos da tabela. INTERPOLA, nunca extrapola:
+// o resultado e limitado aos dois graus da tabela.
+//
+// Sem esse limite, um rpm fora do trecho coberto pelo eixo faz a reta seguir
+// alem do ultimo ponto configurado e devolver um avanco que ninguem escreveu
+// na tabela. Num sistema de ignicao isso nao e um numero errado qualquer -
+// avanco demais e detonacao.
 int busca_linear(int rpm_atual, int rpm_minimo, int grau_minimo, int rpm_maximo, int grau_maximo) {
-  // Cálculo da proporção
-  float proporcao = float(rpm_atual - rpm_minimo) / float(rpm_maximo - rpm_minimo);
-  // Mapeamento linear
-  int grau = proporcao * (grau_maximo - grau_minimo) + grau_minimo; 
-  return grau;
+  int32_t faixa_rpm = (int32_t)rpm_maximo - rpm_minimo;
+  if (faixa_rpm == 0) {
+    return grau_maximo;
+  }
+  int32_t numerador = (int32_t)(grau_maximo - grau_minimo) * ((int32_t)rpm_atual - rpm_minimo);
+  int32_t resultado = (int32_t)grau_minimo + (numerador / faixa_rpm);
+
+  int32_t piso = (grau_minimo < grau_maximo) ? grau_minimo : grau_maximo;
+  int32_t teto = (grau_minimo < grau_maximo) ? grau_maximo : grau_minimo;
+  if (resultado < piso) {
+    resultado = piso;
+  } else if (resultado > teto) {
+    resultado = teto;
+  }
+  return (int)resultado;
+}
+
+// Indice da celula INFERIOR, para quem vai interpolar entre i e i+1.
+//
+// procura_indice nao serve aqui, por dois motivos:
+//
+// 1. Ela devolve o ponto mais PROXIMO. Com o valor na metade de cima de uma
+//    celula ela escolhe o ponto de CIMA, e a interpolacao seguinte extrapola
+//    para tras a partir dele. Em tabela suave o erro e pequeno; onde a tabela
+//    tem degrau, nao e.
+// 2. Ela pode devolver o ULTIMO indice, e o chamador entao le vetor[size] e
+//    matriz[linha][size] - fora dos limites do array. O avanco resultante e
+//    lixo de memoria vizinha.
+//
+// So percorre o trecho crescente do inicio do eixo: eixo com menos de 16
+// pontos configurados fica com zeros no fim, e zero nao e ponto valido.
+// O retorno e sempre <= (ultimo ponto valido - 1), entao i+1 e seguro.
+static int procura_indice_inferior(int valor, const int *vetor, int size) {
+  int ultimo = 0;
+  while (ultimo + 1 < size && vetor[ultimo + 1] > vetor[ultimo]) {
+    ultimo++;
+  }
+  if (ultimo < 1) {
+    return 0; // eixo degenerado: nao ha par de pontos para interpolar
+  }
+
+  int limite = ultimo - 1;
+  int i = 0;
+  while (i < limite && vetor[i + 1] <= valor) {
+    i++;
+  }
+  return i;
 }
 
 static const int MARGEM_IGNICAO_FIM_CICLO_GRAUS = 1;
@@ -34,36 +87,182 @@ static inline int graus_avanco_para_referencia_sensor(int graus_virabrequim) {
 }
 
 static inline int normalizar_angulo_minimo_zero(int angulo) {
+  // Divisao/modulo de 16 bits sao caras no AVR (sem divisor em hardware).
+  // O angulo aqui nunca fica muito longe de [0,360), entao subtrair em loop
+  // e bem mais barato que "% 360" nesse caminho critico (roda por dente).
   while (angulo < 0) {
     angulo += 360;
   }
-  if (angulo >= 360) {
-    angulo = angulo % 360;
+  while (angulo >= 360) {
+    angulo -= 360;
   }
   return angulo;
 }
 
+// Sensor SEM dente de falha: cada pulso ja e uma referencia angular por si so.
+// Cobre o distribuidor com sensor hall (um pulso por cilindro, tipo Opala) e o
+// volante com um unico dente (motos, tipo Titan). tipo_ignicao ja existia na
+// configuracao com esse significado documentado, mas nunca era consultado.
+static inline bool sensor_sem_falha() {
+  return tipo_ignicao == 2;
+}
+
 static inline int offset_referencia_roda_fonica_graus() {
+  if (sensor_sem_falha()) {
+    return 0; // nao ha gap: o angulo e medido a partir do proprio pulso
+  }
   if ((local_rodafonica == 1 || local_rodafonica == 2) && grau_cada_dente > 0) {
     return ((int)qtd_dente_faltante + 1) * (int)grau_cada_dente;
   }
   return 0;
 }
 
-float calculateBeta(float ntcResistance1, float ntcTemperature1, float ntcResistance2, float ntcTemperature2) {
-  float T1 = ntcTemperature1 + 273.15;   // converte a temperatura em Celsius para Kelvin
-  float T2 = ntcTemperature2 + 273.15;
-  float beta = log(ntcResistance2/ntcResistance1) / ((1/T2) - (1/T1));   // aplica a equação do coeficiente beta
-  return beta;
+// Espacamento angular entre eventos de cilindros consecutivos. Com o sensor
+// no virabrequinho, isso depende de quantos graus de virabrequim formam um
+// ciclo completo de combustao: 720 graus (2 voltas) num motor 4 tempos,
+// 360 graus (1 volta) num motor 2 tempos. Com o sensor no comando, o proprio
+// sensor ja gira 1 volta por ciclo, entao sempre 360 graus, nos dois casos.
+// Retorna int, nao byte: o resultado passa de 255 em motores de poucos
+// cilindros e era truncado silenciosamente. Num 4 tempos com sensor no
+// virabrequim o ciclo tem 720 graus, entao 2 cilindros dao 360 (virava 104) e
+// 1 cilindro da 720 (virava 208), jogando ignicao e injecao em angulos sem
+// relacao com o motor. O compilador ja avisava disso no "return 360" abaixo.
+// Nao afeta 3 cilindros ou mais, onde o valor cabe em um byte.
+static inline int calcular_grau_entre_cada_cilindro() {
+  if (qtd_cilindro < 1) {
+    return 360;
+  }
+  if (local_rodafonica == 2) {
+    int graus_ciclo_completo = (tipo_motor == 2) ? 360 : 720;
+    return graus_ciclo_completo / qtd_cilindro;
+  }
+  return 360 / qtd_cilindro;
 }
 
-float calculateTemperature(float ntcResistance, float ntcBeta, float ntcReferenceResistance, float ntcReferenceTemperature) {
-  float steinhart;
-  steinhart = log(ntcResistance/ntcReferenceResistance) / ntcBeta;     // parte da equação de Steinhart-Hart
-  steinhart += 1.0 / (ntcReferenceTemperature + 273.15);                    // adiciona a temperatura de referência em Kelvin
-  steinhart = 1.0 / steinhart;                                             // inverte a equação
-  steinhart -= 273.15;                                                     // converte para Celsius
-  return steinhart;
+// Preenche a tabela com o espacamento uniforme calculado. E o padrao, e o que
+// mantem motores existentes com o comportamento de sempre; quem tem ignicao
+// desigual sobrescreve as posicoes pela tela.
+static inline void preencher_offset_evento_uniforme() {
+  int passo = calcular_grau_entre_cada_cilindro();
+  for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+    // O resto por 360 nao muda NADA nas posicoes que o motor usa: para elas
+    // passo*i e sempre menor que 360, tanto no virabrequim (720/qtd vezes
+    // qtd/2-1 = 360 - 720/qtd) quanto no comando (360/qtd vezes qtd-1).
+    //
+    // Ele arruma a cauda que ninguem indexa. Sem isso um seis no comando dava
+    // 360 e 420 nas posicoes 6 e 7, valores que a validacao da leitura recusa -
+    // e a tabela salva nao voltava igual do reset.
+    offset_evento[i] = (passo * i) % 360;
+  }
+}
+
+// Separacao do evento i em relacao ao evento 0. Com a tabela desligada devolve
+// exatamente a multiplicacao de antes.
+static inline int separacao_evento_base(int i) {
+  if (!usar_offset_personalizado) {
+    return grau_entre_cada_cilindro * i;
+  }
+  return (i >= 0 && i < MAX_EVENTOS_AGENDAMENTO) ? offset_evento[i] : 0;
+}
+
+// log2(valor) em ponto fixo Q16. Substitui o log() de ponto flutuante da
+// biblioteca padrao, que sozinho arrastava ~1150 bytes de rotinas float para
+// o binario (__divsf3x, __mulsf3x, __addsf3x, __fp_powser e conversoes).
+//
+// Algoritmo classico: separa a parte inteira pela posicao do bit mais
+// significativo, normaliza a mantissa para [1,2) em Q15 e extrai 16 bits de
+// fracao elevando ao quadrado repetidamente. Cada quadrado vale um bit.
+// Sem estouro: a mantissa fica sempre abaixo de 65536, e 65535^2 ainda cabe
+// em 32 bits.
+static uint32_t log2_q16(uint32_t valor) {
+  if (valor == 0) {
+    return 0;
+  }
+
+  uint8_t expoente = 0;
+  for (uint32_t v = valor; v > 1; v >>= 1) {
+    expoente++;
+  }
+
+  uint32_t mantissa;
+  if (expoente > 15) {
+    mantissa = valor >> (expoente - 15);
+  } else {
+    mantissa = valor << (15 - expoente);
+  }
+
+  uint32_t fracao = 0;
+  for (uint8_t i = 0; i < 16; i++) {
+    mantissa = (mantissa * mantissa) >> 15;
+    fracao <<= 1;
+    if (mantissa >= 65536UL) {
+      mantissa >>= 1;
+      fracao |= 1;
+    }
+  }
+
+  return ((uint32_t)expoente << 16) | fracao;
+}
+
+// Temperatura de um NTC a partir da resistencia, por interpolacao entre os
+// dois pontos de calibracao - sem precisar do coeficiente beta.
+//
+// A equacao de beta diz  1/T = 1/T1 + ln(R/R1)/beta, e o proprio beta vale
+// ln(R2/R1)/(1/T2 - 1/T1). Substituindo um no outro, o beta se cancela:
+//
+//     1/T = 1/T1 + k * (1/T2 - 1/T1),  com  k = ln(R/R1) / ln(R2/R1)
+//
+// Ou seja, e uma interpolacao linear no inverso da temperatura. E como k e uma
+// RAZAO entre logaritmos, a base se cancela tambem - da pra usar log2 inteiro
+// no lugar do logaritmo natural. O resultado e matematicamente o mesmo da
+// formula anterior, so que sem ponto flutuante.
+//
+// Precisao: o erro de log2_q16 se traduz em menos de 0,2 C na faixa util, o
+// que e irrelevante aqui porque a temperatura so alimenta duas tabelas de 5
+// pontos (enriquecimento_temperatura e avanco_por_temperatura).
+//
+// ALTERNATIVA CONSIDERADA, para retomar se um dia precisar de mais precisao ou
+// de suportar sensores nao-NTC: mandar da UI uma tabela ADC -> temperatura ja
+// calculada (como a Speeduino faz), deixando aqui so a interpolacao. Custa um
+// bloco novo de protocolo, espaco na EEPROM e acoplamento entre versoes de UI
+// e firmware, por isso ficou de fora agora.
+static int calcular_temperatura_ntc(uint32_t resistencia,
+                                    int resistencia_ref1, int temperatura_ref1,
+                                    int resistencia_ref2, int temperatura_ref2) {
+  if (resistencia == 0 || resistencia_ref1 <= 0 || resistencia_ref2 <= 0) {
+    return 250;
+  }
+
+  int32_t log_r = (int32_t)log2_q16(resistencia);
+  int32_t log_r1 = (int32_t)log2_q16((uint32_t)resistencia_ref1);
+  int32_t log_r2 = (int32_t)log2_q16((uint32_t)resistencia_ref2);
+
+  int32_t denominador = log_r2 - log_r1;
+  if (denominador == 0) {
+    return 250;
+  }
+
+  // k em Q10. Q10 e o maior expoente seguro aqui: log_r cabe em ~1,1e6 para
+  // resistencias de ate 100k, e 1,1e6 << 10 ainda cabe em int32.
+  int32_t k_q10 = ((log_r - log_r1) << 10) / denominador;
+
+  // Uma divisao em vez de tres. Substituindo inv_t1 = 1e6/A e inv_t2 = 1e6/B
+  // na interpolacao, o milhao se cancela e sobra
+  //
+  //     T_kelvin = A*B / (B + k*(A-B)),  com A = T1+273 e B = T2+273
+  //
+  // que e a mesma identidade sem passar pelo inverso. Conferido contra o
+  // caminho antigo em toda a faixa util: 87% das amostras identicas, o resto
+  // com 1 C de diferenca, que e o arredondamento que o caminho antigo perdia
+  // nos truncamentos de 1e6/x. A*B*1024 chega a ~1,4e8 e cabe em int32.
+  int32_t a_kelvin = (int32_t)temperatura_ref1 + 273L;
+  int32_t b_kelvin = (int32_t)temperatura_ref2 + 273L;
+  int32_t divisor = (b_kelvin << 10) + k_q10 * (a_kelvin - b_kelvin);
+  if (divisor <= 0) {
+    return 250;
+  }
+
+  return (int)((((a_kelvin * b_kelvin) << 10) / divisor) - 273L);
 }
 
 
@@ -78,16 +277,6 @@ void sort(int arr[], int n) {
       }
     }
  }
-}
-
-int freeMemory() {
-  int size = 1024; // Tamanho inicial da alocação
-  byte *buf;
-  
-  while ((buf = (byte *) malloc(--size)) == NULL); // Aloca até que falhe
-  
-  free(buf); // Libera a memória alocada
-  return size;
 }
 
 void enviar_byte_serial(int valor, int tamanho) {
@@ -113,9 +302,25 @@ void enviar_byte_serial(int valor, int tamanho) {
 }
 
 // FUNÇÕES AUXILIARES PARA EEPROM
+// EEPROM.update, nao EEPROM.write.
+//
+// update le o byte antes e so grava se mudou; write grava sempre, e no AVR
+// cada gravacao custa 3,3ms de CPU parada. Quem passa por aqui sao as duas
+// tabelas grandes (avanco e VE): 304 bytes cada, 608 no total, regravados
+// inteiros a cada clique em "Gravar Modificacoes" mesmo com uma unica celula
+// alterada. Sao ~2 SEGUNDOS com o loop() parado - e loop parado e
+// processar_agendamento_pendente() sem rodar, ou seja nenhuma ignicao
+// agendada. O motor apagava ao salvar a tabela com o carro ligado.
+//
+// O resto do projeto ja usava update (97 chamadas nos blocos de
+// configuracao); a correcao nunca tinha chegado nestes tres pontos, que sao
+// justamente os que gravam mais bytes.
+//
+// Ganho secundario: EEPROM tem vida util de ~100 mil gravacoes por celula.
+// Regravar 608 bytes a cada salvamento gastava a memoria a toa.
 void escrever_16bits_eeprom(int endereco, uint16_t valor) {
-    EEPROM.write(endereco, valor & 0xFF);        // LSB
-    EEPROM.write(endereco + 1, (valor >> 8) & 0xFF); // MSB
+    EEPROM.update(endereco, valor & 0xFF);        // LSB
+    EEPROM.update(endereco + 1, (valor >> 8) & 0xFF); // MSB
 }
 
 uint16_t ler_16bits_eeprom(int endereco) {
@@ -125,9 +330,34 @@ uint16_t ler_16bits_eeprom(int endereco) {
 }
 
 void escrever_8bits_eeprom(int endereco, uint8_t valor) {
-    EEPROM.write(endereco, valor);
+    EEPROM.update(endereco, valor); // ver o comentario em escrever_16bits_eeprom
 }
 
 uint8_t ler_8bits_eeprom(int endereco) {
     return EEPROM.read(endereco);
+}
+
+// Leitura sequencial: a configuracao e lida em blocos de campos colados, e
+// cada "le e avanca o endereco" escrito por extenso custava a conta de
+// endereco inline em cada um dos ~45 campos. Com o cursor compartilhado e uma
+// chamada so. Mesmo motivo de enviar_campo em ler_dados_memoria.h: flash.
+int eeprom_cursor;
+
+uint8_t __attribute__((noinline)) eeprom_ler8_seguinte() {
+    return EEPROM.read(eeprom_cursor++);
+}
+
+uint16_t __attribute__((noinline)) eeprom_ler16_seguinte() {
+    uint16_t valor = ler_16bits_eeprom(eeprom_cursor);
+    eeprom_cursor += 2;
+    return valor;
+}
+
+void __attribute__((noinline)) eeprom_gravar8_seguinte(uint8_t valor) {
+    EEPROM.update(eeprom_cursor++, valor);
+}
+
+void __attribute__((noinline)) eeprom_gravar16_seguinte(uint16_t valor) {
+    escrever_16bits_eeprom(eeprom_cursor, valor);
+    eeprom_cursor += 2;
 }

@@ -1,18 +1,24 @@
-// Função para calcular a largura do pulso de injeção
-float tempo_pulso_ve(float REQ_FUEL, float VE) {
-    const float tempo_pulso_ve = REQ_FUEL * (VE / 100.0);
-    return tempo_pulso_ve * 1000ul;
-}
-// Função para calcular a largura do pulso enriquecimento
-float tempo_enriquecimento_gama(float valor_referencia, float correcao_aquecimento, float correcao_O2, float correcao_temperatura_ar, float correcao_barometrica) {
-    const float REQ_FUEL_CONSTANT = 100; 
-    const float enriquecimento_gama = (correcao_aquecimento / REQ_FUEL_CONSTANT) * (correcao_O2 / REQ_FUEL_CONSTANT) *
-                               (correcao_temperatura_ar / REQ_FUEL_CONSTANT) * (correcao_barometrica / REQ_FUEL_CONSTANT);
- 
-    return valor_referencia * enriquecimento_gama;
+// Largura base do pulso de injecao, em microssegundos: REQ_FUEL * VE / 100.
+// req_fuel_us ja vem em MICROSSEGUNDOS (dreq_fuel = 3600 significa 3,6ms).
+//
+// Antes o chamador fazia "dreq_fuel / 1000" para converter para ms, mas
+// dreq_fuel e int e essa e uma divisao INTEIRA: 3600 virava 3 em vez de 3,6, e
+// o motor recebia ~17% menos combustivel do que a tela configurava. Trabalhar
+// direto em us elimina a conversao e o truncamento de uma vez.
+unsigned long tempo_pulso_ve(unsigned long req_fuel_us, int VE) {
+    if (VE <= 0) {
+        return 0;
+    }
+    return (req_fuel_us * (unsigned long)VE) / 100UL;
 }
 
+// (tempo_enriquecimento_gama removida: era codigo morto - quem e chamado e a
+// enriquecimento_gama de enriquecimento_gama.h, de nome parecido)
+
 static inline byte indice_pino_injecao(int i) {
+  if (sensor_sem_falha()) {
+    return 0; // monoponto, ou pareado que aciona todos via numero_injetor
+  }
   // Mesmo sistema Wasted Spark da ignição, só que para injeção (Semi-Sequencial no Vira)
   // Faz mapear o índice cíclico matemático para dentro dos injetores fisicamente instalados.
   if (local_rodafonica == 2 && modo_injecao == 2) { // modo_injecao 2 = Semi-sequencial
@@ -27,11 +33,36 @@ static inline byte indice_pino_injecao(int i) {
   return (byte)i;
 }
 
+// Quantos EVENTOS de injecao existem por ciclo do sensor. Isso depende do
+// motor (cilindros, 2 ou 4 tempos) e de onde a roda fonica esta - NAO da
+// quantidade de injetores. Quantos injetores sao acionados em cada evento e
+// outra coisa, decidida em ligar_injetor pelo modo e por numero_injetor.
+//
+// A distincao importa no monoponto: um motor de 6 cilindros com um unico bico
+// ainda precisa pulsar a cada cilindro, e nao uma vez por volta.
+//
+// O modo pareado tinha aqui um "return 1", introduzido como otimizacao de
+// agendamento (76c1509) sob a ideia de que um canal logico bastaria por os
+// injetores acionarem juntos. Estava errado: os eventos nao sao redundantes,
+// sao pulsos de injecao distintos. Com REQ_FUEL calculado para N esguichos por
+// ciclo (ver a calculadora dreqfuel, que divide por numsquirts), disparar 2
+// vezes por ciclo em vez de 6 entrega um TERCO do combustivel previsto - falha
+// de mistura pobre, nao apenas diferenca de comportamento.
 static inline byte quantidade_eventos_injecao_por_ciclo_sensor() {
-  if (modo_injecao == 1) {
-    return qtd_cilindro;
+  if (modo_injecao == 0) {
+    // Injecao DESLIGADA: motor a carburador, ou conversao so de ignicao.
+    // Zero eventos significa que nada e agendado, nada e varrido nas ISRs do
+    // Timer1 e nenhum bico e acionado - todos os lacos deste arquivo e de
+    // timer.h sao "for (i = 0; i < eventos_injecao; i++)".
+    //
+    // Nao e so economia de trabalho inutil: numa 60-2 com 6 cilindros em
+    // pareado a injecao gera 3 eventos por volta, ou seja 6 dos 8 eventos de
+    // Timer1 disputando o agendador com a ignicao em RPM alto.
+    return 0;
   }
-
+  if (sensor_sem_falha()) {
+    return 1; // um evento por pulso, pelo mesmo motivo da ignicao
+  }
   if (local_rodafonica == 2 && tipo_motor == 4 && qtd_cilindro > 1) {
     return qtd_cilindro / 2;
   }
@@ -60,12 +91,14 @@ static inline bool existe_outro_evento_injecao_ativo_no_pino(int evento_atual, b
 }
 
 static inline int calcular_angulo_injecao_indice(int i) {
-      int angulo_base_injecao = ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i) - grau_fechamento_injetor;
+      // A injecao nao tem o caso especial da centelha perdida, entao vai direto
+      // pela tabela - que com ela desligada e a mesma multiplicacao de antes.
+      int angulo_base_injecao = ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + separacao_evento_base(i) - grau_fechamento_injetor;
       while (angulo_base_injecao < 0) {
         angulo_base_injecao += 360;
       }
-      if (angulo_base_injecao >= 360) {
-        angulo_base_injecao = angulo_base_injecao % 360;
+      while (angulo_base_injecao >= 360) {
+        angulo_base_injecao -= 360;
       }
       if (angulo_base_injecao == 0) {
         angulo_base_injecao = 1;
@@ -81,11 +114,11 @@ if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
 }
 void ligar_injetor(int i){
     if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false) &&
-        revolucoes_sincronizada >= 1 && status_corte == 0 && !limpeza_afogamento_ativa){
+        revolucoes_sincronizada >= 1 && status_corte == 0 && !limpeza_afogamento_ativa &&
+        !TESTE_COMPRESSAO_SUPRIME){
         if(modo_injecao == 1 || tipo_acionamento_injetor == 1){
           for (int j = 0; j < numero_injetor; j++){
           digitalWrite(injecao_pins[j], HIGH);
-          //setPinHigh(injecao_pins[j]);
           }
           captura_req_fuel[i] = true;
           tempo_percorrido_inj[i] = micros();
@@ -95,53 +128,30 @@ void ligar_injetor(int i){
           captura_req_fuel[i] = true;
           tempo_percorrido_inj[i] = micros();
           digitalWrite(injecao_pins[pino], HIGH);
-          //setPinHigh(injecao_pins[i]);
           inj_acionado[i] = true;
-        } 
+        }
   }
 }
 
+// Mesma correcao de desligar_dwell: guarda pelo estado fisico (inj_acionado) e
+// limpa ele primeiro, para nao existir janela em que a varredura pede o
+// desligamento e esta funcao o ignora.
 void desligar_injetor(int i){
-  if (captura_req_fuel[i] == true && inj_acionado[i] == true){
-          captura_req_fuel[i] = false;
+  if (inj_acionado[i] == true){
           inj_acionado[i] = false;
+          captura_req_fuel[i] = false;
           if (modo_injecao == 1 || tipo_acionamento_injetor == 1){
             if (local_rodafonica != 2 || !existe_outro_evento_injecao_ativo(i)) {
               for (int j = 0; j < numero_injetor; j++){
                 digitalWrite(injecao_pins[j], LOW);
-                // setPinLow(injecao_pins[j]);
               }
             }
           } else {
             byte pino = indice_pino_injecao(i);
             if (local_rodafonica != 2 || !existe_outro_evento_injecao_ativo_no_pino(i, pino)) {
               digitalWrite(injecao_pins[pino], LOW);
-              // setPinLow(injecao_pins[i]);
             }
           }
   }
 }
 
-void calcula_grau_injetor_comando(int i){
-    if ( i < qtd_cilindro/2){
-    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = normalizar_angulo_minimo_zero(ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
-    }
-  }
-    if (i >= qtd_cilindro / 2){
-    if ((captura_req_fuel[i] == false) && (inj_acionado[i] == false)){
-      tempo_proxima_injecao[i] = normalizar_angulo_minimo_zero(ajuste_pms + grau_pms - offset_referencia_roda_fonica_graus() + (grau_entre_cada_cilindro * i)) * tempo_cada_grau;
-    }
-  }
-}
-
-void ligar_injetor_comando(int i){
-    ligar_injetor(i);
-}
-
-void desligar_injetor_comando(){
-         for (int i = 0; i < qtd_cilindro; i++)
-         {
-          desligar_injetor(i);
-    }
-}

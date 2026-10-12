@@ -1,27 +1,24 @@
 void gravar_dados_eeprom_tabela_ignicao_map_rpm() {
-    int endereco = 10; // Endereço base
+    eeprom_cursor = 10; // Endereço base
 
     // 1. Gravar vetor_rpm (16 valores de 16 bits cada)
     for (int i = 0; i < 16; i++) {
-        escrever_16bits_eeprom(endereco, vetor_rpm[i]);
-        endereco += 2;
+        eeprom_gravar16_seguinte(vetor_rpm[i]);
     }
     // endereco agora = 42
 
     // 2. Gravar vetor_map_tps (16 valores de 8 bits cada)
-    endereco = 50; // Força endereço como no código original
+    eeprom_cursor = 50; // Força endereço como no código original
     for (int i = 0; i < 16; i++) {
-        escrever_8bits_eeprom(endereco, vetor_map_tps[i]);
-        endereco++;
+        eeprom_gravar8_seguinte(vetor_map_tps[i]);
     }
     // endereco agora = 66
 
     // 3. Gravar matriz_avanco (16x16 valores de 8 bits cada = 256 bytes)
-    endereco = 100; // Força endereço como no código original
+    eeprom_cursor = 100; // Força endereço como no código original
     for (int i = 0; i < 16; i++) {
         for (int j = 0; j < 16; j++) {
-            escrever_8bits_eeprom(endereco, matriz_avanco[i][j]);
-            endereco++;
+            eeprom_gravar8_seguinte(matriz_avanco[i][j]);
         }
     }
     // endereco final = 356
@@ -46,8 +43,14 @@ void gravar_dados_eeprom_configuracao_faisca() {
 }
 
 void gravar_dados_eeprom_configuracao_dwell() {
-    EEPROM.update(1*2+400, dwell_partida);
-    EEPROM.update(2*2+400, dwell_funcionamento); 
+    // 16 bits em us (LSB primeiro, igual ao ler_16bits_eeprom). Os enderecos
+    // 403 e 405 eram padding do layout antigo de 1 byte por dwell, entao dava
+    // pra crescer pra 16 bits sem remapear nada. 406 marca o formato novo.
+    EEPROM.update(402, dwell_partida_us & 0xFF);
+    EEPROM.update(403, (dwell_partida_us >> 8) & 0xFF);
+    EEPROM.update(404, dwell_funcionamento_us & 0xFF);
+    EEPROM.update(405, (dwell_funcionamento_us >> 8) & 0xFF);
+    EEPROM.update(406, DWELL_EEPROM_MARCADOR_US);
 }
 
 void gravar_dados_eeprom_configuracao_clt() {
@@ -63,27 +66,24 @@ void gravar_dados_eeprom_configuracao_clt() {
 }
 
 void gravar_dados_eeprom_tabela_ve_map_rpm() {
-    int endereco = 500; // Endereço base
+    eeprom_cursor = 500; // Endereço base
 
     // 1. Gravar vetor_rpm_ve (16 valores de 16 bits cada)
     for (int i = 0; i < 16; i++) {
-        escrever_16bits_eeprom(endereco, vetor_rpm_ve[i]);
-        endereco += 2;
+        eeprom_gravar16_seguinte(vetor_rpm_ve[i]);
     }
     // endereco agora = 532
 
     // 2. Gravar vetor_map_tps_ve (16 valores de 8 bits cada)
     for (int i = 0; i < 16; i++) {
-        escrever_8bits_eeprom(endereco, vetor_map_tps_ve[i]);
-        endereco++;
+        eeprom_gravar8_seguinte(vetor_map_tps_ve[i]);
     }
     // endereco agora = 548
 
     // 3. Gravar matriz_ve (16x16 valores de 8 bits cada = 256 bytes)
     for (int i = 0; i < 16; i++) {
         for (int j = 0; j < 16; j++) {
-            escrever_8bits_eeprom(endereco, matriz_ve[i][j]);
-            endereco++;
+            eeprom_gravar8_seguinte(matriz_ve[i][j]);
         }
     }
     // endereco final = 804
@@ -112,32 +112,27 @@ void gravar_dados_eeprom_configuracao_marcha_lenta() {
 
 
 void gravar_dados_eeprom_configuracao_injecao(){
-  int endereco =  900; // Inicializa o endereço de memória
+  eeprom_cursor = 900; // Inicializa o endereço de memória
     // Gravar os valores divididos em bytes
-    EEPROM.update(endereco++, referencia_leitura_injecao & 0xFF); 
-    EEPROM.update(endereco++, tipo_motor & 0xFF);
-    EEPROM.update(endereco++, modo_injecao & 0xFF);
-    EEPROM.update(endereco++, emparelhar_injetor & 0xFF);
+    eeprom_gravar8_seguinte(referencia_leitura_injecao & 0xFF); 
+    eeprom_gravar8_seguinte(tipo_motor & 0xFF);
+    eeprom_gravar8_seguinte(modo_injecao & 0xFF);
+    eeprom_gravar8_seguinte(emparelhar_injetor & 0xFF);
     // deslocamento_motor (16 bits)
-    EEPROM.update(endereco++, deslocamento_motor & 0xFF);
-    EEPROM.update(endereco++, (deslocamento_motor >> 8) & 0xFF);
-    EEPROM.update(endereco++, numero_cilindro_injecao);
-    EEPROM.update(endereco++, numero_injetor);
-    EEPROM.update(endereco++, numero_esguicho);
+    eeprom_gravar16_seguinte(deslocamento_motor);
+    eeprom_gravar8_seguinte(numero_cilindro_injecao);
+    eeprom_gravar8_seguinte(numero_injetor);
+    eeprom_gravar8_seguinte(numero_esguicho);
     // tamanho_injetor (16 bits)
-    EEPROM.update(endereco++, tamanho_injetor & 0xFF);
-    EEPROM.update(endereco++, (tamanho_injetor >> 8) & 0xFF);
-    EEPROM.update(endereco++, tipo_acionamento_injetor);
+    eeprom_gravar16_seguinte(tamanho_injetor);
+    eeprom_gravar8_seguinte(tipo_acionamento_injetor);
     // tipo_combustivel (16 bits)
-    EEPROM.update(endereco++, tipo_combustivel & 0xFF);
-    EEPROM.update(endereco++, (tipo_combustivel >> 8) & 0xFF);
+    eeprom_gravar16_seguinte(tipo_combustivel);
     // REQ_FUEL (16 bits)
-    EEPROM.update(endereco++, REQ_FUEL & 0xFF);
-    EEPROM.update(endereco++, (REQ_FUEL >> 8) & 0xFF);
+    eeprom_gravar16_seguinte(REQ_FUEL);
     // dreq_fuel (16 bits)
-    EEPROM.update(endereco++, (dreq_fuel & 0xFF));
-    EEPROM.update(endereco++, (dreq_fuel >> 8) & 0xFF);
-    EEPROM.update(endereco++, tipo_sonda_o2 ? 1 : 0);
+    eeprom_gravar16_seguinte(dreq_fuel);
+    eeprom_gravar8_seguinte(tipo_sonda_o2 ? 1 : 0);
     
 }
 
@@ -161,80 +156,92 @@ void gravar_dados_eeprom_parametros_injetor() {
 }
 
 void gravar_dados_eeprom_configuracao_protecao(){
-  int endereco =  950; // Inicializa o endereço de memória
+  eeprom_cursor = 950; // Inicializa o endereço de memória
     // Gravar os valores divididos em bytes
-    EEPROM.update(endereco++, tipo_protecao & 0xFF);
+    eeprom_gravar8_seguinte(tipo_protecao & 0xFF);
     // rpm_pre_corte (16 bits) 
-    EEPROM.update(endereco++, rpm_pre_corte & 0xFF);
-    EEPROM.update(endereco++, (rpm_pre_corte >> 8) & 0xFF);
-    EEPROM.update(endereco++, avanco_corte & 0xFF);
-    EEPROM.update(endereco++, tempo_corte & 0xFF);
+    eeprom_gravar16_seguinte(rpm_pre_corte);
+    eeprom_gravar8_seguinte(avanco_corte & 0xFF);
+    eeprom_gravar8_seguinte(tempo_corte & 0xFF);
     // rpm_maximo_corte (16 bits)
-    EEPROM.update(endereco++, rpm_maximo_corte & 0xFF);
-    EEPROM.update(endereco++, (rpm_maximo_corte >> 8) & 0xFF);
-    EEPROM.update(endereco++, numero_base_corte & 0xFF);
-    EEPROM.update(endereco++, qtd_corte & 0xFF);
+    eeprom_gravar16_seguinte(rpm_maximo_corte);
+    eeprom_gravar8_seguinte(numero_base_corte & 0xFF);
+    eeprom_gravar8_seguinte(qtd_corte & 0xFF);
 }
 void gravar_dados_eeprom_enriquecimento_aceleracao() {
-    int endereco = 970; // Inicializa o endereço de memória
+    eeprom_cursor = 970; // Inicializa o endereço de memória
     // enriquecimento_aceleracao (5 bytes de 1 byte cada)
     for (int i = 0; i < 5; i++) {
-        EEPROM.update(endereco++, enriquecimento_aceleracao[i] & 0xFF);
+        eeprom_gravar8_seguinte(enriquecimento_aceleracao[i] & 0xFF);
     }
     // tps_dot_escala (5 valores de 2 bytes cada)
     for (int i = 0; i < 5; i++) {
-        EEPROM.update(endereco++, tps_dot_escala[i] & 0xFF);          // Byte menos significativo
-        EEPROM.update(endereco++, (tps_dot_escala[i] >> 8) & 0xFF);   // Byte mais significativo
+        eeprom_gravar16_seguinte(tps_dot_escala[i]);
     }
     // Gravar os valores dos parâmetros restantes
-    EEPROM.update(endereco++, tipo_verificacao_aceleracao_rapida & 0xFF);
-    EEPROM.update(endereco++, tps_mudanca_minima);
+    eeprom_gravar8_seguinte(tipo_verificacao_aceleracao_rapida & 0xFF);
+    eeprom_gravar8_seguinte(tps_mudanca_minima);
     // intervalo_tempo_aceleracao (16 bits)
-    EEPROM.update(endereco++, intervalo_tempo_aceleracao & 0xFF);        // Byte menos significativo
-    EEPROM.update(endereco++, (intervalo_tempo_aceleracao >> 8) & 0xFF); // Byte mais significativo
+    eeprom_gravar16_seguinte(intervalo_tempo_aceleracao);
     // duracao_enriquecimento (16 bits)
-    EEPROM.update(endereco++, duracao_enriquecimento & 0xFF);        // Byte menos significativo
-    EEPROM.update(endereco++, (duracao_enriquecimento >> 8) & 0xFF); // Byte mais significativo
+    eeprom_gravar16_seguinte(duracao_enriquecimento);
     // rpm_minimo_enriquecimento (16 bits)
-    EEPROM.update(endereco++, rpm_minimo_enriquecimento & 0xFF);       // Byte menos significativo
-    EEPROM.update(endereco++, (rpm_minimo_enriquecimento >> 8) & 0xFF); // Byte mais significativo
+    eeprom_gravar16_seguinte(rpm_minimo_enriquecimento);
     // rpm_maximo_enriquecimento (16 bits)
-    EEPROM.update(endereco++, rpm_maximo_enriquecimento & 0xFF);       // Byte menos significativo
-    EEPROM.update(endereco++, (rpm_maximo_enriquecimento >> 8) & 0xFF); // Byte mais significativo
-    EEPROM.update(endereco++, enriquecimento_desaceleracao & 0xFF); // Grava o valor de desaceleração
+    eeprom_gravar16_seguinte(rpm_maximo_enriquecimento);
+    eeprom_gravar8_seguinte(enriquecimento_desaceleracao & 0xFF); // Grava o valor de desaceleração
 }
 void gravar_dados_eeprom_configuracao_tps() {
-    int endereco = 1000; // Inicializa o endereço de memória
+    eeprom_cursor = 1000; // Inicializa o endereço de memória
     // Gravar os valores dos parâmetros 
     // valor_tps_minimo (16 bits)
-    EEPROM.update(endereco++, valor_tps_minimo & 0xFF);        // Byte menos significativo
-    EEPROM.update(endereco++, (valor_tps_minimo >> 8) & 0xFF); // Byte mais significativo
+    eeprom_gravar16_seguinte(valor_tps_minimo);
     // valor_tps_maximo (16 bits)
-    EEPROM.update(endereco++, valor_tps_maximo & 0xFF);        // Byte menos significativo
-    EEPROM.update(endereco++, (valor_tps_maximo >> 8) & 0xFF); // Byte mais significativo
+    eeprom_gravar16_seguinte(valor_tps_maximo);
 }
 #include <EEPROM.h>
 
 void gravar_dados_eeprom_configuracao_map() {
-    int endereco = 1010; // Inicializa o endereço de memória
+    eeprom_cursor = 1010; // Inicializa o endereço de memória
     // Gravar o valor do tipo de MAP (1 byte)
-    EEPROM.update(endereco++, valor_map_tipo & 0xFF); // Grava o tipo de MAP
+    eeprom_gravar8_seguinte(valor_map_tipo & 0xFF); // Grava o tipo de MAP
     // Gravar o valor mínimo do MAP (2 bytes)
-    EEPROM.update(endereco++, valor_map_minimo & 0xFF);        // Byte menos significativo
-    EEPROM.update(endereco++, (valor_map_minimo >> 8) & 0xFF); // Byte mais significativo
+    eeprom_gravar16_seguinte(valor_map_minimo);
     // Gravar o valor máximo do MAP (2 bytes)
-    EEPROM.update(endereco++, valor_map_maximo & 0xFF);        // Byte menos significativo
-    EEPROM.update(endereco++, (valor_map_maximo >> 8) & 0xFF); // Byte mais significativo
+    eeprom_gravar16_seguinte(valor_map_maximo);
+}
+
+// Tabela de offset por cilindro: 860..875 (8 x 16 bits) e a bandeira em 876.
+// Fica no mesmo bloco livre que as tabelas de temperatura receberam - ver a
+// nota abaixo sobre por que nada pode passar de 1023 nas placas de 328P.
+void gravar_dados_eeprom_offset_evento() {
+    eeprom_cursor = 860;
+    for (byte i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+        eeprom_gravar16_seguinte((uint16_t)offset_evento[i]);
+    }
+    EEPROM.update(876, usar_offset_personalizado ? 1 : 0);
 }
 
 void gravar_dados_eeprom_enriquecimento_temperatura() {
-    int endereco = 1020;
+    // Endereco 840, e nao 1020, porque a ATmega328P da Nano e da Uno tem 1024
+    // bytes de EEPROM e o registrador de endereco e de 10 bits: escrever em
+    // 1024 ou acima da a volta e cai no comeco. Nem o EEPROM.h do Arduino nem o
+    // eeprom_write_byte da avr-libc mascaram isso.
+    //
+    // Com o bloco em 1020 os enderecos 1024..1029 caiam em 0..5, que nao sao
+    // usados - passava despercebido. O bloco de avanco por temperatura, em
+    // 1030, caia em 6..15 e corrompia vetor_rpm[0..2], os tres primeiros pontos
+    // do eixo de rotacao da tabela de avanco. Na Mega, com 4096 bytes, nada
+    // disso acontecia, e e nela que se desenvolve.
+    //
+    // 840..899 estava livre e cabem os dois blocos mais a tabela de offset.
+    eeprom_cursor = 840;
 
     for (int i = 0; i < 5; i++) {
-        EEPROM.update(endereco++, vetor_temperatura_injecao[i] & 0xFF);
+        eeprom_gravar8_seguinte(vetor_temperatura_injecao[i] & 0xFF);
     }
     for (int i = 0; i < 5; i++) {
-        EEPROM.update(endereco++, vetor_enriquecimento_temperatura[i] & 0xFF);
+        eeprom_gravar8_seguinte(vetor_enriquecimento_temperatura[i] & 0xFF);
     }
 
     // Endereco livre entre a configuracao do MAP (1010-1014) e os vetores.
@@ -242,13 +249,15 @@ void gravar_dados_eeprom_enriquecimento_temperatura() {
 }
 
 void gravar_dados_eeprom_avanco_temperatura() {
-    int endereco = 1030;
+    // Ver a nota em gravar_dados_eeprom_enriquecimento_temperatura: este era o
+    // bloco que corrompia o eixo de rotacao da tabela de avanco na 328P.
+    eeprom_cursor = 850;
 
     for (int i = 0; i < 5; i++) {
-        EEPROM.update(endereco++, vetor_temperatura[i] & 0xFF);
+        eeprom_gravar8_seguinte(vetor_temperatura[i] & 0xFF);
     }
     for (int i = 0; i < 5; i++) {
-        EEPROM.update(endereco++, vetor_avanco_temperatura[i] & 0xFF);
+        eeprom_gravar8_seguinte(vetor_avanco_temperatura[i] & 0xFF);
     }
 
     // Segundo endereco livre reservado para a flag de avanco.

@@ -1,10 +1,62 @@
 #define MIN_INTERVALO_DENTE_US 50        // Filtro anti-bounce mínimo
 volatile uint32_t ultimo_tempo_interrupcao = 0;
-volatile uint32_t intervalo_dente_referencia_us = 0;
-volatile byte amostras_intervalo_validas = 0;
+volatile uint32_t intervalo_dente_referencia_us = 0; // media filtrada - filtro de ruido
+// Periodo do ultimo dente NORMAL, sem filtro. E a referencia da deteccao do
+// gap, e a razao de existir separada da media e a aceleracao:
+//
+// O gap e o dente anterior a ele sao adjacentes no tempo, entao a rotacao e
+// praticamente a mesma nos dois - a razao gap/dente fica em (N+1) qualquer que
+// seja a aceleracao. Ja a media filtrada atrasa alguns dentes; acelerando, ela
+// fica MAIOR que o periodo atual e a razao medida CAI, podendo furar o limiar.
+//
+// O efeito escala com o tamanho angular do dente: na 12-1 cada dente cobre 30
+// graus de virabrequim contra 6 graus na 60-2, entao a variacao de periodo por
+// dente e 5x maior e a media atrasa 5x mais em termos relativos. Medido na
+// 60-2 a razao ficou em 2,94 mesmo acelerando (limiar 2,0, folga de 46%), mas
+// extrapolando o mesmo fator para a 12-1 a folga cairia para ~15%.
+//
+// A media filtrada continua sendo usada no filtro de ruido, onde o que importa
+// e o oposto: ignorar um dente anomalo isolado.
+volatile uint32_t periodo_dente_anterior_us = 0;
 
-#define GAP_FATOR_MIN_FUNC_X10 15UL   // 1.5x em funcionamento
-#define GAP_FATOR_MIN_PARTIDA_X10 14UL // 1.4x em partida para tolerar sweep/aceleracao
+// O dente anterior AO anterior. Serve de regua para reconhecer o par
+// inflado+esmagado que um atraso de ISR produz: ele e o ultimo intervalo que o
+// atraso ainda nao tocou. Ver o filtro de ruido adiante.
+
+// Tempo da volta que acabou de fechar, ANTES de saber se a contagem de dentes
+// bateu. So e publicado em tempo_total_volta_completa quando bater - ver o
+// comentario na validacao de contagem, mais abaixo.
+volatile unsigned long volta_completa_candidata_us = 0;
+volatile byte amostras_intervalo_validas = 0;
+volatile byte rejeicoes_dente_consecutivas = 0;
+// Depois de tantas rejeicoes seguidas do filtro de ruido, considera a
+// referencia corrompida e a libera. Um surto de ruido real nunca dura tantos
+// dentes seguidos; ja a referencia envenenada rejeita 100% deles, pra sempre.
+#define REJEICOES_DENTE_MAX 6U
+
+// Limiar minimo para considerar um intervalo como gap, RELATIVO ao tamanho
+// real da falha. Com N dentes faltantes o gap dura (N+1) periodos de dente,
+// entao um limiar fixo de 1.5x so e adequado para N=1 (gap de 2x). Numa
+// roda 60-2 o gap e 3x, e exigir apenas 1.5x deixava o limiar la embaixo:
+// bastava um dente atrasado em mais de meio periodo (ISR bloqueada) para
+// virar gap falso no meio da volta. Colocando o limiar no meio do caminho
+// entre 1x (dente normal) e (N+1)x (gap real) obtem-se a maior margem para
+// os dois lados - e o dobro de tolerancia a atraso na roda 60-2.
+//   N=1 -> 1.5x func / 1.4x partida (identico ao comportamento anterior)
+//   N=2 -> 2.0x / 1.8x        N=3 -> 2.5x / 2.2x
+// Expresso como numerador sobre denominador 8, para o limiar sair por
+// deslocamento em vez de divisao: limiar = referencia * NUM >> 3. A divisao
+// de 32 bits por 10 que havia aqui custava ~300 ciclos dentro da interrupcao
+// do dente, que e o gargalo do RPM maximo.
+//   funcionamento: (4N+8)/8 = 1 + N/2  -> N=1:1.5x   N=2:2.0x   N=3:2.5x
+//   partida:       (3N+8)/8            -> N=1:1.375x N=2:1.75x  N=3:2.125x
+// Os valores de funcionamento sao exatamente os mesmos de antes; os de
+// partida ficam um pouco mais permissivos (1.4->1.375, 1.8->1.75), o que e o
+// lado seguro: durante a partida a rotacao oscila e errar detectando o gap e
+// pior do que aceita-lo com folga.
+#define GAP_FATOR_MIN_FUNC_NUM(n) (8UL + ((unsigned long)(n) * 4UL))
+#define GAP_FATOR_MIN_PARTIDA_NUM(n) (8UL + ((unsigned long)(n) * 3UL))
+#define GAP_FATOR_MIN_SHIFT 3
 #define GAP_FATOR_MAX_MARGEM_X 4UL    // limite superior para rejeitar outliers
 #define FATOR_RUIDO_DENTE_CURTO_NUM 3UL // Rejeita pulso menor que 1/3 do dente de referencia
 #define FALHAS_SYNC_MAX_CONSECUTIVAS 3U
@@ -14,8 +66,170 @@ volatile byte amostras_intervalo_validas = 0;
 #define TEMPO_CADA_GRAU_ALPHA_DEN 4UL
 #define TEMPO_CADA_GRAU_ALPHA_NUM 1UL
 
+// Refino por dente: o limite e DENTE POR SEGUNDO, nao rotacao.
+//
+// Era um 1000 rpm fixo, e isso media a coisa errada. O que disputa tempo com a
+// interrupcao e a frequencia de dentes, e ela depende da roda tanto quanto da
+// rotacao: uma 60-2 no virabrequim a 1000 rpm entrega 1000 dentes por segundo,
+// uma 12-1 no comando a 1500 rpm entrega 150. A segunda era barrada com um
+// setimo da carga da primeira - e e justamente ela que mais precisa do refino,
+// porque uma volta do sensor cobre 720 graus de virabrequim e o ultimo evento
+// do ciclo e previsto a mais de 600 graus de distancia.
+//
+// Medido em motor real (ranger, 12-1 no comando, 1000-1500 rpm): o erro tipico
+// cresce de 1,0 grau no primeiro evento para 5,8 no sexto, e a cauda de 5% vai
+// de 1,9 para 18,9 graus. Na F75 (60-2, evento mais distante ainda) o sexto
+// evento SOME em 19,9% das voltas. O mesmo desenho aparece no simulador com
+// rotacao suave, entao nao e variacao de combustao - e previsao projetada longe.
+//
+// Dentes por segundo e o INVERSO do periodo do dente, entao o limite vira uma
+// comparacao direta de periodo: sem divisao, sem variavel nova, sem depender da
+// configuracao. E 1000 us reproduz exatamente o limiar antigo na 60-2, que e a
+// roda onde o custo da secao critica foi medido:
+//
+//   60-2 no virabrequim a 1000 rpm -> 1000 dentes/s -> periodo 1000 us
+//   12-1 no comando a 1500 rpm     ->  150 dentes/s -> periodo 6667 us
+//
+// Usa periodo_dente_anterior_us, que e o ultimo dente NORMAL sem filtro: no gap
+// o intervalo e 2 a 3 vezes maior e enganaria a conta.
+#define PERIODO_DENTE_MIN_REFINO_US 1000UL
+
+// A margem existe porque a protecao com cli() global em
+// agendar_eventos_motor_timer1 precisa estar ativa sempre que o refino PUDER
+// rodar dentro da ISR do dente - as duas decisoes tem que ser a mesma, ou uma
+// hora divergem. 850 us equivale aos 200 rpm de histerese que havia antes.
+#define PERIODO_DENTE_MIN_PROTECAO_US 850UL
+
+static inline bool refino_por_dente_ativo(unsigned long periodo_min_us) {
+  return periodo_dente_anterior_us > periodo_min_us;
+}
+
 void agendar_eventos_motor_timer1();
 void atualizar_agendamentos_ignicao_por_dente();
+void refinar_centelha_no_dente();
+void refinos_do_dente();
+static inline uint32_t ler_tick32_timer1();
+
+// TESTE: agendar_eventos_motor_timer1() e pesada (calcula todos os canais de
+// ignicao/injecao) e so tem a janela de 1 dente pra rodar se ficar dentro da
+// interrupcao. Ela nao depende de "posicao atual" (diferente do reagendamento
+// por dente que ja tentamos antes) - o calculo dela e todo em cima de
+// tick_base_sincronismo, capturado uma vez aqui. Por isso da pra so capturar
+// esse tick na interrupcao (barato) e deixar o calculo pesado rodar no loop().
+volatile bool agendamento_pendente = false;
+
+// Base de tempo do decoder.
+//
+// Com o sensor no ICP1 (placa revisao 3) o instante de cada dente e o que o
+// HARDWARE registrou na borda, em ticks do Timer1 (4us), e nao o micros() lido
+// quando a interrupcao conseguiu rodar. Era esse atraso que deformava a medida
+// dos dentes: medido na bancada (60-2, so ignicao), o dente 57 chegando ~55us
+// atrasado fazia a razao gap/dente cair abaixo de 2,0 e o gap nao ser
+// reconhecido em ~1-2% das voltas acima de 6000 rpm.
+//
+// Tudo que compara tempo com os instantes do decoder (deteccao de motor
+// parado, refino da centelha) precisa usar agora_decoder_us(), a mesma base.
+// Os dois relogios tem resolucao de 4us e voltam a zero a cada ~71 min.
+#if SENSOR_ROTACAO_ICP1
+volatile uint32_t tick_borda_sensor = 0;
+volatile uint32_t tempo_borda_sensor_us = 0;
+static inline uint32_t agora_decoder_us() { return ler_tick32_timer1() << 2; }
+static inline uint32_t instante_borda_sensor_us() { return tempo_borda_sensor_us; }
+#else
+static inline uint32_t agora_decoder_us() { return micros(); }
+static inline uint32_t instante_borda_sensor_us() { return micros(); }
+#endif
+
+// Reagendamento do Timer1 INTERROMPIVEL em curso (ver replanejar_timer1 em
+// timer.h). Enquanto vale, a ISR do dente so mede: o refino de agendamento que
+// ela faria mexe nos mesmos horarios que o reagendamento esta varrendo, entao
+// fica adiado e roda no fim dele.
+volatile bool timer1_replanejando = false;
+volatile bool refino_dente_adiado = false;
+
+
+// Referencia de "tamanho de dente normal": media filtrada dos dentes normais,
+// e nao o intervalo do ultimo dente isolado. Todo o criterio de gap
+// (gap_minimo = fator x referencia, gap_maximo = (N+4) x referencia) depende
+// dela, entao um unico dente ruim contaminava a decisao: um dente atrasado
+// encolhe o intervalo seguinte, a referencia desinflava e o gap REAL passava
+// a nao caber mais na janela - assinatura FALHA_DENTE qtd=64..72 dos testes.
+// IIR 3/4 antigo + 1/4 novo: segue a aceleracao em poucos dentes, mas um
+// dente anomalo isolado mal desloca a referencia.
+static inline void atualizar_referencia_dente(unsigned long intervalo_us) {
+  periodo_dente_anterior_us = intervalo_us; // referencia do gap: sem filtro
+  if (intervalo_dente_referencia_us == 0) {
+    intervalo_dente_referencia_us = intervalo_us;
+    return;
+  }
+  // Trava de outlier: um dente atendido com atraso (CPU saturada) pode ser
+  // medido como dezenas de ms. Sem isso ele envenena a referencia, que
+  // alimenta tanto o filtro de ruido quanto a deteccao de gap. Acima de 2x a
+  // referencia atual nao e dente normal - ou e o gap, ou e atraso de ISR.
+  // Motor nenhum desacelera rapido o bastante pra dobrar o periodo do dente
+  // de um dente pro outro, entao limitar aqui nao atrapalha nada legitimo.
+  uint32_t limite = intervalo_dente_referencia_us << 1;
+  if (intervalo_us > limite) {
+    intervalo_us = limite;
+  }
+  intervalo_dente_referencia_us = intervalo_dente_referencia_us -
+                                  (intervalo_dente_referencia_us >> 2) +
+                                  (intervalo_us >> 2);
+}
+
+// Divisao por grau_cada_dente sem divisao de 32 bits. Ela roda em TODO dente
+// e custava ~300 ciclos dentro da interrupcao, que e o gargalo do RPM maximo.
+// grau_cada_dente vem da configuracao e praticamente nunca muda, entao o
+// reciproco fica em cache e so e recalculado quando o valor muda - no caminho
+// quente sobra uma comparacao de byte e uma multiplicacao 32x16.
+// O resultado e ARREDONDADO, nao truncado. Truncar parecia inofensivo - erro
+// menor que 1us por grau - mas o erro tinha SINAL FIXO, sempre para baixo, e o
+// agendamento multiplica este valor pela distancia angular ate o evento. Meio
+// microsegundo perdido por grau vira erro de ponto crescente nos eventos longe
+// da referencia.
+//
+// Medido com A/B pareado na bancada de reproducao (12-1 no comando, mesmo sinal
+// gravado nas duas gravacoes, 8104 amostras casadas por posicao da tabela E por
+// fase do revezamento do refino): o arredondamento desloca +0,319 grau de
+// virabrequim por evento acima de 2000 rpm, com intervalo de 90% entre +0,239 e
+// +0,379 por bootstrap. A direcao e a prevista; a magnitude ficou em 54% do
+// previsto e o intervalo exclui a previsao, o que continua sem explicacao.
+//
+// RESSALVA MEDIDA: isolada, a correcao melhora o |erro| em 4 das 6 faixas de
+// rotacao (ate -1,1 grau acima de 3500 rpm) mas PIORA os eventos 5 e 6 entre
+// 2000 e 3500 rpm, em ate +1,6 grau. Naquele motor o desvio desses eventos ja
+// era positivo, e a truncagem o cancelava em parte; removido o cancelamento, o
+// erro maior aparece inteiro. Mantida assim mesmo: erro com sinal fixo e divida
+// que cobra juros em outra rotacao, e o erro maior - revezamento do refino e
+// atraso da ISR do dente - tem causa propria e correcao propria.
+//
+// Q18 e o maior expoente seguro: o produto maximo e 10000*2^18 = 2,6e9 e,
+// somando o meio bit do arredondamento (2^17), 2,62e9 - dentro de 32 bits para
+// qualquer grau, porque a entrada ja e limitada logo abaixo.
+#define GRAU_RECIPROCO_SHIFT 18
+static inline unsigned long dividir_por_grau_cada_dente(unsigned long intervalo_us) {
+  static int grau_em_cache = 0;
+  static uint32_t reciproco = 0;
+  static uint32_t limite_entrada_us = 0;
+
+  if (grau_em_cache != grau_cada_dente) {
+    grau_em_cache = grau_cada_dente;
+    reciproco = ((1UL << GRAU_RECIPROCO_SHIFT) + (grau_cada_dente >> 1)) / grau_cada_dente;
+    limite_entrada_us = TEMPO_CADA_GRAU_MAX_US * (unsigned long)grau_cada_dente;
+  }
+
+  // Teto de entrada, por dois motivos que coincidem: acima dele o resultado
+  // seria saturado por limita_tempo_cada_grau de qualquer jeito, e a
+  // multiplicacao estouraria 32 bits (em rotacao muito baixa o intervalo entre
+  // dentes fica enorme). A divisao original saturava sozinha; aqui, sem esta
+  // guarda, o estouro daria um valor pequeno e ERRADO que passaria batido.
+  if (intervalo_us >= limite_entrada_us) {
+    return TEMPO_CADA_GRAU_MAX_US;
+  }
+
+  return (intervalo_us * reciproco + (1UL << (GRAU_RECIPROCO_SHIFT - 1))) >>
+         GRAU_RECIPROCO_SHIFT;
+}
 
 static inline unsigned long limita_tempo_cada_grau(unsigned long valor_us) {
   if (valor_us < TEMPO_CADA_GRAU_MIN_US) {
@@ -40,9 +254,150 @@ static inline unsigned long filtra_tempo_cada_grau(unsigned long tempo_instante_
   return limita_tempo_cada_grau(tempo_filtrado);
 }
 
+// ---- DEBUG TEMPORARIO: pulso de medicao da duracao da ISR do dente ----
+// O pino 7 (ign4) fica ALTO durante a execucao da interrupcao e baixo fora
+// dela. No analisador logico, a LARGURA de cada pulso e a duracao exata
+// daquela interrupcao, e o espaco entre pulsos mostra o que sobra pro resto
+// do sistema (ISRs do Timer1 + loop).
+//
+// O pino 7 esta livre na configuracao de 6 cilindros em centelha perdida, que
+// usa so 3 canais fisicos (pinos 4, 5 e 6) - ver quantidade_canais_ignicao_fisicos.
+// Ja e configurado como OUTPUT no setup.
+//
+// Por que nao usar micros() como antes: ele tem resolucao de 4us e custa ~4us
+// por chamada, ou seja, o instrumento distorcia o que media. Aqui o pino e
+// constante em tempo de compilacao, entao o compilador emite SBI/CBI - 2
+// ciclos, atomico, sem cli(). Custo total ~0,25us.
+//
+// Medido com alvo 1: a ISR do dente e 53us tipicos, 64,3us de maximo absoluto
+// em 204 mil pulsos, sem nenhum pico - 37% da CPU a 7000rpm. Nao e o gargalo.
+// Alvo agora e 2, as ISRs de comparacao do Timer1, onde deve estar o resto.
+//
+// Alvo 2 tambem mediu: as ISRs do Timer1 custam so 1-6% da CPU. Somadas ao
+// dente dao 40% a 7000rpm - sobra 60% livre, nao ha saturacao. O que os dados
+// mostraram foi outra coisa: os pulsos do Timer1 caem de 8,0 por volta (o
+// esperado) para 2,1 a 7000rpm, ou seja os eventos param de ser AGENDADOS.
+// Alvo 3 mede exatamente isso: o tempo entre o gap e o instante em que o
+// agendamento fica armado. Se esse atraso passar de (angulo da centelha menos
+// o dwell), o evento nasce vencido e e cancelado. A 7000rpm essa folga e de
+// apenas ~2,07ms.
+//
+// Alvo 3 tambem ja mediu: a latencia entre o gap e o agendamento armado e de
+// ~1,1ms na mediana e ate ~2,9ms no p99. Nao era a causa das falhas.
+//
+// DESLIGADO por padrao. O pino 7 e o ign4, uma saida de ignicao real - ele so
+// esta livre porque a configuracao de 6 cilindros em centelha perdida usa 3
+// canais. Codigo de depuracao nao deve ficar chaveando pino de bobina: com uma
+// quarta bobina ligada, ela receberia pulso a cada gap.
+//
+//   0 = desligado   1 = ISR do dente   2 = ISRs do Timer1   3 = atraso do agendamento
+//   4 = desligamento ORFAO (compare A desarmado com bobina ligada)
+//   5 = diagnostico da bobina presa, codificado na largura do pulso
+//   6 = QUEM desarma o OCIE1A com bobina ligada (largura identifica o local)
+#include <util/delay.h>
+//   7 = reparticao interna do agendamento (2 pulsos: canais / compare)
+//  10 = quem descarta uma injecao (largura do pulso, ver PULSO_INJ_DESCARTE)
+//   9 = como o 3, e o D7 marca o trecho do loop (liga nas chamadas impares
+//       de processar_agendamento_pendente, desliga nas pares - main.cpp)
+#define DEBUG_PULSO_ISR_ALVO 0
+
+// Onde sai o pulso.  0 = pino 7 (ign4)   1 = pino 8 (inj1)
+//
+// O pino 8 so pode ser usado com modo_injecao = 0 (injecao desligada): ali ele
+// nao e mais saida de bico e ja costuma estar ligado no analisador. Com a
+// injecao ativa isso pulsaria o injetor 1 a cada volta.
+#define DEBUG_PULSO_PINO 1
+
+#if DEBUG_PULSO_ISR_ALVO && defined(__AVR_ATmega328P__)
+  #if DEBUG_PULSO_PINO == 1 && SENSOR_ROTACAO_ICP1
+    // Na revisao 3 o D8 e a ENTRADA do sensor: escrever em PORTB0 ligaria e
+    // desligaria o pull-up dela. O inj1 foi para o D2, e o pulso vai junto.
+    #define PULSO_ALTO()  (PORTD |= _BV(PD2))
+    #define PULSO_BAIXO() (PORTD &= ~_BV(PD2))
+  #elif DEBUG_PULSO_PINO == 1
+    #define PULSO_ALTO()  (PORTB |= _BV(PB0))
+    #define PULSO_BAIXO() (PORTB &= ~_BV(PB0))
+  #else
+    #define PULSO_ALTO()  (PORTD |= _BV(PD7))
+    #define PULSO_BAIXO() (PORTD &= ~_BV(PD7))
+  #endif
+#else
+  #define PULSO_ALTO()
+  #define PULSO_BAIXO()
+#endif
+
+#if DEBUG_PULSO_ISR_ALVO == 1
+  #define PULSO_DENTE_ALTO()  PULSO_ALTO()
+  #define PULSO_DENTE_BAIXO() PULSO_BAIXO()
+#else
+  #define PULSO_DENTE_ALTO()
+  #define PULSO_DENTE_BAIXO()
+#endif
+
+#if DEBUG_PULSO_ISR_ALVO == 2
+  #define PULSO_TIMER1_ALTO()  PULSO_ALTO()
+  #define PULSO_TIMER1_BAIXO() PULSO_BAIXO()
+#else
+  #define PULSO_TIMER1_ALTO()
+  #define PULSO_TIMER1_BAIXO()
+#endif
+
+// Alvo 3: sobe no gap (dentro da interrupcao, no instante exato em que o
+// tick de referencia e capturado) e desce quando agendar_eventos_motor_timer1
+// termina, no loop(). A largura do pulso e o atraso total ate os eventos
+// ficarem armados - latencia do loop mais a duracao do proprio calculo.
+// Alvo 10: quem descarta uma injecao. Pulso no pino de depuracao com largura
+// que identifica o caminho: 10us = reagendar_injecao_se_pulso_ficou_curto
+// empurrou para a volta seguinte; 30us = o refino por dente achou a injecao
+// atras do dente e somou 360 graus; 50us = ligar_injetor recusou e o evento
+// foi cancelado.
+#if DEBUG_PULSO_ISR_ALVO == 10
+  #define PULSO_INJ_DESCARTE(us) do { PULSO_ALTO(); _delay_us(us); PULSO_BAIXO(); } while (0)
+#else
+  #define PULSO_INJ_DESCARTE(us)
+#endif
+
+// Alvo 9: o mesmo pulso do 3; o D7 marca o trecho do loop (ver
+// processar_agendamento_pendente, main.cpp).
+#if DEBUG_PULSO_ISR_ALVO == 3 || DEBUG_PULSO_ISR_ALVO == 9
+  #define PULSO_AGENDA_ALTO()  PULSO_ALTO()
+  #define PULSO_AGENDA_BAIXO() PULSO_BAIXO()
+#else
+  #define PULSO_AGENDA_ALTO()
+  #define PULSO_AGENDA_BAIXO()
+#endif
+
+// Alvo 7: mede o CALCULO do agendamento, nao a espera. Emite dois pulsos por
+// volta - o primeiro cobre o agendamento dos canais, o segundo cobre
+// atualizar_compare_b_ligar + atualizar_compare_a_desligar. As duas larguras
+// dizem onde estao os 544us medidos.
+#if DEBUG_PULSO_ISR_ALVO == 7
+  #define PULSO_FASE_ALTO()  PULSO_ALTO()
+  #define PULSO_FASE_BAIXO() PULSO_BAIXO()
+#else
+  #define PULSO_FASE_ALTO()
+  #define PULSO_FASE_BAIXO()
+#endif
+
+// Alvo 4: sobe quando o compare A e desarmado enquanto AINDA existe bobina
+// ligada com desligamento pendente - o estado "orfao", em que ninguem mais vai
+// desliga-la e ela fica carregando ate protege_dwell_maximo cortar. Desce
+// quando a bobina realmente desliga. A largura do pulso e o tempo que ela
+// passou presa.
+//
+// Detecta a CONDICAO, nao um caminho de codigo especifico: nao importa qual
+// ramo desarmou o compare A, se havia bobina ligada o pulso sobe.
+#if DEBUG_PULSO_ISR_ALVO == 4
+  #define PULSO_ORFAO_ALTO()  PULSO_ALTO()
+  #define PULSO_ORFAO_BAIXO() PULSO_BAIXO()
+#else
+  #define PULSO_ORFAO_ALTO()
+  #define PULSO_ORFAO_BAIXO()
+#endif
+
 void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente - dente faltante
   // tempo_inicial_codigo = micros(); // Registra o tempo inicial
-  uint32_t tempo_agora = micros();
+  uint32_t tempo_agora = instante_borda_sensor_us();
   if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
     return; // Ignora o pulso, é ruído. Não faz nada, pois não é um pulso válido.
   }
@@ -54,24 +409,89 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     tempo_anterior = tempo_agora;
     tempo_atual = tempo_agora;
     intervalo_tempo_entre_dente = 0;
-    tempo_dente_anterior[0] = 0;
-    tempo_dente_anterior[1] = 0;
     intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
     amostras_intervalo_validas = 0;
     leitura = 0;
     qtd_leitura = 0;
     falhas_sync_consecutivas = 0;
-    verifica_falha = 0;
     inicia_tempo_sensor_roda_fonica = 0;
     return;
   }
 
   // Filtro adaptativo: rejeita dente espurio muito curto em relacao ao ultimo dente valido.
   unsigned long intervalo_candidato = (tempo_agora - tempo_anterior);
+
+  // HISTORICO: tres tentativas de nao descartar o dente bom quando a ISR atrasa,
+  // todas medidas em bancada reproduzindo 60-2 real, e todas revertidas.
+  //
+  //   1) isentar do filtro quando o anterior vinha inflado >25% da referencia.
+  //      Rejeicoes cairam de 280 para 5, mas a perda de centelha quase DOBROU
+  //      (6,76% -> 11,65% das voltas entre 3500 e 4000 rpm). A rejeicao tambem
+  //      era protetora: aceito, o intervalo corrompido (89us num dente de 297us)
+  //      alimentava periodo_dente_anterior_us, que e a base do limiar de gap -
+  //      com o limiar em 178us o dente normal seguinte virava GAP FALSO.
+  //
+  //   2) o mesmo teste, mas CONTANDO o dente e poupando a referencia,
+  //      tempo_cada_grau e periodo_dente_anterior_us. As rejeicoes nao cairam
+  //      (2,06 por mil contra 2,32 da base): o dente inflado alimenta a propria
+  //      referencia contra a qual ele era comparado, entao o limiar subia junto
+  //      e a margem fechava.
+  //
+  //   3) teste do par com regua limpa: soma do curto com o anterior contra 1,5x
+  //      o dente de DOIS antes, que o atraso ainda nao tocou. Reconstruindo com
+  //      os intervalos do analisador a condicao passaria em 99% dos casos - e
+  //      mesmo assim as rejeicoes ficaram em 2,71 por mil. O que o firmware ve
+  //      internamente nao e o que se reconstroi de fora, e ate saber onde esta a
+  //      diferenca nao vale tentar de novo.
+  //
+  // O QUE ESTA ESTABELECIDO, isso sim medido: em 100% das rejeicoes a ISR
+  // anterior tinha atrasado (mediana 180us num dente de 258us), o intervalo
+  // medido caiu para 89us contra limiar de 99us, e rejeicao numa volta leva a
+  // perda de centelha na volta SEGUINTE em 11,9% dos casos contra 2,3% sem.
+  //   4) reparar periodo_dente_anterior_us no instante em que o par se revela,
+  //      com a metade da soma - para desenvenenar o limiar de gap, que era a
+  //      peca que as tres anteriores nunca tocaram. Voltas sem gap foram de
+  //      3,15% para 3,40% e a perda total de 3,55% para 3,80%. Sem efeito.
+  //
+  // INSTRUMENTACAO QUE FECHOU A QUESTAO (DEBUG_PULSO_ISR_ALVO 8, 431 rejeicoes em
+  // 53 s): em 99,1% delas periodo_dente_anterior_us ESTAVA inflado alem de 1,25x.
+  // A premissa das quatro tentativas estava certa e as condicoes disparavam.
+  //
+  // CONCLUSAO: o atraso da ISR e CAUSA COMUM, e a rejeicao de dente e sintoma
+  // irmao da falha, nao o caminho ate ela. Por isso quatro correcoes no filtro e
+  // nos consumidores do intervalo nao mudaram nada - tratavam o sintoma errado. A
+  // correlacao medida (rejeicao numa volta -> perda na seguinte em 11,9% contra
+  // 2,3%) e de causa comum, nao de causalidade.
+  //
+  // O que resta atacar e o atraso em si: ou encurtar as ISRs de Timer1 que
+  // disputam com esta, ou parar de cronometrar dente por software - capturar a
+  // borda por hardware no ICP1 (D8), que e imune a latencia e exige mudar a
+  // entrada do sensor de pino.
   if (intervalo_dente_referencia_us > 0 &&
       (intervalo_candidato * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
+    // ESCAPE OBRIGATORIO. Este return acontece ANTES de qtd_leitura++ e ANTES
+    // de atualizar_referencia_dente(). Consequencia: se a referencia for
+    // inflada uma unica vez (um atraso grande de ISR medido como se fosse um
+    // dente - visto em T=64644us no log), todo dente normal passa a ser
+    // rejeitado, porque 176us*3 e muito menor que a referencia corrompida. E
+    // ai o filtro tranca a porta por dentro: o re-arme automatico por
+    // qtd_leitura > 2x qtd_dente nunca e alcancado (qtd_leitura nao incrementa
+    // mais) e a referencia nao pode se autocorrigir (quem a atualiza esta
+    // depois deste return). O estado vira permanente e insensivel ao RPM -
+    // era esta a morte com o sinal do sensor perfeitamente limpo.
+    // Sem guarda de 255: o contador reseta em REJEICOES_DENTE_MAX (6) logo abaixo,
+    // entao nunca chega perto de estourar o byte.
+    rejeicoes_dente_consecutivas++;
+    if (rejeicoes_dente_consecutivas >= REJEICOES_DENTE_MAX) {
+      intervalo_dente_referencia_us = 0; // libera o filtro
+      periodo_dente_anterior_us = 0;
+      amostras_intervalo_validas = 0;    // evita gap falso na reconstrucao
+      rejeicoes_dente_consecutivas = 0;
+    }
     return;
   }
+  rejeicoes_dente_consecutivas = 0;
 
   ultimo_tempo_interrupcao = tempo_agora;
   ultimo_pulso_rpm_us = tempo_agora;
@@ -80,24 +500,100 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   tempo_atual = tempo_agora;
   intervalo_tempo_entre_dente = (tempo_atual - tempo_anterior);
 
-  unsigned long fator_gap_min_x10 = (rpm < rpm_partida) ? GAP_FATOR_MIN_PARTIDA_X10 : GAP_FATOR_MIN_FUNC_X10;
-  unsigned long gap_minimo_us = 0;
-  unsigned long gap_maximo_us = 0xFFFFFFFFUL;
+  // Teste de compressao: guarda o tempo deste dente na posicao dele. Com o
+  // teste desligado isto some na compilacao e o caminho normal nao muda.
+  teste_compressao_registrar(qtd_leitura, intervalo_tempo_entre_dente);
+  // Captura de bateria: carimba em que amostra este dente passou, para a UI
+  // poder mapear a forma de onda em angulo de virabrequim.
+  captura_bateria_marcar_dente();
 
-  if (intervalo_dente_referencia_us > 0) {
-    gap_minimo_us = (intervalo_dente_referencia_us * fator_gap_min_x10) / 10UL;
-    gap_maximo_us = intervalo_dente_referencia_us * ((unsigned long)(qtd_dente_faltante + GAP_FATOR_MAX_MARGEM_X));
+  uint16_t dentes_esperados = (uint16_t)(qtd_dente - qtd_dente_faltante);
+
+  // Validacao de POSICAO do gap: o gap so pode aparecer no fim da volta.
+  // Qualquer bloqueio de interrupcao (ISR do Timer1, secao critica no loop)
+  // que atrase o atendimento de um dente faz o intervalo medido virar
+  // interval+D; se D passar de meio periodo de dente, isso ultrapassa o
+  // limiar de 1.5x e e confundido com o gap NO MEIO da volta - foi isso que
+  // destruiu a contagem nos testes (FALHA_DENTE com qtd=3..43, muito longe
+  // dos 58 esperados). O limiar de tempo cai junto com o periodo, entao o
+  // problema piora com o RPM, exatamente como observado.
+  // Ja sincronizado, so aceita gap em posicao plausivel; fora dela trata
+  // como dente normal. Se o gap real chegar a ser rejeitado por engano, o
+  // re-arme por qtd_leitura > 2x qtd_dente (acima) zera o sincronismo e
+  // libera este filtro para reconquistar a referencia - sem travar.
+  //
+  // O limiar e PERCENTUAL da volta (nao um numero fixo de dentes), entao
+  // acompanha rodas de qualquer tamanho. Aqui usa 75% via deslocamento
+  // (x - x/4), que e barato o bastante para rodar em todo dente:
+  //   60-2 -> 44 de 58     36-1 -> 27 de 35     12-1 -> 9 de 11
+  // Para 80% basta trocar por (x - (x>>3) - (x>>4)), tambem so com shifts.
+  // 75% da volta, mas com piso absoluto de 3 dentes de tolerancia.
+  //
+  // So percentual desequilibra entre rodas: 75% permite perder 14 dentes na
+  // 60-2 (44 de 58) mas apenas 2 na 12-1 (9 de 11). Numa roda de poucos dentes
+  // a margem fica apertada demais, e rejeitar o gap REAL e pior que aceitar um
+  // falso - o gap rejeitado faz a contagem seguir e so se recuperar pelo
+  // re-arme, enquanto o falso e pego pela validacao de contagem logo em
+  // seguida. O piso vale sempre que for mais permissivo que o percentual.
+  //
+  // COM O MOTOR FUNCIONANDO a margem cai para os mesmos 3 dentes do piso, em
+  // qualquer roda. O argumento acima - "o falso e pego pela validacao de
+  // contagem logo em seguida" - e verdadeiro, mas pega TARDE: a validacao so
+  // roda no gap SEGUINTE, e ate la o gap falso ja zerou posicao_atual_sensor e
+  // ja agendou as tres centelhas a partir do lugar errado.
+  //
+  // Medido em bancada reproduzindo 60-2 real a ~3900 rpm: gap falso sempre nos
+  // dentes 43 a 47 - dentro da janela antiga, que aceitava desde o 44 -, que e
+  // onde o IGN3 carrega e a ISR do Timer1 dele atrasa a do dente. A ECU zerava a
+  // posicao ali e o IGN1 carregava a 264+20 = 284 graus: DISPARO DUPLO na mesma
+  // volta, em 2,5% das voltas, e a volta seguinte saia quebrada em 113 de 117
+  // casos. O IGN2 fora de lugar (30-90 graus em vez de 138) era o mesmo gap
+  // falso.
+  //
+  // So muda roda com 16 dentes reais ou mais - nas menores o piso de 3 ja valia.
+  // E sao justamente as finas que correm risco: atraso de ISR de 242us infla em
+  // 58 a 145% um dente de 167 a 417us, mas so 5 a 29% os dentes de milissegundo
+  // das rodas grossas. O pior gap falso que ainda passa cai de 84 para 18 graus
+  // na 60-2, de 80 para 30 na 36-1/36-2 e de 75 para 45 na 24-1.
+  //
+  // Na PARTIDA fica a regra antiga: ali a velocidade oscila muito dentro da
+  // volta, dente rejeitado e mais comum, e rejeitar o gap verdadeiro e o risco
+  // maior. O risco de gap falso por atraso de ISR e nulo nessa rotacao, porque o
+  // dente e longo.
+  uint16_t margem_pct = dentes_esperados >> 2;
+  uint16_t margem_gap = (margem_pct > 3U && rpm < rpm_partida) ? margem_pct : 3U;
+  uint16_t posicao_minima_gap = (dentes_esperados > margem_gap)
+                                    ? (uint16_t)(dentes_esperados - margem_gap)
+                                    : 1U;
+  bool posicao_gap_plausivel = (revolucoes_sincronizada < 1) ||
+                               (qtd_leitura >= posicao_minima_gap);
+
+  // Os limiares de gap so sao calculados quando ha chance real de ser gap.
+  // Antes as duas multiplicacoes de 32 bits rodavam em TODO dente e eram
+  // descartadas em ~74% deles, ja que a validacao de posicao acima rejeita
+  // qualquer gap antes de 75% da volta. Como a condicao de posicao entrava no
+  // mesmo E logico, adiantar o teste nao muda o resultado - so evita o
+  // trabalho. Isso vale muito dentro da interrupcao do dente, que e o
+  // gargalo do RPM maximo.
+  bool gap_detectado = false;
+  if (posicao_gap_plausivel &&
+      amostras_intervalo_validas >= 3 &&
+      periodo_dente_anterior_us > 0) {
+    unsigned long fator_gap_min_num = (rpm < rpm_partida)
+                                          ? GAP_FATOR_MIN_PARTIDA_NUM(qtd_dente_faltante)
+                                          : GAP_FATOR_MIN_FUNC_NUM(qtd_dente_faltante);
+    unsigned long gap_minimo_us =
+        (periodo_dente_anterior_us * fator_gap_min_num) >> GAP_FATOR_MIN_SHIFT;
+
+    if (intervalo_tempo_entre_dente > gap_minimo_us) {
+      // gap_maximo so importa se o limiar minimo ja passou - segundo produto
+      // de 32 bits evitado no caso comum.
+      unsigned long gap_maximo_us =
+          periodo_dente_anterior_us * ((unsigned long)(qtd_dente_faltante + GAP_FATOR_MAX_MARGEM_X));
+      gap_detectado = (intervalo_tempo_entre_dente < gap_maximo_us);
+    }
   }
 
-  verifica_falha = gap_minimo_us;
-  bool gap_detectado = (amostras_intervalo_validas >= 3) &&
-                       (intervalo_dente_referencia_us > 0) &&
-                       (intervalo_tempo_entre_dente > gap_minimo_us) &&
-                       (intervalo_tempo_entre_dente < gap_maximo_us);
-
-  // Mantem histórico simples para diagnostico/telemetria.
-  tempo_dente_anterior[1] = tempo_dente_anterior[0];
-  tempo_dente_anterior[0] = intervalo_tempo_entre_dente;
   //Serial.print("|");
   //Serial.print(qtd_leitura);
 
@@ -107,6 +603,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     revolucoes_sincronizada = 0;
     qtd_leitura = 0;
     intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
     amostras_intervalo_validas = 0;
   }
 
@@ -116,7 +613,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 
     if (qtd_voltas == 1) {
       tempo_final_volta_completa = tempo_atual;
-      tempo_total_volta_completa = (tempo_final_volta_completa - tempo_inicio_volta_completa);
+      volta_completa_candidata_us = (tempo_final_volta_completa - tempo_inicio_volta_completa);
       qtd_voltas = 0;
     }
     if (qtd_voltas == 0) {
@@ -134,7 +631,7 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 
     // Mantem a posicao de fim de volta ate processar os cortes vencidos.
     // O evento final da centelha perdida no comando pode cair junto da falha.
-    uint16_t dentes_esperados = (uint16_t)(qtd_dente - qtd_dente_faltante);
+    // (dentes_esperados ja calculado acima, para a validacao de posicao do gap)
     // Em partida a velocidade do motor oscila bastante por compressao/bateria, entao aceita
     // uma janela maior de dentes para nao bloquear sincronismo inicial.
     uint16_t tolerancia_dentes = 1U;
@@ -159,14 +656,52 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
     } else {
       falhas_sync_consecutivas = 0;
       revolucoes_sincronizada++;
+      // SO volta com contagem valida alimenta o rpm.
+      //
+      // Antes tempo_total_volta_completa era publicado em todo gap detectado,
+      // e calcularRPM() o consome direto. Um gap FALSO - detectado antes da
+      // hora - encurta a volta medida, e o rpm sobe na mesma proporcao. Numa
+      // 12-1, gap falso no oitavo dente em vez do decimo primeiro faz a volta
+      // parecer 8/11 do tamanho e o rpm ler 1,37x o real.
+      //
+      // Medido em motor real (12-1 no comando, 6 cilindros, 9,2 min de
+      // percurso): o motor subia a 200 rpm/s com o acelerador parado e a
+      // leitura pulou de 4030 para 5283 rpm - 4941 rpm/s, vinte e cinco vezes
+      // a aceleracao observada, sem o pe mexer. Na mesma amostra o contador de
+      // perda de sincronismo saltou de 1 para 8. O rpm inflado bateu em
+      // rpm_pre_corte e a protecao cortou a ignicao com o motorista em
+      // aceleracao plena (TPS 62). Aconteceu duas vezes no mesmo log, a
+      // segunda com TPS 87.
+      //
+      // A mediana de 3 e o limite de variacao que calcularRPM ja tem nao
+      // seguram isso: a rajada durou varias voltas seguidas, entao a maioria
+      // das amostras estava ruim e o filtro so atrasou a subida.
+      //
+      // Aqui a defesa e categorica: gap falso produz contagem invalida por
+      // definicao (a volta fecha com menos dentes que o esperado), e contagem
+      // invalida nao publica tempo de volta. O rpm simplesmente segura o
+      // ultimo valor bom em vez de inventar um.
+      tempo_total_volta_completa = volta_completa_candidata_us;
     }
     qtd_leitura = 0;
-    intervalo_dente_referencia_us = 0;
+    // A referencia NAO e mais zerada aqui: ela e uma media dos dentes normais
+    // (ver atualizar_referencia_dente) e atravessa o gap ja valida, em vez de
+    // ser reconstruida do zero - antes o primeiro valor pos-gap era o proprio
+    // intervalo do gap, deixando a referencia inflada por varios dentes.
     amostras_intervalo_validas = 0;
     if (tipo_ignicao_sequencial == 0 && revolucoes_sincronizada >= 1) {
       tempo_atual_proxima_ignicao[0] = tempo_atual;
       tempo_atual_proxima_injecao[0] = tempo_atual;
-      agendar_eventos_motor_timer1();
+      // So captura o tick de referencia aqui (barato) - o calculo pesado
+      // (agendar_eventos_motor_timer1) roda depois, no loop().
+#if SENSOR_ROTACAO_ICP1
+      // O instante exato do gap, e nao o de quando esta linha rodou.
+      tick_base_sincronismo = tick_borda_sensor;
+#else
+      tick_base_sincronismo = ler_tick32_timer1();
+#endif
+      agendamento_pendente = true;
+      PULSO_AGENDA_ALTO();
     }
 
     posicao_atual_sensor = 0;
@@ -174,10 +709,15 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
   } else {
     posicao_atual_sensor++;
     if (grau_cada_dente > 0) {
-      unsigned long tempo_instante_grau = intervalo_tempo_entre_dente / grau_cada_dente;
+      unsigned long tempo_instante_grau = dividir_por_grau_cada_dente(intervalo_tempo_entre_dente);
       if (tempo_instante_grau > 0) {
         tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
-        atualizar_agendamentos_ignicao_por_dente();
+        // Reagendamento fino por dente: em todo dente, mas so em RPM baixo.
+        if (timer1_replanejando) {
+          refino_dente_adiado = true;
+        } else {
+          refinos_do_dente();
+        }
       }
     }
     // enviar_byte_serial(grau_pms - (posicao_atual_sensor * grau_cada_dente), 1);
@@ -185,21 +725,127 @@ void decoder_roda_fonica_padrao(){ //roda fonica padrao com quantidade de dente 
 
   }
   // posicao_atual_sensor = posicao_atual_sensor + grau_cada_dente;
-  intervalo_dente_referencia_us = intervalo_tempo_entre_dente;
-  if (amostras_intervalo_validas < 255) {
-    amostras_intervalo_validas++;
+  // So dente normal alimenta a referencia. O intervalo do gap vale (N+1)
+  // periodos e envenenaria a media, justamente o que fazia a referencia ficar
+  // errada nos primeiros dentes de cada volta.
+  if (!gap_detectado) {
+    atualizar_referencia_dente(intervalo_tempo_entre_dente);
+    if (amostras_intervalo_validas < 255) {
+      amostras_intervalo_validas++;
+    }
   }
   tempo_anterior = tempo_atual;
   // tempo_final_codigo = micros(); // Registra o tempo final
   // tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
 }
+
+// ---------------------------------------------------------------------------
+// Decoder para sensor SEM dente de falha.
+//
+// Cobre dois casos que na pratica sao o mesmo: distribuidor com sensor hall
+// (um pulso por cilindro, tipo Opala) e volante com um unico dente (motos,
+// tipo Titan). Em ambos NAO ha gap para procurar - cada pulso ja e uma
+// referencia angular conhecida por si so.
+//
+// Por isso este decoder e mais simples que o de roda fonica, nao mais
+// complexo: sem deteccao de gap, sem contagem de dentes, sem validacao de
+// sincronismo. Em troca, tambem nao ha como CONFIRMAR sincronismo - confia-se
+// no sensor. Um pulso espurio vira um evento espurio, e a unica defesa e o
+// filtro de ruido.
+//
+// Configuracao:
+//   tipo_ignicao   = 2      (seleciona este decoder)
+//   qtd_dente      = pulsos por volta do sensor (1 na moto, 6 no distribuidor
+//                    de 6 cilindros)
+//   grau_pms       = graus do SENSOR entre o pulso e o PMS
+//
+// O agendamento reaproveita toda a maquinaria existente: o angulo do evento
+// sai de grau_pms - avanco, medido a partir do pulso, porque
+// offset_referencia_roda_fonica_graus() retorna 0 neste modo.
+// ---------------------------------------------------------------------------
+void decoder_sem_falha() {
+  uint32_t tempo_agora = instante_borda_sensor_us();
+  if ((tempo_agora - ultimo_tempo_interrupcao) < MIN_INTERVALO_DENTE_US) {
+    return; // repique
+  }
+
+  if (inicia_tempo_sensor_roda_fonica) {
+    ultimo_tempo_interrupcao = tempo_agora;
+    ultimo_pulso_rpm_us = tempo_agora;
+    tempo_anterior = tempo_agora;
+    intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
+    rejeicoes_dente_consecutivas = 0;
+    revolucoes_sincronizada = 0;
+    inicia_tempo_sensor_roda_fonica = 0;
+    return;
+  }
+
+  unsigned long intervalo = tempo_agora - tempo_anterior;
+
+  // Mesmo filtro de ruido da roda fonica, com o mesmo escape: se rejeitar
+  // demais seguidos, a referencia esta envenenada e precisa ser liberada,
+  // senao o filtro trava para sempre (este return acontece antes de
+  // atualizar_referencia_dente).
+  if (intervalo_dente_referencia_us > 0 &&
+      (intervalo * FATOR_RUIDO_DENTE_CURTO_NUM) < intervalo_dente_referencia_us) {
+    // Sem guarda de 255: o contador reseta em REJEICOES_DENTE_MAX (6) logo abaixo,
+    // entao nunca chega perto de estourar o byte.
+    rejeicoes_dente_consecutivas++;
+    if (rejeicoes_dente_consecutivas >= REJEICOES_DENTE_MAX) {
+      intervalo_dente_referencia_us = 0;
+    periodo_dente_anterior_us = 0;
+      rejeicoes_dente_consecutivas = 0;
+    }
+    return;
+  }
+  rejeicoes_dente_consecutivas = 0;
+
+  ultimo_tempo_interrupcao = tempo_agora;
+  ultimo_pulso_rpm_us = tempo_agora;
+  tempo_atual = tempo_agora;
+  intervalo_tempo_entre_dente = intervalo;
+
+  // calcularRPM espera o tempo de uma volta COMPLETA do sensor, e aqui um
+  // pulso cobre so 1/qtd_dente dela.
+  tempo_total_volta_completa = intervalo * (unsigned long)qtd_dente;
+
+  if (grau_cada_dente > 0) {
+    unsigned long tempo_instante_grau = dividir_por_grau_cada_dente(intervalo);
+    if (tempo_instante_grau > 0) {
+      tempo_cada_grau = filtra_tempo_cada_grau(tempo_instante_grau);
+    }
+  }
+
+  // Cada pulso e a origem angular do proximo evento.
+  posicao_atual_sensor = 0;
+  if (revolucoes_sincronizada < 32000) {
+    revolucoes_sincronizada++;
+  }
+
+  // Espera dois intervalos medidos antes de agendar: com um so, tempo_cada_grau
+  // ainda nao passou pelo filtro e o angulo sairia errado.
+  if (revolucoes_sincronizada >= 2 && tipo_ignicao_sequencial == 0) {
+    tempo_atual_proxima_ignicao[0] = tempo_atual;
+    tempo_atual_proxima_injecao[0] = tempo_atual;
+#if SENSOR_ROTACAO_ICP1
+    tick_base_sincronismo = tick_borda_sensor;
+#else
+    tick_base_sincronismo = ler_tick32_timer1();
+#endif
+    agendamento_pendente = true;
+  }
+
+  atualizar_referencia_dente(intervalo);
+  tempo_anterior = tempo_atual;
+}
+
 void leitor_sensor_roda_fonica() {
-//  tempo_inicial_codigo = micros(); // Registra o tempo inicial 
-  // noInterrupts();
-  //  TIMSK1 &= ~_BV(TOIE1);  // Desativa a interrupção do Timer1
-  decoder_roda_fonica_padrao();
-//  TIMSK1 |= _BV(TOIE1);   // Reativa a interrupção do Timer1
-  // interrupts();
-// tempo_final_codigo = micros(); // Registra o tempo final  
-// tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;   
+  PULSO_DENTE_ALTO();
+  if (sensor_sem_falha()) {
+    decoder_sem_falha();
+  } else {
+    decoder_roda_fonica_padrao();
+  }
+  PULSO_DENTE_BAIXO();
 }

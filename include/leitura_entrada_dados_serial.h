@@ -37,15 +37,25 @@ void leitura_entrada_dados_serial()
 {
   while (Serial.available() > 0){
     char data = Serial.read();
-    // Pequeno delay para estabilizar
-    delayMicroseconds(100);
+    // O delayMicroseconds(100) que havia aqui foi removido.
+    //
+    // Ele nao estabilizava nada: Serial.read() tira de um buffer de anel que a
+    // interrupcao do USART ja encheu, entao nao ha temporizacao a respeitar. Em
+    // troca, custava 100us POR BYTE dentro do loop - e o buffer de recepcao tem
+    // 64 bytes, ou seja ate 6,4ms de espera pura numa unica passada.
+    //
+    // Isso entra direto na latencia do agendamento, que e medida do gap ate os
+    // eventos ficarem armados: na bancada, sem o painel conectado, ela era de
+    // ~0,7ms; no carro, com o painel enviando, ~2,0ms. A diferenca aparecia
+    // como centelha atrasada no primeiro canal depois do gap.
 
     // Reinicia o parser quando um novo comando com payload e detectado.
     // Evita reaproveitar lixo de um pacote anterior incompleto.
     if (data == 'a' || data == 'b' || data == 'c' || data == 'd' || data == 'e' ||
         data == 'f' || data == 'g' || data == 'j' || data == 'k' || data == 'l' ||
         data == 'u' || data == 'm' || data == 'n' || data == 'o' || data == 'p' ||
-        data == 'q' || data == 'r' || data == 's' || data == 't' || data == 'v' || data == 'w') {
+        data == 'q' || data == 'r' || data == 's' || data == 't' || data == 'v' || data == 'w' ||
+        data == 'z') {
       index = 0;
       memset(buffer, 0, sizeof(buffer));
       memset(values, 0, sizeof(values));
@@ -106,12 +116,46 @@ void leitura_entrada_dados_serial()
      if (data == 'h'){//retorna dados da ecu
         ler_dados_memoria();
     }
-    if (data == 'i') {
-     if(status_dados_tempo_real){
-      status_dados_tempo_real = false;
-     }else{
+    if (data == 'x') { // retorna so o CRC8 da configuracao atual (sem mandar o dump inteiro)
+      crc_config_atual = 0;
+      modo_somente_crc_config = true;
+      ler_dados_memoria();
+      modo_somente_crc_config = false;
+      Serial.write(';');
+      Serial.write('x');
+      Serial.write(',');
+      sendSerialInt(crc_config_atual);
+      Serial.write(';');
+    }
+#if TESTE_COMPRESSAO
+    // Os dois modos suprimem ignicao e injecao e disputam o mesmo arranque,
+    // entao armar um sempre desarma o outro - nunca ficam ativos juntos.
+    if (data == 'C') { // arma o teste de compressao por roda fonica
+      captura_bateria_parar();
+      teste_compressao_iniciar();
+    }
+    if (data == 'D') { // desarma os dois modos de teste
+      teste_compressao_parar();
+      captura_bateria_parar();
+    }
+    if (data == 'E') { // devolve o vetor de tempo medio por posicao de dente
+      teste_compressao_enviar();
+    }
+    if (data == 'F') { // arma a captura crua de tensao de bateria
+      teste_compressao_parar();
+      captura_bateria_iniciar();
+    }
+    if (data == 'G') { // despeja a forma de onda capturada
+      captura_bateria_enviar();
+    }
+#endif
+    if (data == 'i') { // liga o envio de dados em tempo real - idempotente, nunca desliga
       status_dados_tempo_real = true;
-     }
+    }
+    if (data == 'y') { // desliga o envio de dados em tempo real - uso interno da tela
+      // (ex.: pausar um instante antes do comando 'x' pra ler a resposta sem
+      // misturar com quadros binarios chegando ao mesmo tempo)
+      status_dados_tempo_real = false;
     }
     if (data == 'j') {// configuração da faisca
       tipo_vetor_configuracao_faisca = 1;
@@ -136,6 +180,9 @@ void leitura_entrada_dados_serial()
     }
     if (data == 'p') {// configuração TPS
       tipo_vetor_configuracao_tps = 1;
+    }
+    if (data == 'z') {// tabela de offset por cilindro (motor de ignicao desigual)
+      tipo_vetor_offset_evento = 1;
     }
     if (data == 'q') {// configuração MAP
       tipo_vetor_configuracao_map = 1;
@@ -231,8 +278,19 @@ void leitura_entrada_dados_serial()
           local_rodafonica = values[2]; // 2 para virabrequinho e 1 para comando
           qtd_dente_faltante = values[3];
           grau_pms = values[4];
-          qtd_cilindro = values[5]; // <<< Usa o valor bruto vindo da tela! Não tenta normalizar/adivinhar canais de bobina.
-          grau_entre_cada_cilindro = (local_rodafonica == 2) ? (720 / qtd_cilindro) : (360 / qtd_cilindro);
+          // O valor da tela entra como veio - nao se tenta adivinhar canais de
+ // bobina aqui - mas PRECISA caber nos vetores de agendamento. Sem este
+ // limite, um 10 ou 12 fazia os lacos indexarem [9] e [11] em vetores de 8
+ // e escreverem por cima da RAM vizinha. A leitura da EEPROM ja limitava;
+ // a serial era o caminho que ficou aberto.
+          qtd_cilindro = values[5];
+          if (qtd_cilindro < 1) {
+            qtd_cilindro = 1;
+          } else if (qtd_cilindro > MAX_EVENTOS_AGENDAMENTO) {
+            qtd_cilindro = MAX_EVENTOS_AGENDAMENTO;
+          }
+          grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro();
+          if (!usar_offset_personalizado) preencher_offset_evento_uniforme();
           resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_inicial();
           tipo_vetor_configuracao_inicial = 0;
@@ -249,8 +307,10 @@ void leitura_entrada_dados_serial()
           tipo_vetor_configuracao_faisca = 0;
       }
       if (tipo_vetor_configuracao_dwell == 1){
-          dwell_partida = values[0];
-          dwell_funcionamento = values[1];
+          // Chega em us (a tela multiplica os ms por 1000). normalizar_dwell_us
+          // ainda aceita o formato antigo em ms, pros backups gravados antes.
+          dwell_partida_us = normalizar_dwell_us(values[0]);
+          dwell_funcionamento_us = normalizar_dwell_us(values[1]);
           resetar_estado_agendamento_motor();
           gravar_dados_eeprom_configuracao_dwell();
           tipo_vetor_configuracao_dwell = 0;
@@ -274,6 +334,9 @@ void leitura_entrada_dados_serial()
       if (tipo_vetor_configuracao_injecao == 1){
           referencia_leitura_injecao = values[0];//1 map 2 tps
           tipo_motor = values[1];//4 para motor 4 tempo e 2 para 2 tempo
+          grau_entre_cada_cilindro = calcular_grau_entre_cada_cilindro();
+          if (!usar_offset_personalizado) preencher_offset_evento_uniforme(); // 4T/2T muda o tamanho do ciclo completo em graus
+          resetar_estado_agendamento_motor(); // descarta eventos ja agendados com o ciclo antigo
           modo_injecao = values[2]; // 1 pareado 2 semi e 3 sequencial
           emparelhar_injetor = values[3];// 1 para 1234 para emparelhado 2 para 1423 semi ou sequencial e 3 para 1342 para semi ou sequencial
           deslocamento_motor = values[4];// tamanho do motor em polegadas 
@@ -303,16 +366,12 @@ void leitura_entrada_dados_serial()
           tipo_vetor_protecao = 0;
       }
       if (tipo_vetor_enriquecimento_aceleracao == 1){
-          enriquecimento_aceleracao[0] = values[0];
-          enriquecimento_aceleracao[1] = values[1];
-          enriquecimento_aceleracao[2] = values[2]; 
-          enriquecimento_aceleracao[3] = values[3]; 
-          enriquecimento_aceleracao[4] = values[4];
-          tps_dot_escala[0] = values[5];
-          tps_dot_escala[1] = values[6];
-          tps_dot_escala[2] = values[7];
-          tps_dot_escala[3] = values[8];
-          tps_dot_escala[4] = values[9];
+          // Laco em vez de dez atribuicoes por extenso: mesmo resultado, menos
+          // flash na Nano.
+          for (byte i = 0; i < 5; i++) {
+            enriquecimento_aceleracao[i] = values[i];
+            tps_dot_escala[i] = values[i + 5];
+          }
           tipo_verificacao_aceleracao_rapida = values[10];
           tps_mudanca_minima = values[11];
           intervalo_tempo_aceleracao = values[12];
@@ -328,6 +387,30 @@ void leitura_entrada_dados_serial()
           valor_tps_maximo = values[1];
           gravar_dados_eeprom_configuracao_tps();
           tipo_vetor_configuracao_tps = 0;
+      }
+      if (tipo_vetor_offset_evento == 1){
+          // values[0] liga ou desliga a tabela; values[1..] sao os offsets.
+          // Desligada, o vetor volta ao uniforme e o agendamento fica igual ao
+          // de sempre - e o caminho de todo motor de ignicao uniforme.
+          if (values[0] != 1) {
+            usar_offset_personalizado = false;
+            preencher_offset_evento_uniforme();
+          } else {
+            for (int i = 0; i < MAX_EVENTOS_AGENDAMENTO; i++) {
+              int graus = values[i + 1];
+              // Grau do SENSOR: 0..359. Fora disso nao existe posicao possivel,
+              // entao prende na faixa em vez de agendar num angulo impossivel.
+              if (graus < 0) {
+                graus = 0;
+              } else if (graus > 359) {
+                graus = 359;
+              }
+              offset_evento[i] = graus;
+            }
+            usar_offset_personalizado = true;
+          }
+          gravar_dados_eeprom_offset_evento();
+          tipo_vetor_offset_evento = 0;
       }
       if (tipo_vetor_configuracao_map == 1){
           valor_map_tipo = values[0];

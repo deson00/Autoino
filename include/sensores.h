@@ -1,30 +1,33 @@
-float temperatura_clt(){
-  int sensor_clt = analogRead(pino_sensor_clt);  // Lê o valor analógico
-  //float voltage_clt = sensor_clt * (5.0 / 1023.0);     // Converte o valor para tensão (0 a 5V)
-  //float resistencia = 2000.0 * (5.0 / voltage_clt - 1.0);  // Resistência usando um resistor conhecido em ohms
-  float resistencia_total = 2400.0;  // Substitua pelo valor real do seu uso
-  float resistencia = resistencia_total * sensor_clt / 1023.0;
-  //rpm = resistencia;
-  float beta = calculateBeta(referencia_resistencia_clt1, referencia_temperatura_clt1, referencia_resistencia_clt2, referencia_temperatura_clt2);  
-  //return calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
-  int resultado_temperatura = calculateTemperature(resistencia, beta, referencia_resistencia_clt1, referencia_temperatura_clt1);
+// Leitura compartilhada de sensor NTC (CLT/IAT usam a mesma conversao
+// resistencia -> Beta -> Steinhart-Hart, so muda o pino e a calibracao).
+#define NTC_RESISTENCIA_TOTAL 2400UL
 
-  if (resultado_temperatura > 250 || resultado_temperatura < 0) {
-      return 250;
-  } else {
-      return resultado_temperatura;
+int __attribute__((noinline)) ler_temperatura_ntc(byte pino, int resistencia_ref1, int temperatura_ref1,
+                        int resistencia_ref2, int temperatura_ref2) {
+  int sensor = analogRead(pino);
+  if (sensor <= 0) {
+    return 250;
   }
-}
 
-float temperatura_iat(){
-  int sensor_iat = analogRead(pino_sensor_iat);
-  float resistencia_total = 2400.0;
-  float resistencia = resistencia_total * sensor_iat / 1023.0;
-  float beta = calculateBeta(referencia_resistencia_iat1, referencia_temperatura_iat1, referencia_resistencia_iat2, referencia_temperatura_iat2);
-  int resultado_temperatura = calculateTemperature(resistencia, beta, referencia_resistencia_iat1, referencia_temperatura_iat1);
+  // Mesma conversao de antes (R = Rtotal * leitura / 1023), agora em inteiro.
+  uint32_t resistencia = (NTC_RESISTENCIA_TOTAL * (uint32_t)sensor) / 1023UL;
+
+  int resultado_temperatura = calcular_temperatura_ntc(resistencia,
+                                                       resistencia_ref1, temperatura_ref1,
+                                                       resistencia_ref2, temperatura_ref2);
 
   if (resultado_temperatura > 250 || resultado_temperatura < 0) {
-      return 250;
+    return 250;
   }
   return resultado_temperatura;
+}
+
+int temperatura_clt(){
+  return ler_temperatura_ntc(pino_sensor_clt, referencia_resistencia_clt1, referencia_temperatura_clt1,
+                              referencia_resistencia_clt2, referencia_temperatura_clt2);
+}
+
+int temperatura_iat(){
+  return ler_temperatura_ntc(pino_sensor_iat, referencia_resistencia_iat1, referencia_temperatura_iat1,
+                              referencia_resistencia_iat2, referencia_temperatura_iat2);
 }

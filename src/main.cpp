@@ -7,12 +7,13 @@
 #include <ler_dados_eeprom.h>
 #include <ler_dados_memoria.h>
 #include <grava_dados_eeprom.h>
+#include <captura_bateria.h>
+#include <teste_compressao.h>
 #include <leitura_entrada_dados_serial.h>
 #include <envia_dados_tempo_real.h>
 #include <sensores.h>
 #include <protecao.h>
 #include <decoder.h>
-// #include <decoder_padrao_melhorado.h>
 #include <injecao.h>
 #include <ignicao.h>
 #include <timer.h>
@@ -97,7 +98,8 @@ void calcularRPM() {
   static byte timeout_consecutivo = 0;
   static byte rpm_amostras_validas = 0;
 
-  unsigned long tempo_atual_local = micros();
+  // Mesma base de tempo dos instantes do decoder (ver agora_decoder_us).
+  unsigned long tempo_atual_local = agora_decoder_us();
   unsigned long tempo_volta_snapshot;
   unsigned long ultimo_pulso_snapshot;
 
@@ -223,17 +225,37 @@ void atualizar_estado_partida() {
 }
 
 void setup(){
+  // Saidas em nivel baixo antes de qualquer outra coisa.
+  //
+  // No reset todo pino do AVR volta a ser entrada de alta impedancia, e so
+  // deixa de ser quando o pinMode roda. Antes, o pinMode das saidas vinha
+  // DEPOIS de ler_dados_eeprom() e de um delay(1000) - ou seja, as quatro
+  // bobinas e os quatro bicos ficavam soltos por mais de um segundo a cada
+  // partida, e o que acontecia ali dependia so de o driver ter pulldown.
+  //
+  // digitalWrite ANTES do pinMode: com DDR ainda em entrada, o write so mexe
+  // no registrador de saida, entao quando o pinMode liga o driver ele ja
+  // encontra o nivel certo. Na ordem inversa haveria um instante com o pino
+  // dirigido pelo que estivesse no PORT.
+  //
+  // HIGH liga bobina e bico (ver iniciar_dwell e injecao.h), entao LOW e o
+  // estado seguro dos dois.
+  //
+  // Isso NAO cobre a janela do bootloader, que roda antes do setup e no
+  // Nano/Uno pisca o D13 - onde hoje esta o inj4. Aquela parte e de hardware:
+  // pulldown no driver, ou atuador fora desse pino.
+  for (byte i = 0; i < 4; i++) {
+    digitalWrite(ignicao_pins[i], LOW);
+    pinMode(ignicao_pins[i], OUTPUT);
+    digitalWrite(injecao_pins[i], LOW);
+    pinMode(injecao_pins[i], OUTPUT);
+  }
+
+  // O delay(1000) que ficava aqui nasceu em dbb9bc0 colado num
+  // inicializar_valores() que ja estava comentado, e nunca teve funcao
+  // propria: ler_dados_eeprom() e sincrono e nada depois dele depende de
+  // tempo. O que ele fazia de fato era esticar a janela de saidas soltas.
   ler_dados_eeprom();//aqui le os dados da eeprom que forem salvo anteriormente
-  delay(1000);
-    
-  pinMode(ign1, OUTPUT);
-  pinMode(ign2, OUTPUT);
-  pinMode(ign3, OUTPUT);
-  pinMode(ign4, OUTPUT);
-  pinMode(inj1, OUTPUT);
-  pinMode(inj2, OUTPUT);
-  pinMode(inj3, OUTPUT);
-  pinMode(inj4, OUTPUT);
   inicializar_controle_marcha_lenta();
   pinMode(pino_sensor_roda_fonica, INPUT_PULLUP);
   pinMode(pino_sensor_map, INPUT);
@@ -243,18 +265,66 @@ void setup(){
   pinMode(pino_sensor_o2, INPUT);
   pinMode(pino_sensor_brv, INPUT);
 
+#if SENSOR_ROTACAO_ICP1
+  setupTimer1();
+  configurar_captura_sensor();
+#else
   attachInterrupt(digitalPinToInterrupt(pino_sensor_roda_fonica), leitor_sensor_roda_fonica, RISING);
   setupTimer1();
+#endif
   Serial.begin(9600);
   delay(200);
-  tempo_inicial_rpm = micros();
+  tempo_inicial_rpm = agora_decoder_us();
   ultimo_pulso_rpm_us = tempo_inicial_rpm;
   inicio_espera_injecao_inicial_ms = millis();
   sei(); // Habilita interrupções globais
 }
+// Consome o agendamento assim que o gap o marca.
+//
+// Chamada em VARIOS pontos do loop, nao so no topo. A latencia do agendamento e
+// o tempo do gap ate os eventos ficarem armados, e ela vira atraso de centelha
+// no primeiro canal depois da referencia. Com uma unica verificacao no topo,
+// essa latencia e o que resta da passada corrente - medida em bancada: mediana
+// de 0,82ms, p99 de 2,1ms, para uma passada de ~1,6ms.
+//
+// Espalhar a verificacao troca "o que resta da passada" por "o que resta do
+// trecho atual". Nao encolhe o trabalho do loop; encolhe a espera.
+//
+// A funcao e barata quando nao ha nada pendente: um teste de bool volatile.
+// ponto: qual chamada do loop e esta (1 a 10, na ordem do arquivo). So o
+// diagnostico 9 usa: cada chamada impar liga o D7 e cada par desliga, entao na
+// captura o D7 mostra em que trecho do loop o processador estava quando o gap
+// chegou, e o pulso do D8 (gap ate o agendamento) mostra quando ele saiu. Fora
+// do diagnostico o parametro some na compilacao.
+static inline void processar_agendamento_pendente(uint8_t ponto) {
+#if DEBUG_PULSO_ISR_ALVO == 9
+  if (ponto & 1) {
+    PORTD |= _BV(PD7);
+  } else {
+    PORTD &= ~_BV(PD7);
+  }
+#endif
+  (void)ponto;
+  if (agendamento_pendente) {
+    agendamento_pendente = false;
+    agendar_eventos_motor_timer1();
+    PULSO_AGENDA_BAIXO();
+  }
+  // Canal em regime adiantado nao pode esperar o proximo gap para ser
+  // reagendado - ver rearmar_ignicoes_adiante(). Sai num teste de byte quando
+  // nao ha nenhum, que e o caso comum.
+  rearmar_ignicoes_adiante();
+}
+
 void loop(){
+   // O calculo pesado de agendamento (todos os canais de ignicao/injecao) roda
+   // fora da interrupcao do dente de falha - la so se captura o tick de
+   // referencia. Processa aqui, o quanto antes no loop, pra minimizar o atraso.
+   processar_agendamento_pendente(1);
+   protege_dwell_maximo();
    calcularRPM();
     processar_motor_passo_marcha_lenta();
+    processar_agendamento_pendente(2);
     qtd_loop++;
   
     //tempo_inicial_codigo = micros(); // Registra o tempo inicial
@@ -271,14 +341,33 @@ void loop(){
     
     //leituras_map[contador_leitura++] = analogRead(pino_sensor_map);
     //leituras_tps[contador_leitura++] = analogRead(pino_sensor_tps);
-    valor_map = map(analogRead(pino_sensor_map), 0, 1023, valor_map_minimo, valor_map_maximo);
-    valor_tps_adc = analogRead(pino_sensor_tps);
-    valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
-    valor_tps = constrain(valor_tps, 0, 100);
+    // Um analogRead por passada, em rodizio, em vez dos tres.
+    //
+    // Cada conversao do ADC custa ~112us, entao os tres somavam ~336us em TODA
+    // passada do loop - e e essa passada que precisa consumir
+    // agendamento_pendente logo depois do gap, cuja latencia vira atraso de
+    // centelha no primeiro canal. Em rodizio cada sensor segue sendo atualizado
+    // a cada 3 passadas, da ordem de 1ms: rapido demais para MAP, TPS ou sonda
+    // notarem diferenca.
+    //
+    // A leitura da sonda vai bruta de proposito, para preservar a resolucao do
+    // ADC - a UI conhece tipo_sonda_o2 e faz a conversao para tensao/lambda.
+    static byte proximo_adc = 0;
+    if (proximo_adc == 0) {
+      valor_map_adc = analogRead(pino_sensor_map);
+      valor_map = map(valor_map_adc, 0, 1023, valor_map_minimo, valor_map_maximo);
+    } else if (proximo_adc == 1) {
+      valor_tps_adc = analogRead(pino_sensor_tps);
+      valor_tps = map(valor_tps_adc, valor_tps_minimo, valor_tps_maximo, 0, 100);
+      valor_tps = constrain(valor_tps, 0, 100);
+    } else {
+      valor_o2_adc = analogRead(pino_sensor_o2);
+    }
+    if (++proximo_adc > 2) {
+      proximo_adc = 0;
+    }
     atualizar_estado_partida();
-    // Envia-se a leitura bruta para preservar a resolucao do ADC. A UI conhece
-    // tipo_sonda_o2 e fica responsavel pela conversao para tensao/lambda.
-    valor_o2_adc = analogRead(pino_sensor_o2);
+    processar_agendamento_pendente(3);
     
     if(referencia_leitura_ignicao == 1){
       valor_referencia_busca_avanco = valor_map;   
@@ -295,38 +384,60 @@ void loop(){
 
     if(rpm < rpm_partida){
       grau_avanco = grau_avanco_partida;
-      dwell_bobina = dwell_partida * 1000ul; 
+      dwell_bobina = dwell_partida_us; 
       status_corte = 0;
     }
     else if(avanco_fixo){
       grau_avanco = grau_avanco_fixo;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
       status_corte = 0;
     }
-    else if(tipo_protecao != 0 && rpm_anterior >= rpm_pre_corte){
+    // Le rpm, nao uma copia defasada.
+    //
+    // Esta condicao roda em toda passada do loop, mas lia rpm_anterior, que
+    // era atualizado uma vez a cada intervalo_execucao (200ms). Duas
+    // consequencias, as duas ruins:
+    //
+    // 1. Protecao lenta. Acelerando a 5000 rpm/s, 200ms de defasagem sao 1000
+    //    rpm de ultrapassagem antes de o corte agir.
+    // 2. Corte em rotacao que ja passou. Medido em motor real: o corte
+    //    apareceu no log com 3604 rpm na tela porque rpm_anterior ainda
+    //    carregava o pico da amostra anterior.
+    //
+    // O que impedia usar rpm direto era o risco de uma unica leitura ruim
+    // disparar o corte. Isso deixou de existir: leitura ruim vinha de gap
+    // falso, e gap falso agora nao alimenta mais o rpm (ver decoder.h, na
+    // validacao de contagem de dentes).
+    //
+    // Cast para int em vez de comparar sem sinal: rpm_pre_corte e int e o
+    // comportamento fica identico ao anterior, inclusive para valores
+    // configurados fora de faixa.
+    else if(tipo_protecao != 0 && (int)rpm >= rpm_pre_corte){
       grau_avanco = avanco_corte;
       status_corte = 1;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
     }
     else if(rpm < 7000 && busca_avanco_linear == true){
-      int grau_minimo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
-      int indice_rpm_minimo = procura_indice(rpm, vetor_rpm, 16);
-      int grau_maximo = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)+1];
+      int indice_map_tps_avanco = procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16);
+      int indice_rpm_minimo = procura_indice_inferior(rpm, vetor_rpm, 16);
+      int grau_minimo = matriz_avanco[indice_map_tps_avanco][indice_rpm_minimo];
+      int grau_maximo = matriz_avanco[indice_map_tps_avanco][indice_rpm_minimo+1];
       int grau_linear = busca_linear(rpm, vetor_rpm[indice_rpm_minimo], grau_minimo, vetor_rpm[indice_rpm_minimo+1], grau_maximo);
       grau_avanco = grau_linear;
       avanco_baseado_em_tabela = true;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
       status_corte = 0;
     }
     else{
       grau_avanco = matriz_avanco[procura_indice(valor_referencia_busca_avanco, vetor_map_tps, 16)][procura_indice(rpm, vetor_rpm, 16)];
       avanco_baseado_em_tabela = true;
-      dwell_bobina = dwell_funcionamento * 1000ul;
+      dwell_bobina = dwell_funcionamento_us;
       status_corte = 0;
     }
 
+    processar_agendamento_pendente(4);
     if (usar_avanco_temperatura == 1 && avanco_baseado_em_tabela && status_corte == 0) {
-      byte correcao_avanco_temp = avanco_por_temperatura((float)temperatura_motor);
+      byte correcao_avanco_temp = avanco_por_temperatura((int)temperatura_motor);
       unsigned int grau_corrigido = (unsigned int)grau_avanco + (unsigned int)correcao_avanco_temp;
       if (grau_corrigido > 120U) {
         grau_corrigido = 120U;
@@ -336,23 +447,29 @@ void loop(){
 
           VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
           // Calcula o tempo de injeção ajustado
-          float tempo_pulso = tempo_pulso_ve(dreq_fuel / 1000, VE);
-          float tempo_pulso_corrigido = tempo_pulso;
+          // dreq_fuel ja esta em microssegundos - sem conversao, sem truncamento.
+          unsigned long tempo_pulso = tempo_pulso_ve((unsigned long)dreq_fuel, VE);
+          unsigned long tempo_pulso_corrigido = tempo_pulso;
           if (usar_injecao_temperatura == 1) {
-            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura(temperatura_motor), 100, 100, 100);
+            enriquecimento_temperatura_atual = enriquecimento_temperatura((int)temperatura_motor);
+            tempo_pulso_corrigido = enriquecimento_gama(tempo_pulso, enriquecimento_temperatura_atual, 100, 100, 100);
+          } else {
+            enriquecimento_temperatura_atual = 100;
           }
           calcula_enriquecimento_aceleracao(tempo_pulso);
           tempo_injecao = tempo_pulso_corrigido + tempo_abertura_injetor + incremento_aceleracao - decremento_desaceleracao;
           if(enriquecimento_partida_atual > 0){
             // Aplica o acrescimo durante a partida e sua reducao gradual.
-            tempo_injecao = tempo_injecao + (tempo_injecao * (enriquecimento_partida_atual / 100.0));
+            tempo_injecao = tempo_injecao + ((tempo_injecao * (unsigned long)enriquecimento_partida_atual + 50UL) / 100UL);
           }
           // tempo_injecao = round(tempo_pulso);
           if (status_primeira_injecao == false && rpm > 0) {
             // Nao dispara a escorva simultanea se o motor girar antes do atraso terminar.
             status_primeira_injecao = true;
           }
-          if(status_primeira_injecao == false && !limpeza_afogamento_ativa &&
+          // A escorva aciona os bicos direto, fora do agendamento - precisa da
+          // mesma guarda de injecao desligada.
+          if(modo_injecao != 0 && status_primeira_injecao == false && !limpeza_afogamento_ativa &&
              (millis() - inicio_espera_injecao_inicial_ms) >= atraso_injecao_inicial){
             for (int j = 0; j < numero_injetor; j++){
               digitalWrite(injecao_pins[j], 1);
@@ -385,16 +502,39 @@ void loop(){
 // calcula_grau_ignicao(i);
 // }
 // }
-    leitura_entrada_dados_serial(); 
+    processar_agendamento_pendente(5);
+    leitura_entrada_dados_serial();
+    teste_compressao_verificar_tempo(); 
+    captura_bateria_processar();
+    processar_agendamento_pendente(6);
   // verifica se já passou o intervalo de tempo
   if (millis() - ultima_execucao >= intervalo_execucao){     
-  rpm_anterior = rpm; 
   //Serial.println(analogRead(pino_sensor_tps));
   // Exibe a taxa de mudança do TPS (TPSDot) no monitor serial
-  temperatura_motor = temperatura_clt();
-  temperatura_ar = temperatura_iat();
+  processar_agendamento_pendente(7);
+  // Uma temperatura por passada, alternando: cada uma atualiza a cada 400 ms,
+  // de sobra para temperatura, e o trecho cai pela metade.
+  //
+  // Cada leitura sao tres log2 de 16 multiplicacoes de 32 bits, ~0,5 ms de
+  // conta pura, e com a 60-2 a 7000 rpm as interrupcoes tomam mais da metade do
+  // processador. Medido na bancada (pulso do gap ate o agendamento no D8,
+  // trechos do loop no D7): este trecho, com as duas leituras e a marcha lenta
+  // juntas, durava 4 a 7,6 ms de 4000 a 8000 rpm, e TODAS as 160 voltas em que
+  // o agendamento atrasou mais de 1,5 ms tinham o gap caindo nele. Era a causa
+  // do IGN1 saindo 30 a 60 graus atrasado de vez em quando entre 4000 e 5000
+  // rpm: o dwell dele comeca ~0,7 ms depois do gap, antes de o agendador rodar.
+  static bool ler_ar = false;
+  if (ler_ar) {
+    temperatura_ar = temperatura_iat();
+  } else {
+    temperatura_motor = temperatura_clt();
+  }
+  ler_ar = !ler_ar;
+  processar_agendamento_pendente(8);
   atualizar_controle_marcha_lenta();
+  processar_agendamento_pendente(9);
   envia_dados_tempo_real(1);
+  processar_agendamento_pendente(10);
   protege_ignicao_injecao();
   //Serial.println(qtd_loop*(1000/intervalo_execucao)); 
   //Serial.println(freeMemory()); 
@@ -406,10 +546,10 @@ void loop(){
   // Serial.println(dreq_fuel);
   // Serial.println(tempo_injecao);
 
-  // Serial.println(rpm_anterior);
   }
 
-  //  tempo_final_codigo = micros(); // Registra o tempo final  
-  //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo; 
+  //  tempo_final_codigo = micros(); // Registra o tempo final
+  //  tempo_decorrido_codigo = tempo_final_codigo - tempo_inicial_codigo;
   //  enviar_byte_serial(tempo_decorrido_codigo, 2);
+
 }

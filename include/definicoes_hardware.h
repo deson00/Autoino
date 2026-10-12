@@ -1,8 +1,15 @@
-// Se nenhum perfil for definido manualmente, escolhe um padrao por MCU para evitar
-// pinagem incorreta ao trocar de placa no PlatformIO.
-// Para forcar manualmente:
-#define Autoino
-// #define Speeduino
+// Perfil de hardware (mapa de pinos). Quem escolhe e o build_flags do
+// platformio.ini, um -D por ambiente: os ambientes de Nano/Uno passam
+// -D Autoino e o de Mega passa -D Speeduino.
+//
+// Antes havia um "#define Autoino" fixo aqui e trocar de placa exigia editar
+// este arquivo na mao, comentando uma linha e descomentando outra. O trabalho
+// era o de menos: o risco real era commitar o arquivo trocado sem perceber e
+// o build seguinte sair com a pinagem errada - bobina e bico em pino que nao
+// e o deles.
+//
+// O fallback por MCU abaixo continua valendo para quem compila fora do
+// PlatformIO (Arduino IDE, por exemplo), onde nao ha build_flags.
 #if !defined(Autoino) && !defined(Speeduino)
 	#if defined(__AVR_ATmega2560__)
 		#define Speeduino
@@ -11,49 +18,174 @@
 	#endif
 #endif
 
+#if defined(Autoino) && defined(Speeduino)
+	#error "Autoino e Speeduino definidos ao mesmo tempo - escolha um perfil de hardware"
+#endif
+
 #ifdef Autoino
+	#pragma message("perfil de hardware: Autoino")
+#else
+	#pragma message("perfil de hardware: Speeduino")
+#endif
+
+// Timer do PWM da marcha lenta. Depende do perfil E do MCU, porque o que
+// importa e qual pino FISICO a saida de comparacao do timer alcanca:
+//
+//   Autoino no 328P/168 -> Timer2/OC2A cai no pino 11, que e pino_marcha_lenta
+//   Speeduino no 2560   -> Timer3/OC3A cai no pino 5, que e pino_marcha_lenta
+//
+// Autoino no ATmega2560 nao tem combinacao valida. La o pino 11 e OC1A, do
+// Timer1, que pertence ao agendador de ignicao - mexer no TCCR1A para gerar
+// PWM quebraria o agendamento. E OC2A no Mega e o pino 10, ou seja usar o
+// Timer2 ali colocaria o PWM num pino onde a fiacao nao esta, silenciosamente.
+//
+// Entao nessa variante a marcha lenta por PWM fica indisponivel, de forma
+// declarada. Os modos liga/desliga e motor de passo continuam funcionando:
+// os dois usam digitalWrite e nao dependem de timer.
+#if defined(Autoino) && (defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__))
+	#define MARCHA_LENTA_PWM_TIMER2
+#elif defined(Speeduino) && defined(__AVR_ATmega2560__)
+	#define MARCHA_LENTA_PWM_TIMER3
+#else
+	#define MARCHA_LENTA_PWM_INDISPONIVEL
+	#pragma message("marcha lenta por PWM indisponivel nesta combinacao de perfil e MCU (liga/desliga e passo seguem funcionando)")
+#endif
+
+// IDENTIDADE DO FIRMWARE
+//
+// A ECU passa a dizer em que placa ela acha que esta (secao V da resposta do
+// comando h). Sem isso nada impedia gravar o hex de uma revisao numa placa de
+// outra: o quarto bico ia para um pino sem driver, ou o DIR do passo ia para o
+// driver de bico - e nenhum dos dois da erro, so comportamento estranho.
+//
+// PLACA_REVISAO vem do build_flags quando existe mais de uma revisao viva.
+// O padrao e a revisao corrente, entao quem compila sem flag nenhuma leva a
+// placa atual.
+//
+// A revisao NAO e so um rotulo: ela escolhe a pinagem logo abaixo. Se fosse so
+// um numero para exibir, daria para compilar "v2" com pinos de v1 e o campo
+// viraria mentira, que e pior que nao ter campo.
+//
+//   v1  inj4 no D13, DIR do passo no D10
+//   v2  inj4 no D10, DIR do passo no D13  (o D13 e o LED do bootloader)
+//   v3  sensor de rotacao no D8 (ICP1) e inj1 no D2 - so ATmega328P
+#ifndef PLACA_REVISAO
+#define PLACA_REVISAO 2
+#endif
+
+
+#ifdef Autoino
+#define PERFIL_HARDWARE 1
+#else
+#define PERFIL_HARDWARE 2
+#endif
+
+#ifdef Autoino
+// Padrao: sensor de rotacao em interrupcao externa (D2/D19). A revisao 3
+// troca abaixo.
+#define SENSOR_ROTACAO_ICP1 0
+
+// Placa revisao 3: sensor de rotacao no D8, que e o ICP1 (captura de entrada
+// do Timer1) - o proprio hardware registra o instante da borda, e o atraso da
+// interrupcao deixa de virar erro de medida do dente. O injetor 1 vai para o
+// D2, que ficou livre. So existe no ATmega328P: no Mega o D8 nao e ICP.
+#if PLACA_REVISAO >= 3
+#if !defined(__AVR_ATmega328P__)
+#error "PLACA_REVISAO 3 (sensor no ICP1/D8) so existe no ATmega328P (Nano/Uno)"
+#endif
+#undef SENSOR_ROTACAO_ICP1
+#define SENSOR_ROTACAO_ICP1 1
+#define pino_sensor_roda_fonica 8
+#else
 #define pino_sensor_roda_fonica 2
+#endif
 #define pino_sensor_fase 3
 #define pino_sensor_map A0
 #define pino_sensor_tps A1
 #define pino_sensor_clt A2
 #define pino_sensor_iat A3
 #define pino_sensor_o2  A4
-#define pino_sensor_brv A5
+// Flex e bateria trocaram de pino na v2.
+//
+// O flex de FREQUENCIA precisa de pino com entrada digital e interrupcao de
+// mudanca; a bateria e analogica pura e nao perde nada num pino so de ADC.
+// No 328P o A6 e o A7 sao exatamente isso - so ADC, sem entrada digital e sem
+// PCINT -, entao o flex nao podia ficar la. O A5 tem PCINT13 e serve.
+//
+// A placa v2 ganhou o JP4 (PU FLEX) com pull-up de 1k para 5 V: fechado para
+// sensor de frequencia, aberto para sensor analogico. O pull-up e EXTERNO,
+// entao o firmware nao deve ligar o interno - e nao liga: nao ha pinMode para
+// esta linha, e o padrao no reset ja e entrada sem pull-up.
+//
+// O filtro dessa linha passou para 1 nF e 10 nF para nao arredondar a onda
+// quadrada. Em sensor analogico isso deixa a leitura mais crua, e a media tem
+// que ser feita no firmware - nao ha capacitor segurando mais.
+#if PLACA_REVISAO >= 2
+#define pino_sensor_flex A5
+#define pino_sensor_brv  A6
+#else
+#define pino_sensor_brv  A5
 #define pino_sensor_flex A6
+#endif
 #define pino_sensor_pressao_oleo A7
 #define pino_marcha_lenta 11
 #define pino_passo_marcha_lenta 11
+// DIR trocou de lugar com o inj4 (era D10, o inj4 era D13).
+//
+// O D13 e o SCK e o LED do bootloader: ele e dirigido a cada reset e a
+// cada gravacao, por volta de 100 ms por pisco. Com bico ali, isso
+// despejava 20 a 50 vezes uma injetada normal (2 a 5 ms) com o motor
+// parado. Pulldown nao resolve - o bootloader DIRIGE o pino, nao o
+// deixa solto -, entao a saida era tirar o atuador de la.
+//
+// DIR e o sinal mais tolerante a isso em todo o sistema: ele so diz o
+// lado, e o motor de passo so anda quando o STEP pulsa. O bootloader
+// mexendo na direcao de um motor que nao esta recebendo passo nao faz
+// nada - e o LED da placa passa a acompanhar a direcao, de brinde.
+#if PLACA_REVISAO >= 2
+#define pino_direcao_marcha_lenta 13
+#else
 #define pino_direcao_marcha_lenta 10
-byte ign1 = 4;
-byte ign2 = 5;
-byte ign3 = 6;
-byte ign4 = 7;
-byte inj1 = 8;
-byte inj2 = 9;
-byte inj3 = 12;
-byte inj4 = 13;
+#endif
+constexpr byte ign1 = 4;
+constexpr byte ign2 = 5;
+constexpr byte ign3 = 6;
+constexpr byte ign4 = 7;
+#if PLACA_REVISAO >= 3
+constexpr byte inj1 = 2;
+#else
+constexpr byte inj1 = 8;
+#endif
+constexpr byte inj2 = 9;
+constexpr byte inj3 = 12;
+#if PLACA_REVISAO >= 2
+constexpr byte inj4 = 10;
+#else
+constexpr byte inj4 = 13;
+#endif
 #endif
 #ifdef Speeduino
 #define pino_sensor_roda_fonica 19
 #define pino_sensor_fase 18
+#define pino_sensor_iat A0
 #define pino_sensor_clt A1
 #define pino_sensor_tps A2
 #define pino_sensor_map A3
-#define pino_sensor_iat A0
-#define pino_sensor_o2  A8
 #define pino_sensor_brv A4
+#define pino_sensor_flex A6
+#define pino_sensor_pressao_oleo A7
+#define pino_sensor_o2  A8
 #define pino_marcha_lenta 5 // Saida Idle 1 / IDLE-OUT padrao da Speeduino v0.4.
 #define pino_passo_marcha_lenta 17 // STEP padrao do soquete stepper Speeduino v0.4.
 #define pino_direcao_marcha_lenta 16 // DIR padrao do soquete stepper Speeduino v0.4.
-byte ign1 = 40;
-byte ign2 = 38;
-byte ign3 = 52;
-byte ign4 = 50;
-byte inj1 = 8;
-byte inj2 = 9;
-byte inj3 = 10;
-byte inj4 = 11;
+constexpr byte ign1 = 40;
+constexpr byte ign2 = 38;
+constexpr byte ign3 = 52;
+constexpr byte ign4 = 50;
+constexpr byte inj1 = 8;
+constexpr byte inj2 = 9;
+constexpr byte inj3 = 10;
+constexpr byte inj4 = 11;
 #endif
 
 // #if defined(__AVR_ATmega328P__) || defined(__AVR_ATmega168__) // Uno e Nano
@@ -129,3 +261,71 @@ byte inj4 = 11;
 //   }
 // }
 // #endif
+
+// Guarda de colisao de pinos, em tempo de compilacao.
+//
+// O motivo de existir: ao mover o inj4 do D13 para o D10, o D10 ja era o DIR do
+// motor de passo. Sem perceber, os dois codigos dirigiriam o mesmo pino - o
+// bico abriria a cada troca de direcao e a direcao inverteria a cada injetada.
+// Colisao de pino nao aparece em teste de bancada com uma funcao de cada vez;
+// aparece com fiacao ligada e motor no lugar.
+//
+// Nao custa flash: e tudo avaliado pelo compilador.
+//
+// pino_marcha_lenta e pino_passo_marcha_lenta compartilham pino de proposito -
+// PWM ou passo, nunca os dois -, entao esse par fica fora da conta.
+#define AUTOINO_PINOS_DIFEREM(a, b) static_assert((a) != (b),   "colisao de pino: " #a " e " #b " estao no mesmo pino")
+
+AUTOINO_PINOS_DIFEREM(ign1, ign2); AUTOINO_PINOS_DIFEREM(ign1, ign3);
+AUTOINO_PINOS_DIFEREM(ign1, ign4); AUTOINO_PINOS_DIFEREM(ign2, ign3);
+AUTOINO_PINOS_DIFEREM(ign2, ign4); AUTOINO_PINOS_DIFEREM(ign3, ign4);
+
+AUTOINO_PINOS_DIFEREM(inj1, inj2); AUTOINO_PINOS_DIFEREM(inj1, inj3);
+AUTOINO_PINOS_DIFEREM(inj1, inj4); AUTOINO_PINOS_DIFEREM(inj2, inj3);
+AUTOINO_PINOS_DIFEREM(inj2, inj4); AUTOINO_PINOS_DIFEREM(inj3, inj4);
+
+AUTOINO_PINOS_DIFEREM(ign1, inj1); AUTOINO_PINOS_DIFEREM(ign1, inj2);
+AUTOINO_PINOS_DIFEREM(ign1, inj3); AUTOINO_PINOS_DIFEREM(ign1, inj4);
+AUTOINO_PINOS_DIFEREM(ign2, inj1); AUTOINO_PINOS_DIFEREM(ign2, inj2);
+AUTOINO_PINOS_DIFEREM(ign2, inj3); AUTOINO_PINOS_DIFEREM(ign2, inj4);
+AUTOINO_PINOS_DIFEREM(ign3, inj1); AUTOINO_PINOS_DIFEREM(ign3, inj2);
+AUTOINO_PINOS_DIFEREM(ign3, inj3); AUTOINO_PINOS_DIFEREM(ign3, inj4);
+AUTOINO_PINOS_DIFEREM(ign4, inj1); AUTOINO_PINOS_DIFEREM(ign4, inj2);
+AUTOINO_PINOS_DIFEREM(ign4, inj3); AUTOINO_PINOS_DIFEREM(ign4, inj4);
+
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign1);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign2);
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign3);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, ign4);
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj1);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj2);
+AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj3);  AUTOINO_PINOS_DIFEREM(pino_marcha_lenta, inj4);
+
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign1); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign2);
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign3); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, ign4);
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj1); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj2);
+AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj3); AUTOINO_PINOS_DIFEREM(pino_direcao_marcha_lenta, inj4);
+
+AUTOINO_PINOS_DIFEREM(pino_sensor_roda_fonica, pino_sensor_fase);
+
+// Os analogicos entraram na guarda quando o flex e a bateria trocaram de pino
+// na v2: embaralhar pino de sensor e tao facil de errar quanto embaralhar
+// saida, e o sintoma e pior de achar - a ECU le um sensor achando que e outro.
+#define AUTOINO_SENSOR_UNICO(a) \
+  AUTOINO_PINOS_DIFEREM(a, pino_sensor_map);  AUTOINO_PINOS_DIFEREM(a, pino_sensor_tps); \
+  AUTOINO_PINOS_DIFEREM(a, pino_sensor_clt);  AUTOINO_PINOS_DIFEREM(a, pino_sensor_iat); \
+  AUTOINO_PINOS_DIFEREM(a, pino_sensor_o2)
+
+AUTOINO_SENSOR_UNICO(pino_sensor_flex);
+AUTOINO_SENSOR_UNICO(pino_sensor_brv);
+AUTOINO_SENSOR_UNICO(pino_sensor_pressao_oleo);
+AUTOINO_PINOS_DIFEREM(pino_sensor_flex, pino_sensor_brv);
+AUTOINO_PINOS_DIFEREM(pino_sensor_flex, pino_sensor_pressao_oleo);
+AUTOINO_PINOS_DIFEREM(pino_sensor_brv, pino_sensor_pressao_oleo);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_tps);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_clt);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_iat);
+AUTOINO_PINOS_DIFEREM(pino_sensor_map, pino_sensor_o2);
+AUTOINO_PINOS_DIFEREM(pino_sensor_tps, pino_sensor_clt);
+AUTOINO_PINOS_DIFEREM(pino_sensor_tps, pino_sensor_iat);
+AUTOINO_PINOS_DIFEREM(pino_sensor_tps, pino_sensor_o2);
+AUTOINO_PINOS_DIFEREM(pino_sensor_clt, pino_sensor_iat);
+AUTOINO_PINOS_DIFEREM(pino_sensor_clt, pino_sensor_o2);
+AUTOINO_PINOS_DIFEREM(pino_sensor_iat, pino_sensor_o2);

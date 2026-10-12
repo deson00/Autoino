@@ -1,6 +1,12 @@
 static const uint16_t TIMER1_TICK_US = 4;
 static const uint16_t TIMER1_MIN_DELTA_TICKS = 2;
 static const uint8_t TIMER1_MAX_REPLAN_LOOPS = 32;
+// Margem de seguranca entre ler o tick atual e escrever OCR1A/OCR1B: cobre so
+// o tempo real de varrer os poucos canais + escrever o registrador (bem menos
+// de 1 tick na pratica). O valor antigo (20 ticks = 80us) era bem mais folgado
+// que o necessario e fazia o caminho caro (reprocessar na hora, cascata)
+// disparar com mais frequencia do que precisava, principalmente em RPM alto.
+static const uint16_t TIMER1_MARGEM_DEADLOCK_TICKS = 6;
 
 static inline uint32_t us_para_ticks_timer1(unsigned long tempo_us) {
 	if (tempo_us == 0) {
@@ -55,6 +61,9 @@ static inline uint32_t alinhar_tick_para_futuro_com_margem(uint32_t tick_evento,
 	return tick_evento + (saltos * periodo_ticks);
 }
 
+// (contadores de estouro de replan removidos: mediram 0 em todos os testes,
+// descartando a hipotese de canal orfao por estouro de tentativas)
+
 static inline uint32_t ler_tick32_timer1() {
 	uint32_t overflow_snapshot;
 	uint16_t contador_snapshot;
@@ -73,22 +82,69 @@ static inline uint32_t ler_tick32_timer1() {
 	return (overflow_snapshot << 16) | contador_snapshot;
 }
 
-static inline unsigned long ajustar_tempo_evento_borda_referencia(unsigned long tempo_evento_us) {
-	if (tempo_cada_grau > 0) {
-		unsigned long periodo_referencia_us = 360UL * tempo_cada_grau;
-		if (periodo_referencia_us > 0 && (tempo_evento_us % periodo_referencia_us) == 0) {
-			if (tempo_evento_us >= tempo_cada_grau) {
-				tempo_evento_us -= tempo_cada_grau;
-			} else {
-				tempo_evento_us += tempo_cada_grau;
-			}
-		}
+// So desarma. Uma tentativa anterior de "desligar tudo que estiver ligado antes
+// de desarmar" foi medida e reprovada: matava a centelha. Nos 60 casos do log
+// a bobina era desligada 0,18ms depois de ligar - dwell nenhum, centelha
+// nenhuma. Quem chega aqui com saida ligada tem outro problema, e a solucao e
+// nao chegar aqui (ver o rearme no estouro de tentativas).
+// Verdadeiro enquanto agendar_eventos_motor_timer1 esta rodando. A ISR do
+// compare A pode disparar nesse meio (ela NAO e mascarada - ver abaixo), e
+// nesse caso ela faz so o trabalho de DESLIGAR: chamar atualizar_compare_b_ligar
+// ali seria reentrar no mesmo planejamento que o agendador esta fazendo. O
+// proprio agendador chama essa funcao no fim, entao nada se perde.
+volatile bool agendador_em_execucao = false;
+
+// Uma ISR do Timer1 entrou durante replanejar_timer1 e mexeu no estado.
+volatile bool timer1_refazer = false;
+
+// Canais em REGIME ADIANTADO: a centelha deles esta agendada uma referencia a
+// frente, porque o angulo alvo fica perto demais da referencia para o dwell
+// caber a partir dela.
+//
+// Um canal em regime adiantado NAO e agendado pelo gap - ele e rearmado pelo
+// loop logo depois de disparar, e por isso precisa sobreviver a limpeza do
+// gap. Um bit por canal; ha no maximo 8.
+volatile uint8_t ignicao_regime_adiantado = 0;
+
+// Enrolar uma referencia so faz sentido se a referencia inteira couber na
+// janela do comparador de 16 bits (65536 ticks = 262ms). Abaixo disso o
+// comparador casa cedo e a ISR precisa rearmar varias vezes ate o evento -
+// funciona, mas nao ha por que pagar isso em partida. 60000 ticks = 240ms,
+// que no comando (uma volta de sensor = 720 graus) e ~500rpm de virabrequim.
+// A Speeduino tem a guarda equivalente em setIgnitionScheduleDuration:
+// angleToTime(CRANK_ANGLE_MAX_IGN) < MAX_TIMER_PERIOD.
+static const uint32_t TIMER1_PERIODO_ADIANTA_MAX_TICKS = 60000UL;
+
+#if DEBUG_PULSO_ISR_ALVO == 6
+// Pulso so quando ha bobina ligada: desarmar sem bobina ligada e legitimo.
+//   15us -> desabilitar_timer1_compare_a()  (varredura nao achou / estouro)
+//   40us -> mascara do agendador            (a que eu introduzi)
+static inline void pulso_quem_desarmou(uint8_t local) {
+	bool ligada = false;
+	for (byte i = 0; i < 8; i++) {
+		if (ign_acionado[i]) { ligada = true; break; }
 	}
-	return tempo_evento_us;
+	if (!ligada) return;
+	PULSO_ALTO();
+	if (local == 1) _delay_us(15); else _delay_us(40);
+	PULSO_BAIXO();
 }
+#else
+#define pulso_quem_desarmou(x)
+#endif
 
 static inline void desabilitar_timer1_compare_a() {
+#if DEBUG_PULSO_ISR_ALVO == 4
+	// Desarmar o compare A com bobina ligada = ninguem mais vai desliga-la.
+	for (byte i = 0; i < 8; i++) {
+		if (ign_acionado[i]) {
+			PULSO_ORFAO_ALTO();
+			break;
+		}
+	}
+#endif
 	TIMSK1 &= ~(1 << OCIE1A);
+	pulso_quem_desarmou(1);
 }
 
 static inline void desabilitar_timer1_compare_b() {
@@ -97,29 +153,185 @@ static inline void desabilitar_timer1_compare_b() {
 
 static void atualizar_compare_b_ligar();
 static void atualizar_compare_a_desligar();
+static void replanejar_timer1(bool a_primeiro);
 static inline void agendar_injecao_canal(int i, uint32_t tick_atual);
-static inline void processar_cortes_vencidos(uint32_t tick_atual);
+static inline bool processar_cortes_vencidos(uint32_t tick_atual);
+
+// Tempo entre REFERENCIAS angulares consecutivas, em ticks.
+//
+// Na roda fonica com dente de falha a referencia e o gap, que aparece uma vez
+// por volta do sensor - dai 360 graus. No modo sem dente de falha cada pulso e
+// uma referencia, e elas se repetem a cada grau_cada_dente graus (60 num
+// distribuidor de 6 cilindros, 360 num volante de um dente). Usar 360 fixo la
+// empurrava o evento uma volta inteira do sensor em vez de um pulso.
+static inline uint32_t ticks_entre_referencias() {
+	unsigned long graus = sensor_sem_falha() ? (unsigned long)grau_cada_dente : 360UL;
+	return us_para_ticks_timer1(graus * tempo_cada_grau);
+}
 
 static inline void limpar_ignicoes_pendentes_nao_acionadas() {
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
+		// Canal em regime adiantado nao e limpo: o agendamento dele aponta para
+		// a referencia SEGUINTE, e apaga-lo aqui obrigaria a replaneja-lo a
+		// partir desta referencia - de onde, por definicao, ele nao cabe.
+		if (ignicao_regime_adiantado & (uint8_t)(1U << i)) {
+			continue;
+		}
 		if (ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
 			ignicao_agendada[i] = false;
 		}
 	}
 }
 
-static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks) {
+static inline uint32_t calcular_tick_fim_dwell_futuro(unsigned long tempo_ignicao_us, uint32_t tick_atual, uint32_t dwell_ticks, bool *enrolou) {
+	// tick_base_sincronismo e a ORIGEM ANGULAR da volta (instante do gap).
+	// Uma tentativa anterior de trocar essa ancora pelo tempo real na funcao
+	// INTEIRA foi desastrosa (cobertura 100%->50% e morte em 4600rpm) - e
+	// tambem carregava o bug de cancelamento cruzado, ja corrigido. Aqui o
+	// tempo real entra em um unico ponto, apenas na decisao de "cabe o dwell?".
 	uint32_t tick_fim_dwell = tick_base_sincronismo + us_para_ticks_timer1(tempo_ignicao_us);
 
 	if (tempo_cada_grau > 0) {
-		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
-		
+		uint32_t periodo_ticks_360 = ticks_entre_referencias();
+
 		if (tick_fim_dwell == tick_atual) {
 			tick_fim_dwell += TIMER1_MIN_DELTA_TICKS;
 		}
 
-		tick_fim_dwell = alinhar_tick_para_futuro_com_margem(tick_fim_dwell, tick_atual, periodo_ticks_360, dwell_ticks + TIMER1_MIN_DELTA_TICKS);
+		if (tick_atual == tick_base_sincronismo) {
+			// Primeiro agendamento da volta. Se o angulo alvo estiver perto
+			// demais da referencia para caber o dwell inteiro, comeca a
+			// carregar AGORA - centelha retardada e melhor que centelha
+			// nenhuma, e empurrar pra volta seguinte derrubaria a desta volta.
+			//
+			// O "agora" e lido do timer, nao herdado de tick_atual: aqui
+			// tick_atual e o instante do GAP, e esta funcao roda no loop() com
+			// atraso variavel (medido em ~1,1ms de mediana). Usar o instante do
+			// gap como se fosse o presente fazia o evento nascer VENCIDO, e
+			// entao reagendar_ignicao_se_dwell_ficou_curto o cancelava - por
+			// isso o canal mais proximo da referencia (ign1 na 60-2, que fica a
+			// poucos graus do gap) perdia centelhas ao subir de rotacao.
+			//
+			// So esta comparacao usa o tempo real. O restante da funcao continua
+			// ancorado em tick_base_sincronismo, que e a origem ANGULAR - e o
+			// agendamento segue sendo limpo e recalculado a cada gap, sem
+			// agendamento nenhum rodando livre entre voltas.
+			// Quando o dwell inteiro nao cabe: MANTEM O ANGULO e deixa o dwell
+			// encurtar. Antes preservava o dwell e empurrava a centelha, e isso
+			// custava caro no primeiro canal depois do gap.
+			//
+			// Medido em motor real (60-2 no virabrequim, 6 cilindros, so
+			// ignicao), centelha da ign1 a 56 graus do gap e agendador rodando
+			// ~2,0ms depois dele:
+			//
+			//   rpm      ign1        ign2 e ign3
+			//   1700     56,6 graus   176 / 297  (planos)
+			//   2100     63,6         176 / 297
+			//   2500     71,6         176 / 297
+			//   2800     80,3 graus   176 / 297
+			//
+			// Ate 1900rpm o dwell comeca depois de 2,3ms e cabe; acima, comeca
+			// antes de o agendador rodar e o empurrao entra - dai o joelho em
+			// 1900 e os 24 graus de atraso em 2800. ign2 e ign3, longe do gap,
+			// ficam planos: a prova de que nao era o avanco, que moveria os
+			// tres juntos.
+			//
+			// Vinte e quatro graus de atraso e pior que meio dwell. Abaixo do
+			// piso, porem, a centelha nao sai, e ai atrasada volta a ser melhor
+			// que nenhuma - por isso o comportamento antigo continua como
+			// ultimo recurso.
+			//
+			// TERCEIRA opcao, que so existe desde que o rearme saiu do gap:
+			// ENROLAR uma referencia. Em vez de empurrar a centelha ou cortar o
+			// dwell, agenda o MESMO angulo uma volta a frente, onde ha a volta
+			// inteira de pista para o dwell. E o que a Speeduino faz em
+			// _calculateCoilChargeAngle (o angulo de carga nasce somando
+			// CRANK_ANGLE_MAX_IGN quando fica negativo) e em
+			// _calculateAngularTime (while(delta < 0) delta += maxAngle).
+			//
+			// O comentario que estava aqui dizia que empurrar para a volta
+			// seguinte "derrubaria a desta volta". Isso so vale se o canal for
+			// agendado uma unica vez por volta, no gap: dai ele perderia uma
+			// volta sim, outra nao. Com o rearme no loop
+			// (rearmar_ignicoes_adiante) o canal e reagendado assim que
+			// dispara, e o regime permanente e uma centelha por volta. O custo
+			// e uma unica centelha, na primeira volta apos o sincronismo.
+			//
+			// O criterio de ENTRADA no regime adiantado nao e "nao coube
+			// agora" - e "nao cabe nunca": angulo menor que o proprio dwell.
+			//
+			// A primeira versao usava o disponivel medido, que carrega a
+			// latencia do loop. Medido em bancada numa varredura de 1015 a
+			// 5989 rpm: um pico de latencia de ~1,8ms fazia o canal entrar no
+			// regime a 3000rpm, onde o angulo de 31 graus da 3,2ms e o dwell
+			// de 2,9ms cabe folgado. Resultado, 30 trocas de regime entre 3200
+			// e 2700 rpm na desaceleracao, alternando quase volta a volta, com
+			// a centelha saindo 5 a 8 graus adiantada nas voltas enroladas.
+			//
+			// Com o criterio no angulo ha uma consequencia estrutural que vale
+			// mais que o criterio em si: o inicio do dwell enrolado cai em
+			// (angulo - dwell) relativo ao gap seguinte, que e NEGATIVO por
+			// definicao da propria condicao. Ou seja, a bobina sempre ja esta
+			// carregando quando o gap chega, e o agendador do gap encontra o
+			// canal ocupado. A corrida entre o rearme do loop e o gap deixa de
+			// existir em vez de ser arbitrada.
+			uint32_t angulo_ticks = us_para_ticks_timer1(tempo_ignicao_us);
+
+			if (angulo_ticks < dwell_ticks &&
+			    periodo_ticks_360 > 0 &&
+			    periodo_ticks_360 <= TIMER1_PERIODO_ADIANTA_MAX_TICKS) {
+				// O dwell nao cabe entre a referencia e o alvo em NENHUMA
+				// circunstancia - nem com latencia zero. Enrola.
+				//
+				// Esta decisao nao consulta o tempo real de proposito. A
+				// versao anterior exigia tambem "disponivel < piso", que
+				// embute a latencia do loop, e o efeito medido em bancada
+				// (3094 voltas, 1013 a 5989 rpm) foi uma populacao bimodal:
+				// acima de 3400rpm, onde o angulo ja e menor que o dwell, o
+				// canal entrava no regime so quando a latencia dava um pico -
+				// 693 das 3094 centelhas continuavam saindo com menos de
+				// 2,5ms de dwell, na mesma rotacao em que outras saiam com
+				// 2,95ms.
+				tick_fim_dwell += periodo_ticks_360;
+				if (enrolou != NULL) {
+					*enrolou = true;
+				}
+			} else {
+				uint32_t agora = ler_tick32_timer1();
+				int32_t disponivel = (int32_t)(tick_fim_dwell - agora);
+				if (disponivel < (int32_t)dwell_ticks) {
+					uint32_t piso = (dwell_ticks * DWELL_MINIMO_UTIL_PCT) / 100UL;
+					if (disponivel < (int32_t)piso) {
+						// Cabe pela geometria, so nao coube por latencia (ou a
+						// referencia e longa demais para o comparador, na
+						// partida): comportamento antigo, centelha atrasada.
+						tick_fim_dwell = agora + dwell_ticks;
+					}
+					// senao: nao mexe. tick_inicio_dwell nasce no passado e
+					// processar_ligamentos_vencidos liga a bobina na hora, com
+					// o dwell reduzido ao que couber.
+				}
+			}
+		} else {
+			// Caminho do REARME (chamado apos o evento disparar, com o tempo
+			// real). Aqui o proximo evento deste canal esta, por definicao,
+			// exatamente um periodo a frente - qualquer alvo a menos disso e
+			// duplicata na mesma volta.
+			//
+			// A margem antiga era dwell + delta, uns poucos graus. Insuficiente:
+			// o rearme recalcula o angulo com o tempo_cada_grau ATUAL, e em
+			// DESACELERACAO esse valor cresce, jogando o alvo recalculado mais
+			// adiante na mesma volta - ainda no futuro, logo aceito, e o canal
+			// dispara de novo.
+			//
+			// Medido em bancada com roda 12-1 no comando, rotacao variando:
+			// duplicatas em 16-43% das voltas em desaceleracao contra 0-2% em
+			// aceleracao. Meio periodo e folgado o bastante para rejeitar
+			// qualquer alvo da volta corrente e permissivo o bastante para
+			// aceitar o legitimo, que fica a um periodo inteiro.
+			tick_fim_dwell = alinhar_tick_para_futuro_com_margem(tick_fim_dwell, tick_atual, periodo_ticks_360, periodo_ticks_360 >> 1);
+		}
 	} else if (tick_ja_passou(tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS, tick_fim_dwell)) {
 		tick_fim_dwell = tick_atual + dwell_ticks + TIMER1_MIN_DELTA_TICKS;
 	}
@@ -137,19 +349,183 @@ static inline void agendar_ignicao_canal(int i, uint32_t tick_atual) {
 		return;
 	}
 
+	// Canal em regime adiantado pertence ao rearme do loop, nao ao gap. Sem
+	// esta porta, um canal que estivesse livre no instante do gap era
+	// replanejado por ele a partir desta referencia - de onde nao cabe - e o
+	// regime alternava volta a volta. O rearme sempre devolve o bit quando o
+	// canal deixa de precisar (ver rearmar_ignicoes_adiante), entao nao ha
+	// como um canal ficar preso aqui.
+	if (ignicao_regime_adiantado & (uint8_t)(1U << i)) {
+		return;
+	}
+
 	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
 	calcula_grau_ignicao(i);
-	uint32_t tick_fim_dwell = calcular_tick_fim_dwell_futuro(tempo_proxima_ignicao[i], tick_atual, dwell_ticks);
+	bool enrolou = false;
+	uint32_t tick_fim_dwell = calcular_tick_fim_dwell_futuro(tempo_proxima_ignicao[i], tick_atual, dwell_ticks, &enrolou);
 
 	uint32_t tick_inicio_dwell = tick_fim_dwell - dwell_ticks;
 
 	ignicao_tick_ligar[i] = tick_inicio_dwell;
 	ignicao_tick_desligar[i] = tick_fim_dwell;
 	ignicao_agendada[i] = true;
+	if (enrolou) {
+		ignicao_regime_adiantado |= (uint8_t)(1U << i);
+	}
+}
+
+// Correcao do fim do dwell quando o gap real chega, para o canal enrolado.
+//
+// O canal em regime adiantado tem o alvo montado sobre periodo ESTIMADO
+// (rearmar_ignicoes_adiante: ultimo gap real + N periodos). A estimativa erra
+// quando a rotacao muda dentro da volta, e o erro cai inteiro sobre o angulo
+// da centelha, porque o dwell dele termina logo depois do gap seguinte.
+//
+// Medido em bancada 18/09 (6 cilindros, 60-2 no virabrequim, dwell 2,95 ms):
+// a dispersao do ign1 vai de +-0,4 grau a 900 rpm para +-7,8 graus a 2800,
+// enquanto ign2 e ign3 ficam em +-1 a 3 na faixa inteira. Pior caso, centelha
+// 52 graus adiantada. De 2500 a 2750 rpm, 10,3% das centelhas fora do ritmo.
+//
+// Quando o gap chega, tick_base_sincronismo deixa de ser estimativa e vira
+// medida: o alvo exato deste canal e base + angulo, e o angulo se recalcula
+// com o tempo_cada_grau ja atualizado por esta volta. So o DESLIGAMENTO se
+// corrige - o ligamento ja aconteceu e esta no passado. Quem absorve o erro
+// passa a ser o dwell, e nao o ponto, que e a mesma escolha do adjustCrankAngle
+// da Speeduino no ramo isRunning ("this could reduce dwell time & potentially
+// result in a weaker spark").
+//
+// Nao mexe nas duas portas de timer.h:354 e timer.h:448. Elas impedem
+// REPLANEJAR o canal a partir desta referencia, de onde por definicao ele nao
+// cabe, e foi isso que causou a alternancia de regime volta a volta descrita em
+// ba47798. Aqui nao ha replanejamento: o evento continua sendo o mesmo, na
+// mesma volta, so com o instante final corrigido.
+static inline void corrigir_fim_dwell_adiantado(int i, uint32_t base) {
+	if (!(ignicao_regime_adiantado & (uint8_t)(1U << i))) {
+		return;
+	}
+
+	// Vale para o canal AGENDADO, tenha a bobina ligado ou nao - sao os dois
+	// estados que o adjustCrankAngle da Speeduino trata, RUNNING e PENDING.
+	// Canal que ja soltou a centelha nao tem o que corrigir, e ignicao_agendada
+	// ja e false nele.
+	//
+	// A primeira versao exigia a bobina carregando (captura_dwell). Medido no
+	// motor, isso cobria so 11,6% das voltas a 2500 rpm e 62,8% a 3000 - e as
+	// voltas de fora eram justamente as que saiam com a centelha atrasada.
+	if (!ignicao_agendada[i]) {
+		return;
+	}
+
+	if (tempo_cada_grau == 0) {
+		return;
+	}
+
+	uint32_t alvo = base + us_para_ticks_timer1(calcular_tempo_ignicao_indice(i));
+
+	// Nao ha guarda de alvo no passado nem de alvo distante demais: as duas
+	// seriam codigo morto. O angulo ja vem normalizado em [0,360) e
+	// calcular_tempo_evento_ignicao nunca devolve zero, entao alvo esta sempre
+	// depois de base; e canal em regime adiantado tem, por definicao de entrada,
+	// angulo MENOR que o proprio dwell, entao nunca perto de uma volta inteira.
+	// Na Nano essas duas guardas custavam mais que a correcao inteira.
+
+	// Piso de dwell: encurtar para acertar o ponto vale ate certo ponto. Abaixo
+	// de metade, a bobina nao entrega centelha - e centelha fraca na hora certa e
+	// pior que centelha inteira alguns graus atrasada. O dwell agendado sai da
+	// propria dupla de ticks, sem recalcular de dwell_bobina, e a metade sai por
+	// deslocamento: DWELL_MINIMO_UTIL_PCT e 50, e a multiplicacao de 32 bits que
+	// o valor generico exige nao cabe no que sobra de flash.
+	uint32_t dwell_agendado = ignicao_tick_desligar[i] - ignicao_tick_ligar[i];
+	uint32_t piso = dwell_agendado >> 1;
+	if (!captura_dwell[i]) {
+		// Pendente: a bobina ainda nao ligou, entao da para mover a ESPERA e
+		// manter o dwell inteiro - o ramo PENDING do adjustCrankAngle.
+		ignicao_tick_ligar[i] = alvo - dwell_agendado;
+	} else {
+		int32_t folga = (int32_t)(alvo - ignicao_tick_ligar[i]);
+		if (folga < (int32_t)piso) {
+			alvo = ignicao_tick_ligar[i] + piso;
+		}
+	}
+
+	ignicao_tick_desligar[i] = alvo;
+}
+
+// Rearme dos canais em regime adiantado, fora do gap.
+//
+// Um canal so e agendado no gap. Quando ele acaba de disparar, o proximo alvo
+// alcancavel a partir do gap SEGUINTE ja e a volta depois dele - entao esperar
+// pelo gap custaria uma volta inteira, e o canal dispararia uma volta sim,
+// outra nao. E o mesmo motivo pelo qual a Speeduino chama setIgnitionChannels
+// a cada passada do loop e nao uma vez por referencia.
+//
+// Roda so para os canais marcados, e so quando eles estao livres - ou seja,
+// alguns bytes de teste nas passadas em que nao ha nada a fazer.
+//
+// A ancora continua sendo o ultimo gap REAL (tick_base_sincronismo) mais um
+// periodo estimado, nao uma cadeia de estimativas: o erro nao acumula, e o
+// proprio alinhamento com margem de meio periodo e o mesmo ja usado (e ja
+// testado contra duplicata em desaceleracao) no caminho de rearme antigo.
+static void rearmar_ignicoes_adiante() {
+	if (ignicao_regime_adiantado == 0) {
+		return;
+	}
+
+	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 || status_corte != 0 || tempo_cada_grau == 0) {
+		ignicao_regime_adiantado = 0;
+		return;
+	}
+
+	uint32_t periodo_ticks = ticks_entre_referencias();
+	if (periodo_ticks == 0 || periodo_ticks > TIMER1_PERIODO_ADIANTA_MAX_TICKS) {
+		ignicao_regime_adiantado = 0;
+		return;
+	}
+
+	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
+	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	for (int i = 0; i < eventos_ignicao; i++) {
+		if (!(ignicao_regime_adiantado & (uint8_t)(1U << i))) {
+			continue;
+		}
+		if (ignicao_agendada[i] || ign_acionado[i] || captura_dwell[i]) {
+			continue; // ainda ocupado com o ciclo corrente
+		}
+
+		calcula_grau_ignicao(i);
+		uint32_t angulo_ticks = us_para_ticks_timer1(tempo_proxima_ignicao[i]);
+		uint32_t alvo = tick_base_sincronismo + angulo_ticks;
+
+		// Saida do regime: se o angulo ja folga o dwell com sobra, o gap volta
+		// a dar conta com ancora exata, que e sempre melhor que a estimada.
+		// A folga de 25% e histerese - sem ela o canal entraria e sairia do
+		// regime a cada volta na fronteira.
+		if (angulo_ticks > (dwell_ticks + (dwell_ticks >> 2))) {
+			ignicao_regime_adiantado &= (uint8_t)~(1U << i);
+			continue;
+		}
+
+		uint32_t agora = ler_tick32_timer1();
+		alvo = alinhar_tick_para_futuro_com_margem(alvo, agora, periodo_ticks, periodo_ticks >> 1);
+
+		uint8_t sreg = SREG;
+		cli();
+		ignicao_tick_ligar[i] = alvo - dwell_ticks;
+		ignicao_tick_desligar[i] = alvo;
+		ignicao_agendada[i] = true;
+		replanejar_timer1(false);
+		SREG = sreg;
+	}
 }
 
 static inline void recalcular_ignicao_canal_por_dente(int i, uint32_t tick_atual) {
 	if (status_corte != 0 || tempo_cada_grau == 0 || grau_cada_dente == 0) {
+		return;
+	}
+
+	// Canal em regime adiantado tem alvo uma referencia a frente; o refino por
+	// dente raciocina dentro da volta corrente e o traria de volta para ela.
+	if (ignicao_regime_adiantado & (uint8_t)(1U << i)) {
 		return;
 	}
 
@@ -189,6 +565,7 @@ static inline void recalcular_injecao_canal_por_dente(int i, uint32_t tick_atual
 	int graus_ate_evento = angulo_alvo - angulo_sensor_atual;
 	if (graus_ate_evento <= 0) {
 		graus_ate_evento += 360;
+		PULSO_INJ_DESCARTE(30);
 	}
 
 	uint32_t ticks_ate_inicio = us_para_ticks_timer1((unsigned long)graus_ate_evento * tempo_cada_grau);
@@ -199,6 +576,7 @@ static inline void recalcular_injecao_canal_por_dente(int i, uint32_t tick_atual
 	injecao_tick_desligar[i] = tick_inicio_injecao + tempo_injecao_ticks;
 }
 
+
 void atualizar_agendamentos_ignicao_por_dente() {
 	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 ||
 	    (local_rodafonica != 1 && local_rodafonica != 2) || tempo_cada_grau == 0) {
@@ -208,18 +586,56 @@ void atualizar_agendamentos_ignicao_por_dente() {
 	uint8_t sreg = SREG;
 	cli();
 	uint32_t tick_atual = ler_tick32_timer1();
-	processar_cortes_vencidos(tick_atual);
+	bool algo_desligou = processar_cortes_vencidos(tick_atual);
+#if SENSOR_ROTACAO_ICP1
+	// Projeta a partir do instante em que o dente CHEGOU, e nao de agora: a
+	// conta abaixo e "graus ate o evento a partir deste dente".
+	const uint32_t tick_dente = tick_borda_sensor;
+#else
+	const uint32_t tick_dente = tick_atual;
+#endif
+
+	// TODOS os canais a cada dente, como a injecao logo abaixo sempre fez.
+	//
+	// Antes era um canal por dente, em revezamento, para poupar tempo dentro
+	// da interrupcao. O preco era que o evento disparava com o agendamento
+	// refinado ate 5 dentes antes - e na roda do comando cada dente vale 60
+	// graus de virabrequim. Medido em bancada reproduzindo 12-1 real da
+	// ranger: o erro do evento dobrava conforme a defasagem do refino (2,1
+	// grau com o canal refinado no dente anterior, 4,4 com 5 dentes de
+	// atraso), e a ECU deixava de ser deterministica - a mesma entrada dava
+	// saidas diferentes entre passadas (mediana 2,53 grau), contra 0,01 grau
+	// quando o refino nao roda.
+	//
+	// O custo cabe: este refino so roda com dente mais longo que
+	// PERIODO_DENTE_MIN_REFINO_US (1 ms), e na 12-1 o dente dura 5 a 20 ms.
+	// Canal que ja disparou, esta carregando ou nao esta agendado sai na
+	// primeira linha de recalcular_ignicao_canal_por_dente, entao so os
+	// pendentes fazem a conta inteira.
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
-	for (int i = 0; i < eventos_ignicao; i++) {
-		recalcular_ignicao_canal_por_dente(i, tick_atual);
+	for (byte i = 0; i < eventos_ignicao; i++) {
+		recalcular_ignicao_canal_por_dente(i, tick_dente);
 	}
+
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_injecao; i++) {
-		recalcular_injecao_canal_por_dente(i, tick_atual);
+		recalcular_injecao_canal_por_dente(i, tick_dente);
 	}
-	processar_cortes_vencidos(tick_atual);
+
+	// A segunda chamada a processar_cortes_vencidos(tick_atual) foi removida:
+	// era redundante, checava o mesmo tick_atual ja avaliado acima, nunca
+	// encontrava nada novo.
+	// As duas, sempre - mesmo motivo da correcao em agendar_eventos_motor_timer1.
+	//
+	// A condicao antiga raciocinava sobre recalcular_ignicao_canal_por_dente,
+	// que de fato so mexe em canais ainda nao ligados. Mas quem liga bobina
+	// aqui e atualizar_compare_b_ligar(), pelo caminho de prevencao de
+	// deadlock, e isso acontece DEPOIS de algo_desligou ter sido calculado.
+	// Bobina ligada sem o compare A armado fica presa ate a protecao de dwell.
 	atualizar_compare_b_ligar();
 	atualizar_compare_a_desligar();
+	(void)algo_desligou;
+
 	SREG = sreg;
 }
 
@@ -234,13 +650,22 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 	uint32_t tick_inicio_injecao = tick_base_sincronismo + us_para_ticks_timer1(tempo_injecao_inicio_us);
 
 	if (tempo_cada_grau > 0) {
-		uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
-		
+		uint32_t periodo_ticks_360 = ticks_entre_referencias();
+
 		if (tick_inicio_injecao == tick_atual) {
 			tick_inicio_injecao += TIMER1_MIN_DELTA_TICKS;
 		}
 
-		tick_inicio_injecao = alinhar_tick_para_futuro(tick_inicio_injecao, tick_atual, periodo_ticks_360);
+		// Mesma protecao da ignicao contra duplicata em desaceleracao. Antes
+		// usava alinhar_tick_para_futuro, SEM margem nenhuma: bastava o alvo
+		// recalculado ficar um tick a frente para ser aceito na mesma volta.
+		// Com 6 eventos por volta no modo comando, todos duplicavam juntos -
+		// medimos 12 injecoes em voltas que deviam ter 6.
+		if (tick_atual == tick_base_sincronismo) {
+			tick_inicio_injecao = alinhar_tick_para_futuro(tick_inicio_injecao, tick_atual, periodo_ticks_360);
+		} else {
+			tick_inicio_injecao = alinhar_tick_para_futuro_com_margem(tick_inicio_injecao, tick_atual, periodo_ticks_360, periodo_ticks_360 >> 1);
+		}
 	} else if (tick_ja_passou(tick_atual, tick_inicio_injecao)) {
 		tick_inicio_injecao = tick_atual + TIMER1_MIN_DELTA_TICKS;
 	}
@@ -251,17 +676,38 @@ static inline void agendar_injecao_canal(int i, uint32_t tick_atual) {
 	injecao_agendada[i] = true;
 }
 
+// Chamada na hora de abrir o bico. Decide entre abrir agora ou empurrar a
+// injecao para a volta seguinte.
+//
+// O criterio e o ATRASO do proprio inicio: so empurra se a abertura esta sendo
+// processada mais de 20% do pulso agendado depois do horario. No horario, abre
+// e o fim passa a sair do tempo_injecao ATUAL.
+//
+// Antes comparava o que restava do pulso agendado com 80% do tempo_injecao
+// atual. Parece a mesma coisa, mas nao e: o pulso foi agendado no dente
+// anterior, e se o tempo_injecao SOBE no meio - que e exatamente o que o
+// enriquecimento de aceleracao faz - o pulso agendado "fica curto" sem atraso
+// nenhum, e a injecao era jogada para a volta seguinte. O enriquecimento, que
+// devia por mais combustivel, tirava uma injecao inteira.
+//
+// Medido na bancada com a configuracao da ranger (12-1 no comando, 1 bico,
+// pareado, enriquecimento de aceleracao de 5 ms ativo acima de 800 rpm),
+// 1000 rpm fixos: faltava uma injecao em 6% (05/10) a 36% (08/10) das voltas,
+// conforme o ruido do TPS da bancada. Com pulso de diagnostico em cada caminho
+// de descarte, todas as faltas eram este empurrao, disparado no horario certo
+// da abertura (8,53 ms depois do dente, sem atraso) e com as larguras das
+// injecoes vizinhas normais (1,88 a 2,09 ms).
 static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_atual) {
 	uint32_t tempo_injecao_ticks = us_para_ticks_timer1(tempo_injecao);
-	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, injecao_tick_desligar[i]);
-	uint32_t pulso_minimo_util_ticks = (tempo_injecao_ticks * 80UL) / 100UL;
-	if (pulso_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
-		pulso_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
-	}
+	uint32_t ligar = injecao_tick_ligar[i];
+	uint32_t pulso_agendado = injecao_tick_desligar[i] - ligar;
+	uint32_t atraso = tick_ja_passou(tick_atual, ligar) ? (tick_atual - ligar) : 0;
 
-	if (tempo_restante_ticks >= pulso_minimo_util_ticks) {
+	if (atraso * 5UL <= pulso_agendado) {
+		injecao_tick_desligar[i] = tick_atual + tempo_injecao_ticks;
 		return false;
 	}
+	PULSO_INJ_DESCARTE(10);
 
 	if (tempo_cada_grau == 0) {
 		injecao_tick_ligar[i] = tick_atual + TIMER1_MIN_DELTA_TICKS;
@@ -269,8 +715,8 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 		return true;
 	}
 
-	uint32_t periodo_ticks_360 = us_para_ticks_timer1(360UL * tempo_cada_grau);
-	injecao_tick_ligar[i] = alinhar_tick_para_futuro_com_margem(injecao_tick_ligar[i],
+	uint32_t periodo_ticks_360 = ticks_entre_referencias();
+	injecao_tick_ligar[i] = alinhar_tick_para_futuro_com_margem(ligar,
 	                                                            tick_atual,
 	                                                            periodo_ticks_360,
 	                                                            tempo_injecao_ticks + TIMER1_MIN_DELTA_TICKS);
@@ -279,23 +725,44 @@ static inline bool reagendar_injecao_se_pulso_ficou_curto(int i, uint32_t tick_a
 }
 
 static inline bool reagendar_ignicao_se_dwell_ficou_curto(int i, uint32_t tick_atual) {
-	uint32_t dwell_ticks = us_para_ticks_timer1(dwell_bobina);
-	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
-	uint32_t dwell_minimo_util_ticks = (dwell_ticks * 80UL) / 100UL;
-	if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
-		dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
+	// O piso so muda quando o dwell muda (partida <-> funcionamento), entao a
+	// conta fica guardada e esta funcao, que roda em TODO inicio de dwell dentro
+	// da ISR do compare B, so compara.
+	//
+	// A conta era uma multiplicacao e uma divisao de 32 bits (__udivmodsi4), uns
+	// 45us no ATmega328. Medido em bancada (60-2 no virabrequim, so ignicao,
+	// pulso das ISRs do Timer1 no D7): a ISR que liga a bobina levava ~160us,
+	// contra ~80us a da centelha. Acima de 6000rpm o dente da 60-2 dura menos
+	// que isso (167us a 6000, 133us a 7500), e dois dentes chegando dentro da
+	// mesma ISR sao um dente perdido - de 366 a 1202 ocorrencias por faixa de
+	// 500rpm entre 6000 e 7900.
+	static unsigned long dwell_em_cache = 0;
+	static uint32_t dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
+	if (dwell_bobina != dwell_em_cache) {
+		dwell_em_cache = dwell_bobina;
+		uint32_t dwell_ticks = us_para_ticks_timer1(dwell_em_cache);
+		dwell_minimo_util_ticks = (dwell_ticks * DWELL_CANCELA_ABAIXO_PCT) / 100UL;
+		if (dwell_minimo_util_ticks < TIMER1_MIN_DELTA_TICKS) {
+			dwell_minimo_util_ticks = TIMER1_MIN_DELTA_TICKS;
+		}
 	}
+	uint32_t tempo_restante_ticks = delta_tick_evento(tick_atual, ignicao_tick_desligar[i]);
 
 	if (tempo_restante_ticks >= dwell_minimo_util_ticks) {
 		return false;
 	}
 
-	if (tempo_cada_grau == 0) {
-		limpar_ignicoes_pendentes_nao_acionadas();
-		return true;
-	}
-
-	limpar_ignicoes_pendentes_nao_acionadas();
+	// Cancela APENAS este canal. Antes chamava limpar_ignicoes_pendentes_nao_acionadas(),
+	// que apaga o agendamento de TODOS os canais - uma checagem por canal com
+	// efeito global. Como os angulos de centelha ficam a 120 graus (213, 333 e
+	// 93 apos o gap), o canal de 93 graus e sempre o apertado: o dwell de 3ms
+	// ocupa 72 graus a 4000rpm e 126 graus a 7000rpm, entao o inicio do
+	// carregamento dele cai antes do proprio gap. Ele falhava primeiro e
+	// derrubava os outros dois junto, produzindo o padrao medido de tudo-ou-nada
+	// (ou os 3 canais disparam na volta, ou nenhum) e cobertura identica nos
+	// tres. A versao da injecao, reagendar_injecao_se_pulso_ficou_curto, sempre
+	// mexeu so no canal recebido - era assimetria, nao intencao.
+	ignicao_agendada[i] = false;
 	return true;
 }
 
@@ -307,6 +774,28 @@ static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 				continue;
 			}
 			iniciar_dwell(i);
+			// Evento vencido SEMPRE sai daqui consumido: ou a bobina ligou, ou o
+			// agendamento cai.
+			//
+			// iniciar_dwell recusa sem sincronismo, com o corte de giro ativo e no
+			// teste de compressao - e antes o evento ficava agendado e vencido.
+			// atualizar_compare_b_ligar o achava de novo com delta zero, entrava
+			// na prevencao de deadlock, chamava esta funcao, e a recusa se
+			// repetia ate estourar TIMER1_MAX_REPLAN_LOOPS: 32 voltas de ~68us,
+			// 2,18ms dentro da interrupcao.
+			//
+			// Medido em bancada (60-2 no virabrequim, 6 cilindros, so ignicao,
+			// varredura ate 7900rpm, pulso das ISRs do Timer1 no D7): 53 ISRs de
+			// 2,08 a 2,20ms, nenhuma mudando saida, todas acima de 5000rpm. A 7000
+			// rpm sao ~15 dentes sem contagem - o sincronismo cai de novo, o
+			// proximo evento e recusado de novo, e o ciclo se alimenta. Sao as
+			// voltas que perdiam 12 a 18 dentes de uma vez.
+			//
+			// Cancelar e seguro: o gap seguinte reagenda o canal normalmente, e
+			// sem sincronismo ou com corte a bobina nao ligaria de qualquer jeito.
+			if (!ign_acionado[i]) {
+				ignicao_agendada[i] = false;
+			}
 		}
 	}
 
@@ -317,6 +806,13 @@ static inline void processar_ligamentos_vencidos(uint32_t tick_atual) {
 				continue;
 			}
 			ligar_injetor(i);
+			// Mesma regra da ignicao: ligar_injetor recusa sem sincronismo, com
+			// corte e na limpeza de afogamento, e o evento recusado prendia o
+			// laco de atualizar_compare_b_ligar do mesmo jeito.
+			if (!inj_acionado[i]) {
+				injecao_agendada[i] = false;
+				PULSO_INJ_DESCARTE(50);
+			}
 		}
 	}
 }
@@ -337,28 +833,40 @@ static inline void limpar_ligamentos_vencidos_sem_acionar(uint32_t tick_atual) {
 	}
 }
 
-static inline void processar_cortes_vencidos(uint32_t tick_atual) {
+static inline bool processar_cortes_vencidos(uint32_t tick_atual) {
+	bool algo_desligou = false;
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_ignicao; i++) {
-		if (ignicao_agendada[i] && ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
+		if (ign_acionado[i] && tick_ja_passou(tick_atual, ignicao_tick_desligar[i])) {
 			desligar_dwell(i);
 			ignicao_agendada[i] = false;
-			if (local_rodafonica == 1 && status_corte == 0) {
-				agendar_ignicao_canal(i, tick_atual);
-			}
+			algo_desligou = true;
+			// SEM REARME. O canal que acabou de disparar so volta a disparar uma
+			// volta depois, e o gap sempre chega antes disso e reagenda tudo -
+			// entao o rearme nao adianta nada e so cria risco.
+			//
+			// O risco medido: o rearme deslocava o alvo por um periodo estimado
+			// com o tempo_cada_grau atual. Desacelerando esse valor esta
+			// atrasado, o periodo sai CURTO, e o alvo deslocado dispara ANTES do
+			// gap - escapando da limpeza que o cancelaria. So atinge canais de
+			// angulo pequeno: no ign1 (centelha em 22 graus) a extra saia em 353
+			// graus, colada no gap seguinte; o ign2 (207 graus) nunca duplicou.
+			//
+			// O modo virabrequim nunca teve rearme e nunca teve esse defeito.
+			// Agora os dois modos agendam apenas na referencia.
 		}
 	}
 
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_injecao; i++) {
-		if (injecao_agendada[i] && inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
+		if (inj_acionado[i] && tick_ja_passou(tick_atual, injecao_tick_desligar[i])) {
 			desligar_injetor(i);
 			injecao_agendada[i] = false;
-			if (local_rodafonica == 1) {
-				agendar_injecao_canal(i, tick_atual);
-			}
+			algo_desligou = true;
+			// Sem rearme, mesmo motivo da ignicao (ver acima).
 		}
 	}
+	return algo_desligou;
 }
 
 void setupTimer1() {
@@ -381,6 +889,7 @@ void setupTimer1() {
 void limpar_agendamentos_timer1() {
 	uint8_t sreg = SREG;
 	cli();
+	ignicao_regime_adiantado = 0;
 	for (int i = 0; i < 8; i++) {
 		ignicao_agendada[i] = false;
 		injecao_agendada[i] = false;
@@ -393,6 +902,7 @@ void resetar_estado_agendamento_motor() {
 	uint8_t sreg = SREG;
 	cli();
 
+	ignicao_regime_adiantado = 0;
 	for (int i = 0; i < 8; i++) {
 		ignicao_agendada[i] = false;
 		injecao_agendada[i] = false;
@@ -407,8 +917,10 @@ void resetar_estado_agendamento_motor() {
 
 	SREG = sreg;
 
-	for (int i = 0; i < numero_injetor; i++) {
-		digitalWrite(injecao_pins[i], LOW);
+	if (modo_injecao != 0) {
+		for (int i = 0; i < numero_injetor; i++) {
+			digitalWrite(injecao_pins[i], LOW);
+		}
 	}
 	byte canais_ignicao = quantidade_canais_ignicao_fisicos();
 	for (int i = 0; i < canais_ignicao; i++) {
@@ -461,7 +973,7 @@ static void atualizar_compare_b_ligar() {
 		}
 
 		// Prevenção de deadlock do comparador de hardware (evento muito próximo ou já ficou pro passado):
-		if (menor_delta < 20) {
+		if (menor_delta < TIMER1_MARGEM_DEADLOCK_TICKS) {
 			uint32_t tick_evento = agora + menor_delta;
 			processar_ligamentos_vencidos(tick_evento);
 			processar_cortes_vencidos(tick_evento);
@@ -484,7 +996,33 @@ static void atualizar_compare_a_desligar() {
 	uint8_t tentativas = 0;
 	while (true) {
 		if (tentativas++ >= TIMER1_MAX_REPLAN_LOOPS) {
-			desabilitar_timer1_compare_a();
+			// Estourar as tentativas NAO pode desarmar o compare A: se ha saida
+			// ligada, desarmar significa que ninguem mais a desliga, e ela fica
+			// carregando ate protege_dwell_maximo cortar.
+			//
+			// Em vez disso, arma para daqui a pouco e deixa a ISR reavaliar com
+			// estado fresco. Custa uma interrupcao a mais e sai do laco.
+			bool algo_ligado = false;
+			byte n_ign = quantidade_eventos_ignicao_por_ciclo_sensor();
+			for (byte i = 0; i < n_ign && !algo_ligado; i++) {
+				if (ign_acionado[i]) algo_ligado = true;
+			}
+			byte n_inj = quantidade_eventos_injecao_por_ciclo_sensor();
+			for (byte i = 0; i < n_inj && !algo_ligado; i++) {
+				if (inj_acionado[i]) algo_ligado = true;
+			}
+			// 200us, nao TIMER1_MIN_DELTA_TICKS (2 ticks = 8us): rearmar a 8us
+			// faz a ISR disparar antes de terminar o trabalho, e o resultado
+			// medido foi tempestade de interrupcao - 429 bobinas presas a
+			// 4000rpm contra 21 sem o rearme. Folga o bastante para a ISR rodar
+			// inteira, curto o bastante para nao segurar bobina.
+			if (algo_ligado) {
+				OCR1A = (uint16_t)(ler_tick32_timer1() + us_para_ticks_timer1(200));
+				TIFR1 = (1 << OCF1A);
+				TIMSK1 |= (1 << OCIE1A);
+			} else {
+				desabilitar_timer1_compare_a();
+			}
 			break;
 		}
 
@@ -493,9 +1031,26 @@ static void atualizar_compare_a_desligar() {
 		uint32_t menor_delta = 0xFFFFFFFFUL;
 		uint32_t proximo_tick = 0;
 
+		// Criterio: ign_acionado, e SO ele.
+		//
+		// Antes exigia tambem ignicao_agendada. Com isso, uma bobina ligada cujo
+		// agendamento tivesse sido apagado ficava invisivel para a varredura,
+		// que concluia "nao ha nada para desligar" e DESARMAVA o compare A. Como
+		// e a propria ISR do compare A que se rearmaria, ela nunca mais
+		// disparava: a bobina carregava ate protege_dwell_maximo cortar.
+		//
+		// Medido em bancada com pulso de depuracao na condicao exata (compare A
+		// desarmado com bobina ligada): a 4000rpm, 302 dwells longos e 299 com o
+		// pulso em cima. Em 3800 e 4200 rpm, 1 e 2 - faixa estreitissima, porque
+		// so acontece quando o prazo do evento fica da mesma ordem da latencia
+		// do loop e o codigo alterna entre dois caminhos.
+		//
+		// Quem manda em "precisa desligar" e o estado FISICO da bobina, nao o do
+		// agendamento. O alvo continua valido: ignicao_tick_desligar[i] foi
+		// escrito no mesmo agendamento que ligou o canal.
 		byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
 		for (int i = 0; i < eventos_ignicao; i++) {
-			if (ignicao_agendada[i] && ign_acionado[i]) {
+			if (ign_acionado[i]) {
 				uint32_t alvo = ignicao_tick_desligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
 				if (!encontrado || delta < menor_delta) {
@@ -506,9 +1061,11 @@ static void atualizar_compare_a_desligar() {
 			}
 		}
 
+		// Mesmo criterio da ignicao: bico aberto precisa fechar. Aqui o risco de
+		// ficar preso e ainda pior - bico aberto e combustivel entrando.
 		byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 		for (int i = 0; i < eventos_injecao; i++) {
-			if (injecao_agendada[i] && inj_acionado[i]) {
+			if (inj_acionado[i]) {
 				uint32_t alvo = injecao_tick_desligar[i];
 				uint32_t delta = delta_tick_evento(agora, alvo);
 				if (!encontrado || delta < menor_delta) {
@@ -525,7 +1082,7 @@ static void atualizar_compare_a_desligar() {
 		}
 
 		// Prevenção de deadlock pro desligamento de bobina/bico:
-		if (menor_delta < 20) {
+		if (menor_delta < TIMER1_MARGEM_DEADLOCK_TICKS) {
 			processar_cortes_vencidos(agora + menor_delta);
 			continue;
 		}
@@ -541,6 +1098,184 @@ static void atualizar_compare_a_desligar() {
 	}
 }
 
+// Refino da centelha a partir de um dente proximo dela.
+//
+// Acima do limiar do refino por dente (1 ms de dente: 1000 rpm na 60-2) a
+// centelha so e projetada a partir do gap, e o canal mais longe dele percorre
+// quase uma volta inteira de projecao. Com o motor mudando de rotacao, o erro
+// cresce junto. Medido na F75 (60-2 no virabrequim, 6 cilindros, so ignicao,
+// firmware de 03/10), pelo espacamento entre canais na mesma volta, que devia
+// ser 120 graus independente do avanco:
+//
+//   faixa        estavel   acelerando          desacelerando
+//   < 1000 rpm   +-0,3     +-5                 +-2      (refino por dente ligado)
+//   1000-2000    +-2       IGN3 ate +25        IGN3 -5,5
+//   3000-3900    -         IGN3 -10            IGN3 -18 (ate -22)
+//
+// Reproduzindo esse sinal na bancada com a versao 1498931 o padrao se repetiu
+// (+11,5 acelerando, ate -24 desacelerando acima de 3000). Nao e defeito
+// escondido: a ~6000 rpm/s a 1500 rpm a rotacao sobe ~12% durante os ~280
+// graus de projecao do IGN3, e a conta da ~15 graus.
+//
+// O refino por dente que ja existe nao serve aqui: so mexe em canal que ainda
+// NAO ligou a bobina e recalcula todos os canais em todo dente - caro demais
+// para a 60-2 acima de 1000 rpm. Este faz uma conta por centelha: ao agendar o
+// canal, calcula_grau_ignicao anota o angulo e um dente MARGEM_REFINO_CENTELHA
+// _GRAUS antes dele; na ISR do dente, so esse dente refaz o agendamento a
+// partir dele mesmo.
+//
+// Por que a margem e nao o dente imediatamente anterior: a primeira versao
+// refinava no dente anterior e, na bancada, consertou a aceleracao (IGN3 de
+// +11,5 para +0,1 entre 2000 e 3000) mas nao a desaceleracao (-5,9 e -10,4,
+// iguais a antes). Desacelerando a projecao do gap sai ADIANTADA, e quando o
+// erro passa de um dente a centelha ja saiu antes de o dente do refino chegar.
+// Com 30 graus de margem cobre os erros medidos (p10 de -20 acima de 3000), e
+// uma projecao de 30 a 36 graus erra menos de meio grau na pior aceleracao
+// medida.
+//
+// Com a bobina carregando, so o fim do dwell se move e o dwell absorve a
+// correcao. Ainda nao ligada (rotacao baixa, dwell menor que a margem), move
+// inicio e fim juntos, como o refino por dente. (A margem esta em ignicao.h.)
+//
+// Chamada pela ISR do dente, em todo dente. O caso comum e so comparar um byte
+// por canal.
+void refinar_centelha_no_dente() {
+	// tempo_cada_grau nunca e zero aqui: o chamador acabou de atualiza-lo com um
+	// valor valido. Corte de giro so impede LIGAR a bobina; uma que ja esta
+	// carregando ou agendada continua valendo ser refinada.
+	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1 || agendador_em_execucao) {
+		return;
+	}
+
+	bool mexeu = false;
+	// Os 8 indices direto: canal fora da configuracao nunca tem dente anotado
+	// com bobina ligada ou agendada.
+	for (byte i = 0; i < 8; i++) {
+		if (dente_refino_centelha[i] != (uint8_t)posicao_atual_sensor) {
+			continue;
+		}
+		bool carregando = ign_acionado[i];
+		// Canal em regime adiantado tem alvo uma referencia a frente enquanto
+		// espera; so entra aqui depois de ligar a bobina.
+		if (!carregando && (!ignicao_agendada[i] || (ignicao_regime_adiantado & (uint8_t)(1U << i)))) {
+			continue;
+		}
+
+		int graus = angulo_refino_centelha[i] - posicao_atual_sensor * (int)grau_cada_dente;
+		if (graus <= 0) {
+			graus += 360;
+		}
+
+		// O dente chegou em tempo_atual (micros na entrada da ISR); desconta o
+		// que ja passou desde entao para nao atrasar a centelha pelo tempo de
+		// processamento do proprio dente. >> 2: o tick do Timer1 e de 4us.
+		uint32_t alvo_us = (uint32_t)graus * tempo_cada_grau;
+#if SENSOR_ROTACAO_ICP1
+		// Instante exato do dente, registrado pelo hardware.
+		uint32_t alvo = tick_borda_sensor + (alvo_us >> 2);
+#else
+		uint32_t decorrido = micros() - tempo_atual;
+		uint32_t alvo = ler_tick32_timer1() +
+		                ((alvo_us > decorrido ? alvo_us - decorrido : 0UL) >> 2);
+#endif
+
+		uint32_t ligou = ignicao_tick_ligar[i];
+		uint32_t dwell = ignicao_tick_desligar[i] - ligou;
+		if (carregando) {
+			// O dwell pode encolher ate metade do agendado, nao menos - mesmo piso
+			// de corrigir_fim_dwell_adiantado. Para cima o limite e o
+			// protege_dwell_maximo (1,5x). Alvo ja vencido nao e problema:
+			// atualizar_compare_a_desligar dispara na hora pela prevencao de
+			// deadlock.
+			uint32_t piso = ligou + (dwell >> 1);
+			if ((int32_t)(alvo - piso) < 0) {
+				alvo = piso;
+			}
+		} else {
+			ignicao_tick_ligar[i] = alvo - dwell;
+		}
+		ignicao_tick_desligar[i] = alvo;
+		mexeu = true;
+	}
+
+	// As duas, sempre, B antes de A - pelo mesmo motivo do fim de
+	// agendar_eventos_motor_timer1: se o inicio refinado ja passou,
+	// atualizar_compare_b_ligar liga a bobina NA HORA pela prevencao de
+	// deadlock, e esse desligamento novo so fica armado se o compare A for
+	// refeito depois.
+	//
+	// A primeira versao do refino chamava so a do compare B quando movia um
+	// canal ainda nao ligado. Medido na bancada com o sinal da F75: entre 2000
+	// e 3000 rpm, onde o dwell (~30 graus) fica do tamanho da margem e o inicio
+	// refinado cai no passado, 10 a 20% das centelhas sairam ~20 graus
+	// atrasadas com dwell de 3,8 a 4,2ms - soltas pelo protege_dwell_maximo,
+	// nao pelo compare A.
+	if (mexeu) {
+		atualizar_compare_b_ligar();
+		atualizar_compare_a_desligar();
+	}
+}
+
+// O que a ISR do dente faz de agendamento, num lugar so: chamado por ela e,
+// quando ela teve de adiar, pelo fim de replanejar_timer1. Uma funcao so para
+// o compilador nao duplicar os dois refinos (~1,2 KB) na Nano.
+void __attribute__((noinline)) refinos_do_dente() {
+	if (refino_por_dente_ativo(PERIODO_DENTE_MIN_REFINO_US)) {
+		atualizar_agendamentos_ignicao_por_dente();
+	}
+	// Este roda em qualquer rotacao: e uma conta por centelha, nao por dente.
+	refinar_centelha_no_dente();
+}
+
+// Reagendamento dos comparadores com a interrupcao do dente LIVRE.
+//
+// No AVR uma interrupcao bloqueia todas as outras ate terminar. As ISRs do
+// Timer1 ligam ou desligam o pino da bobina em poucos us, mas depois varrem
+// os canais para rearmar os comparadores - e era nessa varredura que o dente
+// esperava. Medido na bancada (60-2 no virabrequim, so ignicao, firmware
+// f49ac8b, varredura ate 7900 rpm, pulso da ISR do dente no D8): nenhum dente
+// perdido ate 7500 rpm, mas o dente 57 - o ultimo antes do gap - chegava ~67us
+// atrasado sempre que o inicio do dwell do IGN1 caia em cima dele. O dente
+// atrasado parece longo, o gap parece curto, e a razao gap/dente medida caia
+// abaixo do limiar de 2,0: em 228 das 289 voltas em que IGN2 e IGN3 faltaram
+// juntos (5500 a 7500 rpm), contra nenhuma nas voltas normais. Gap nao visto
+// e volta sem agendamento.
+//
+// Aqui o trabalho urgente ja foi feito com tudo bloqueado, e o rearme roda com
+// as interrupcoes LIGADAS. Duas regras mantem isso seguro:
+//
+// - Uma ISR do Timer1 que entre no meio faz so o urgente (o pino), marca
+//   timer1_refazer e sai. So este laco escreve em OCR1x/TIMSK1, entao nao ha
+//   dois rearmes se atropelando; e o laco repete a varredura enquanto houver
+//   algo novo.
+// - A ISR do dente que entre no meio so mede e marca refino_dente_adiado; o
+//   refino (que mexe nos mesmos horarios) roda aqui no fim, com tudo
+//   bloqueado.
+//
+// Entra e sai com as interrupcoes desligadas. a_primeiro preserva a ordem de
+// cada chamador - a ISR do compare A rearma A antes de B, e isso foi medido
+// (ver a ISR).
+static void __attribute__((noinline)) replanejar_timer1(bool a_primeiro) {
+	timer1_replanejando = true;
+	do {
+		timer1_refazer = false;
+		sei();
+		if (a_primeiro) {
+			atualizar_compare_a_desligar();
+			atualizar_compare_b_ligar();
+		} else {
+			atualizar_compare_b_ligar();
+			atualizar_compare_a_desligar();
+		}
+		cli();
+		if (refino_dente_adiado) {
+			refino_dente_adiado = false;
+			refinos_do_dente();
+		}
+	} while (timer1_refazer);
+	timer1_replanejando = false;
+}
+
 void agendar_eventos_motor_timer1() {
 	if (tipo_ignicao_sequencial != 0 || revolucoes_sincronizada < 1) {
 		limpar_agendamentos_timer1();
@@ -549,48 +1284,271 @@ void agendar_eventos_motor_timer1() {
 
 	atualizar_ajuste_pms_ignicao();
 
+	// cli() GLOBAL, nao apenas mascarar OCIE1A/OCIE1B.
+	//
+	// Cheguei a trocar por TIMSK1 &= ~(OCIE1A|OCIE1B) achando que a interrupcao
+	// do dente, sendo externa (EIMSK), nao disputaria estes vetores. Estava
+	// ERRADO: enquanto refino_por_dente_ativo() vale, a ISR do dente chama
+	// atualizar_agendamentos_ignicao_por_dente(), que mexe nos MESMOS arrays -
+	// processar_cortes_vencidos, os recalcular_* e atualizar_compare_b_ligar.
+	// Sem o cli() ela entra no meio deste calculo e o agendamento sai duplicado.
+	//
+	// Medido em motor real (12-1 no comando) e reproduzido em bancada variando
+	// a rotacao: abaixo de ~1000rpm quase metade das voltas saia com centelha
+	// ou injecao a mais - ate 12 injecoes numa volta que deveria ter 6. Acima
+	// disso, onde o reagendamento por dente nao roda, a injecao acertava 100%.
+	// Em rotacao FIXA o problema nao aparece, e foi por isso que passou pelos
+	// testes anteriores.
+	// Quando refino_por_dente_ativo() deixa de valer, a ISR do dente NAO chama
+	// atualizar_agendamentos_ignicao_por_dente(), entao o conflito descrito
+	// acima nao pode acontecer - e ali o cli() global sai caro demais.
+	//
+	// Medido em bancada com pulso de depuracao na propria ISR do dente
+	// (DEBUG_PULSO_ISR_ALVO 1, 60-2 simulada ate 7000rpm): 96,5% dos dentes
+	// com latencia alta caiam a menos de 100us de uma borda de ignicao, e os
+	// dentes PERDIDOS se concentravam nas posicoes 2 a 6 da volta - que e
+	// exatamente quando esta funcao roda, logo depois do gap. Resultado: a
+	// contagem chegava ao gap com 55-57 dentes em vez de 58 (96,5% das voltas),
+	// contagem_valida so aceita 57..59, e 3 invalidas seguidas zeravam
+	// revolucoes_sincronizada - uma volta INTEIRA sem ignicao.
+	//
+	// A assinatura no log era inconfundivel e so faz sentido com esta causa:
+	// a volta sem centelha era a unica com os 58 dentes contados certos
+	// (99,9% delas), porque sem ignicao nao havia ISR roubando dente. O
+	// firmware se auto-sabotava em ciclo - a ignicao estragava a contagem, a
+	// contagem derrubava o sincronismo, e a perda de sincronismo desligava a
+	// ignicao, que era o que consertava a contagem.
+	//
+	// Mascarar so OCIE1A/OCIE1B protege os mesmos arrays contra as ISRs do
+	// Timer1 (que sao quem mais os toca) e deixa a interrupcao do dente entrar
+	// na hora. Evento que vencer durante a mascara nao se perde: o flag fica em
+	// TIFR1 e a ISR dispara assim que o bit volta.
+	//
+	// A margem de histerese evita alternar de regime na fronteira. rpm so e
+	// escrito no loop (calcularRPM), nunca na interrupcao, entao esta decisao
+	// nao muda no meio da secao critica.
+	const bool proteger_contra_isr_do_dente =
+		refino_por_dente_ativo(PERIODO_DENTE_MIN_PROTECAO_US);
+
 	uint8_t sreg = SREG;
-	cli();
-	tick_base_sincronismo = ler_tick32_timer1();
-	processar_cortes_vencidos(tick_base_sincronismo);
+	uint8_t timsk_salvo;
+	if (proteger_contra_isr_do_dente) {
+		cli();
+		timsk_salvo = TIMSK1;
+	} else {
+		cli();
+		timsk_salvo = TIMSK1;
+		// Mascara SO o OCIE1B.
+		//
+		// O compare A e quem DESLIGA a bobina, e silencia-lo com bobina ligada
+		// e o pior estado possivel: ninguem mais a desliga, e ela carrega ate
+		// protege_dwell_maximo cortar, a 1,5x o dwell.
+		//
+		// Medido em bancada a 4000rpm, com pulso identificando quem desarmava:
+		// 86% dos desarmes com bobina ligada vinham DESTA mascara, e 74 dos 86
+		// dwells presos tinham o pulso dela em cima - nenhum ficou sem pulso.
+		// A mascara foi introduzida junto com o estreitamento da secao critica
+		// e o defeito nasceu ali.
+		//
+		// Deixar o compare A disparar durante o planejamento e inofensivo: ele
+		// so cumpre um corte que ja estava vencido. O que nao pode e a ISR dele
+		// reentrar no planejamento, e disso cuida agendador_em_execucao.
+		TIMSK1 &= ~(1 << OCIE1B);
+		agendador_em_execucao = true;
+		SREG = sreg; // devolve a interrupcao do dente imediatamente
+	}
+
+	// Origem angular congelada: sem o cli() global um gap novo pode chegar no
+	// meio deste calculo e mudar tick_base_sincronismo, misturando duas
+	// referencias entre os canais. O loop reprocessa a volta nova de qualquer
+	// forma, porque a ISR remarca agendamento_pendente.
+	PULSO_FASE_ALTO();
+	const uint32_t base = tick_base_sincronismo;
+
+	bool algo_desligou = processar_cortes_vencidos(base);
 	limpar_ignicoes_pendentes_nao_acionadas();
 
 	byte eventos_ignicao = quantidade_eventos_ignicao_por_ciclo_sensor();
+	// O canal enrolado nunca cai no primeiro ramo - ign_acionado o bloqueia - e e
+	// justamente ele quem esta com a bobina carregando agora, sobre alvo
+	// estimado. Com a origem angular ja medida, o fim do dwell dele se acerta.
 	for (int i = 0; i < eventos_ignicao; i++) {
 		if (!ignicao_agendada[i] && !ign_acionado[i] && !captura_dwell[i]) {
-			agendar_ignicao_canal(i, tick_base_sincronismo);
+			agendar_ignicao_canal(i, base);
+		} else {
+			corrigir_fim_dwell_adiantado(i, base);
 		}
 	}
 
 	byte eventos_injecao = quantidade_eventos_injecao_por_ciclo_sensor();
 	for (int i = 0; i < eventos_injecao; i++) {
 		if (!inj_acionado[i] && !captura_req_fuel[i] && !injecao_agendada[i]) {
-			agendar_injecao_canal(i, tick_base_sincronismo);
+			agendar_injecao_canal(i, base);
 		}
 	}
 
-	atualizar_compare_b_ligar();
-	atualizar_compare_a_desligar();
-	SREG = sreg;
+	// As duas chamadas, sempre - exatamente como fazem as duas ISRs do Timer1.
+	//
+	// Antes a segunda era condicionada a algo_desligou, sob a ideia de que o
+	// compare A so mudaria se processar_cortes_vencidos tivesse desligado algo.
+	// A premissa e falsa: atualizar_compare_b_ligar() tem o caminho de
+	// prevencao de deadlock, que LIGA a bobina inline quando o evento nasce
+	// vencido - e isso cria um desligamento pendente novo, depois de
+	// algo_desligou ja ter sido calculado la em cima.
+	//
+	// Com o compare A desarmado, ninguem arma o desligamento dessa bobina. E
+	// como e a propria ISR do compare A que se rearmaria, ela nunca dispara: o
+	// canal fica travado ligado ate protege_dwell_maximo() cortar, 1,5x o dwell
+	// depois. Ou seja, a bobina carrega quase o dobro do previsto e a centelha
+	// sai onde a protecao calhou de rodar, nao onde a tabela mandou.
+	//
+	// Atinge so o primeiro canal depois do gap (ign1 na 60-2 de 6 cilindros),
+	// que e o unico com prazo curto o bastante para o evento nascer vencido.
+	// Medido em bancada em rotacao fixa, 3239 ciclos por canal:
+	//
+	//   ign1: 28 dwells (0,86%) entre 4,05 e 4,50ms, contra 2,49ms de mediana
+	//   ign2 e ign3: nenhum, maximo 2,52ms
+	//
+	// Todos os 28 acima de 1,5x o dwell, com excesso de 0,31 a 0,77ms - a
+	// latencia do loop -, e nada entre 2,53 e 4,05ms. Mecanismo distinto, nao
+	// cauda de distribuicao.
+	// O ARMAMENTO final e atomico; o calculo pesado acima nao e.
+	//
+	// Com o OCIE1A desmascarado (ver acima), a ISR do compare A pode disparar no
+	// meio destas duas chamadas - e ela chama exatamente as mesmas funcoes. Uma
+	// desarma depois que a outra armou, e o canal fica sem desligamento.
+	//
+	// Fechar so este trecho custa pouco: sao duas varreduras de 3 canais, nao o
+	// planejamento inteiro. A interrupcao do dente, que foi o motivo de estreitar
+	// a secao critica, continua livre durante todo o calculo.
+	PULSO_FASE_BAIXO();   // fim da fase 1: agendamento dos canais
+	PULSO_FASE_ALTO();    // inicio da fase 2: atualizacao dos comparadores
+	uint8_t sreg_arme = SREG;
+	cli();
+	agendador_em_execucao = false;
+	replanejar_timer1(false);
+	SREG = sreg_arme;
+	PULSO_FASE_BAIXO();
+	(void)algo_desligou;
+	if (proteger_contra_isr_do_dente) {
+		SREG = sreg;
+	} else {
+		// NAO restaurar TIMSK1 inteiro aqui. As duas funcoes acima gerenciam o
+		// proprio bit: armam quando ha evento e chamam desabilitar_timer1_*
+		// quando nao ha, ou seja o estado que elas deixam JA e o correto.
+		//
+		// Restaurar o valor salvo apagava o arme que atualizar_compare_b_ligar
+		// acabara de fazer, e o resultado em bancada foi ignicao morta de 1200
+		// a 3500 rpm nos tres canais. Acima disso a ign1 reaparecia
+		// gradualmente (40% em 3500, 100% em 4500) porque com os eventos mais
+		// proximos entra o caminho de prevencao de deadlock, que aciona a
+		// bobina direto sem depender da interrupcao - o que mascarava a causa.
+		//
+		// Nem OCIE1B nem OCIE1A precisam de restauracao: atualizar_compare_b_ligar
+		// e atualizar_compare_a_desligar rodam as duas, sempre, e cada uma deixa
+		// o proprio bit no estado certo. Restaurar o valor salvo aqui apagaria o
+		// arme que elas acabaram de fazer.
+		//
+		// Havia um restore condicional de OCIE1A para o caso de
+		// atualizar_compare_a_desligar nao rodar. Ele deixou de existir junto
+		// com a condicao: com a chamada incondicional, restaurar seria o erro.
+		(void)timsk_salvo;
+		SREG = sreg;
+	}
 }
+
 
 ISR(TIMER1_OVF_vect) {
 	timer1_overflow_count++;
 }
 
+#if SENSOR_ROTACAO_ICP1
+// Captura de entrada: o Timer1 copiou para ICR1 o valor do contador no ciclo
+// exato da borda do sensor. Aqui so se estende para 32 bits e entrega ao
+// decoder, que usa este instante no lugar do micros() da hora em que a
+// interrupcao rodou.
+//
+// Estouro pendente: esta interrupcao tem prioridade sobre a de estouro, entao
+// se o contador acabou de dar a volta a contagem de estouros ainda nao subiu.
+// Captura pequena com estouro pendente aconteceu DEPOIS da volta; captura
+// grande, antes - mesma regra de ler_tick32_timer1.
+ISR(TIMER1_CAPT_vect) {
+	uint16_t captura = ICR1;
+	uint32_t estouros = timer1_overflow_count;
+	if ((TIFR1 & (1 << TOV1)) && captura < 0x8000U) {
+		estouros++;
+	}
+	tick_borda_sensor = (estouros << 16) | captura;
+	tempo_borda_sensor_us = tick_borda_sensor << 2;
+	leitor_sensor_roda_fonica();
+}
+
+// Liga a captura: borda de subida (a mesma do attachInterrupt RISING de antes)
+// e o cancelador de ruido do hardware, que so aceita a borda depois de 4
+// amostras iguais seguidas (0,25us) - descarta os picos mais curtos que a
+// centelha induz no fio do sensor. Chamar DEPOIS de setupTimer1, que zera
+// TCCR1B.
+void configurar_captura_sensor() {
+	uint8_t sreg = SREG;
+	cli();
+	TCCR1B |= (1 << ICNC1) | (1 << ICES1);
+	TIFR1 = (1 << ICF1);
+	TIMSK1 |= (1 << ICIE1);
+	SREG = sreg;
+}
+#endif
+
+// As duas ISRs compartilham o mesmo pino de medicao: o que se quer saber e o
+// tempo TOTAL em que o Timer1 bloqueia o resto do sistema, nao qual das duas
+// gastou. Elas nunca se sobrepoem (interrupcao nao aninha no AVR), entao cada
+// pulso corresponde a uma execucao - ou a duas coladas, se uma disparar logo
+// apos a outra, o que conta como bloqueio continuo do mesmo jeito.
 ISR(TIMER1_COMPB_vect) {
+	PULSO_TIMER1_ALTO();
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_ligamentos_vencidos(tick_atual);
 	processar_cortes_vencidos(tick_atual);
 
-	atualizar_compare_b_ligar();
-	atualizar_compare_a_desligar();
+	// Entrou no meio de um rearme interrompivel: quem esta rearmando repete a
+	// varredura (ver replanejar_timer1).
+	if (timer1_replanejando) {
+		timer1_refazer = true;
+		PULSO_TIMER1_BAIXO();
+		return;
+	}
+	replanejar_timer1(false);
+	PULSO_TIMER1_BAIXO();
 }
 
 ISR(TIMER1_COMPA_vect) {
+	PULSO_TIMER1_ALTO();
 	uint32_t tick_atual = ler_tick32_timer1();
 	processar_cortes_vencidos(tick_atual);
 
-	atualizar_compare_a_desligar();
-	atualizar_compare_b_ligar();
+	if (timer1_replanejando) {
+		timer1_refazer = true;
+		PULSO_TIMER1_BAIXO();
+		return;
+	}
+
+	// Com o agendador em curso, faz so o desligamento e o proprio rearme. O
+	// planejamento de quem LIGA e do agendador, que o refaz no fim - reentrar
+	// nele daqui seria mexer no mesmo estado que ele esta montando.
+	if (agendador_em_execucao) {
+		atualizar_compare_a_desligar();
+		PULSO_TIMER1_BAIXO();
+		return;
+	}
+
+	// DESLIGAR antes, LIGAR depois. Parece invertido em relacao a ISR do
+	// compare B, e por raciocinio eu troquei a ordem aqui - "ligar cria
+	// desligamento, entao armar o desligar por ultimo". A bancada reprovou:
+	// com B antes de A, os dwells presos a 4000rpm passaram de 0,14% para 7,4%
+	// das voltas. Revertido.
+	//
+	// Nao tenho explicacao medida para o porque, e por isso a ordem fica como
+	// estava e este comentario fica aqui: e um ponto sensivel que ja custou uma
+	// regressao, nao um detalhe de estilo. Quem for mexer, meça antes.
+	replanejar_timer1(true);
+	PULSO_TIMER1_BAIXO();
 }

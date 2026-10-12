@@ -19,6 +19,156 @@ Para gravar na placa configurada em `platformio.ini`:
 platformio run --target upload
 ```
 
+## Pinagem
+
+Os valores abaixo saem de `include/definicoes_hardware.h`, que é a única fonte
+de verdade. Se esta tabela divergir do arquivo, o arquivo está certo.
+
+| função | Autoino (Nano/Uno) | Speeduino (Mega) |
+|---|---|---|
+| sensor da roda fônica | `D2` | `D19` |
+| sensor de fase — declarado, ainda sem uso | `D3` | `D18` |
+| MAP | `A0` | `A3` |
+| TPS | `A1` | `A2` |
+| CLT | `A2` | `A1` |
+| IAT | `A3` | `A0` |
+| sonda O2 | `A4` | `A8` |
+| tensão de bateria | `A6` | `A4` |
+| flex | `A5` | `A6` |
+| pressão de óleo | `A7` | `A7` |
+| IGN 1 | `D4` | `D40` |
+| IGN 2 | `D5` | `D38` |
+| IGN 3 | `D6` | `D52` |
+| IGN 4 | `D7` | `D50` |
+| INJ 1 | `D8` | `D8` |
+| INJ 2 | `D9` | `D9` |
+| INJ 3 | `D12` | `D10` |
+| INJ 4 | `D10` | `D11` |
+| marcha lenta: PWM ou liga-desliga | `D11` | `D5` |
+| marcha lenta: STEP | `D11` | `D17` |
+| marcha lenta: DIR | `D13` | `D16` |
+
+### Perfil de hardware
+
+Quem escolhe é o `build_flags` do `platformio.ini`, um `-D` por ambiente: os
+ambientes de Nano e Uno passam `-D Autoino`, o de Mega com shield Speeduino
+passa `-D Speeduino`. Fora do PlatformIO há um fallback por MCU, para quem
+compila pela IDE do Arduino.
+
+### Revisão de placa
+
+`PLACA_REVISAO` escolhe a pinagem, não é rótulo:
+
+| | INJ 4 | marcha lenta DIR | flex | bateria |
+|---|---|---|---|---|
+| v1 | `D13` | `D10` | `A6` | `A5` |
+| **v2** (padrão) | `D10` | `D13` | `A5` | `A6` |
+
+Compilar sem flag nenhuma dá a revisão atual. Para gerar a anterior, acrescente
+`-D PLACA_REVISAO=1` ao `build_flags` de um ambiente próprio.
+
+A ECU informa para qual revisão foi compilada na seção `V` da resposta do
+comando `h;` — veja *Dados recebidos da ECU*. Ela diz o que o **firmware**
+espera encontrar, e não o que a **placa** é: numa v1 rodando firmware v2 o
+campo continua dizendo v2, corretamente.
+
+**Placa v1 com firmware v2** funciona, desde que o INJ 4 não seja usado — é o
+caso das placas de desenvolvimento. A exceção é a marcha lenta por motor de
+passo (`modo_marcha_lenta = 3`): como o firmware dirige o DIR no `D13` e a
+placa v1 tem o DIR no `D10`, o motor só anda para um lado. Marcha lenta por
+PWM e liga/desliga não passam por esses pinos e não são afetadas. O conserto
+na placa v1 é trocar dois fios, `D13` e `D10`.
+
+### Por que o INJ 4 saiu do D13
+
+No Nano e no Uno o `D13` é o `SCK` e o LED do bootloader: ele é **dirigido** a
+cada reset e a cada gravação, cerca de 100 ms por pisco. Com bico ali, isso
+despeja 20 a 50 vezes uma injetada normal (2 a 5 ms) com o motor parado.
+
+Resistor de pulldown não resolve — o bootloader dirige o pino com o driver de
+20 mA do próprio AVR, e um resistor em paralelo com isso é detalhe de consumo.
+A única saída era tirar o atuador de lá.
+
+O `D10` foi escolhido porque o `SS` não é tocado nem pelo bootloader nem por
+ISP, e porque injetor não precisa de PWM: precisa de liga/desliga com instante
+preciso, que o agendador faz por `digitalWrite`. O DIR do motor de passo foi
+para o `D13` no lugar, por ser o sinal mais tolerante a ruído de boot de todo
+o sistema — ele só diz o lado, e o motor só anda quando o STEP pulsa.
+
+### Por que o flex e a bateria trocaram de pino
+
+No 328P o `A6` e o `A7` são **só ADC**: não têm entrada digital nem interrupção
+de mudança de pino. Um sensor de flex de **frequência** precisa das duas coisas,
+então não podia ficar no `A6`. O `A5` tem `PCINT13` e serve. A tensão de bateria
+é analógica pura e não perde nada num pino só de ADC, então assumiu o `A6`.
+
+A placa v2 ganhou o **JP4 (PU FLEX)**, que liga um pull-up de 1 kΩ para 5 V:
+fechado para sensor de frequência, aberto para sensor analógico. O pull-up é
+externo, e o firmware não deve ligar o interno — e não liga: não há `pinMode`
+para essa linha, e o padrão no reset já é entrada sem pull-up.
+
+O filtro dessa linha passou para 1 nF e 10 nF, para não arredondar a onda
+quadrada. Com sensor **analógico** isso deixa a leitura mais crua: **faça a média
+no firmware**, porque não há mais capacitor segurando.
+
+O pull-up de 2,4 kΩ da linha de óleo passou para trás do **JP5 (PU OLEO)**:
+fechado para sensor resistivo ou pressostato, aberto para transdutor de 0–5 V de
+três fios.
+
+### Ressalvas
+
+**Os analógicos trocam de lugar entre os perfis.** MAP é `A0` no Autoino e `A3`
+no Speeduino; IAT e CLT invertem. Quem trocar de placa reaproveitando o chicote
+lê temperatura no lugar de pressão.
+
+**No perfil Autoino, o PWM da marcha lenta e o STEP do motor de passo são o
+mesmo pino, `D11`.** É de propósito: usa-se um ou outro, nunca os dois. O
+driver do atuador PWM está nesse pino.
+
+**`A6` e `A7` não existem no Uno.** Valem no Nano, que é TQFP e tem ADC6 e
+ADC7; o Uno é DIP e não tem. Compila, mas `analogRead` devolve lixo — a
+telemetria de flex e de pressão de óleo não significa nada no ambiente `uno`.
+
+**A marcha lenta por PWM não existe no ambiente `megaatmega2560_autoino`.** No
+Mega o `D11` é `OC1A`, do Timer1, que pertence ao agendador de ignição, e usar
+o Timer2 poria o PWM num pino onde a fiação não está. Liga/desliga e motor de
+passo continuam funcionando, porque não dependem de timer.
+
+**Não sobra I2C no perfil Autoino.** No 328P o `SDA` e o `SCL` são o `A4` e o
+`A5`, ocupados pela sonda O2 e pelo flex. Qualquer periférico I2C exigiria
+realocar um dos dois.
+
+**A roda fônica precisa de pino de interrupção.** No 328P são só o `D2` e o
+`D3`; no Mega, o `D18` e o `D19`. O `pino_sensor_fase` está declarado mas ainda
+não é usado em lugar nenhum do código.
+
+### Estado das saídas na partida
+
+No reset todo pino do AVR volta a ser entrada de alta impedância. A primeira
+coisa que o `setup()` faz é pôr as oito saídas em `LOW` e `OUTPUT`, antes de
+ler a EEPROM — `HIGH` liga bobina e bico, então `LOW` é o estado seguro dos
+dois.
+
+Isso **não cobre a janela do bootloader**, que roda antes do `setup()` existir.
+Essa parte é de hardware: toda saída de atuador deveria ter pulldown no gate do
+driver, para o caso de o microcontrolador estar em reset, travado ou sem
+alimentação com os drivers energizados.
+
+### Guarda de colisão
+
+`definicoes_hardware.h` termina com um `static_assert` para cada par de saída.
+Duas funções no mesmo pino param a compilação com o nome das duas:
+
+```text
+error: static assertion failed: colisao de pino:
+       pino_direcao_marcha_lenta e inj4 estao no mesmo pino
+```
+
+Colisão de pino não aparece em bancada testando uma função de cada vez; aparece
+com a fiação ligada e o motor no lugar. `pino_marcha_lenta` e
+`pino_passo_marcha_lenta` ficam fora da conta, porque compartilham pino por
+projeto.
+
 ## Comunicação serial
 
 - Velocidade: **9600 baud**.
@@ -67,6 +217,45 @@ b,500,700,1000,1500,2000,2500,3000,3500,4000,4500,5000,5500,6000,6500,7000,7500,
 As tabelas ficam na memória de trabalho. Envie `z;` para gravar as tabelas de
 ignição e VE na EEPROM.
 
+### Sensor sem dente de falha (`tipo_ignicao = 2`)
+
+Modo para sensores em que **cada pulso já é uma referência angular**, sem gap
+para procurar. Cobre dois casos que na prática são o mesmo:
+
+- **Distribuidor com sensor hall** (ex.: Opala): um pulso por cilindro, sensor
+  girando na rotação do comando.
+- **Volante com um único dente** (ex.: Titan e motos em geral): um pulso por
+  volta do virabrequim.
+
+Como configurar:
+
+| Campo | Distribuidor 6 cil | Volante 1 dente |
+|---|---|---|
+| `tipo_ignicao` | `2` | `2` |
+| `qtd_dentes` | `6` (pulsos por volta do sensor) | `1` |
+| `qtd_dentes_faltantes` | `0` | `0` |
+| `local_roda` | `1` (comando) | `2` (virabrequim) |
+| `grau_pms` | graus **do sensor** entre o pulso e o PMS | idem |
+
+O `grau_pms` é medido em graus do **sensor**, não do virabrequim. Num
+distribuidor, que gira na metade da rotação do motor, um captador a 60° APMS de
+virabrequim corresponde a `grau_pms = 30`. O avanço configurado continua sendo
+em graus de virabrequim — o firmware converte sozinho quando `local_roda = 1`.
+
+Neste modo a ignição usa **uma única saída** (`ign1`): no distribuidor o
+roteamento é mecânico, e na moto há uma bobina só, eventualmente dupla em
+paralelo para motores gêmeos. Centelha perdida cobre os dois casos.
+
+Limitações inerentes ao sensor, não ao firmware:
+
+- **Não há como validar sincronismo.** Sem gap, não existe contagem de dentes
+  para conferir; um pulso espúrio vira um evento espúrio, e a única defesa é o
+  filtro de ruído.
+- **Precisão angular menor.** Com 58 dentes o firmware corrige o ângulo dezenas
+  de vezes por volta; com 1 dente ele extrapola a volta inteira a partir do
+  intervalo anterior. Em partida e aceleração forte o erro de avanço é
+  visivelmente maior.
+
 ### `g` — Configuração inicial
 
 ```text
@@ -75,7 +264,7 @@ g,tipo_ignicao,qtd_dentes,local_roda,qtd_dentes_faltantes,grau_pms,qtd_cilindros
 
 | Campo | Valores/unidade |
 |---|---|
-| `tipo_ignicao` | Tipo de ignição configurado pela UI |
+| `tipo_ignicao` | `1` roda fônica com dente de falha, `2` sensor sem falha (ver abaixo) |
 | `qtd_dentes` | Quantidade total de dentes |
 | `local_roda` | `1` comando, `2` virabrequim |
 | `qtd_dentes_faltantes` | Quantidade de dentes ausentes |
@@ -131,7 +320,7 @@ m,referencia,tipo_motor,modo,emparelhamento,deslocamento,cilindros,injetores,esg
 |---:|---|---|
 | 0 | `referencia` | `1` MAP, `2` TPS |
 | 1 | `tipo_motor` | `4` quatro tempos, `2` dois tempos |
-| 2 | `modo` | `1` pareado, `2` semissequencial, `3` sequencial |
+| 2 | `modo` | `0` injeção desligada (carburador / só ignição), `1` pareado, `2` semissequencial, `3` sequencial |
 | 3 | `emparelhamento` | Código do emparelhamento |
 | 4 | `deslocamento` | Polegadas cúbicas |
 | 5 | `cilindros` | Quantidade de cilindros |
@@ -291,7 +480,7 @@ A ECU retorna uma sequência ASCII de blocos separados por `;`. A resposta come�
 com `;` e cada bloco também possui vírgula depois do último valor:
 
 ```text
-;a,...,;b,...,;c,...,;g,...,;j,...,;k,...,;l,...,;u,...,;d,...,;e,...,;f,...,;m,...,;t,...,;n,...,;o,...,;p,...,;q,...,;r,...,;s,...,;v,...,;w,...,;
+;a,...,;b,...,;c,...,;g,...,;j,...,;k,...,;l,...,;u,...,;d,...,;e,...,;f,...,;m,...,;t,...,;n,...,;o,...,;p,...,;q,...,;r,...,;s,...,;v,...,;w,...,;z,...,;V,...,;
 ```
 
 Ordem atual dos blocos:
@@ -317,6 +506,18 @@ Ordem atual dos blocos:
 19. `s`: 5 temperaturas, 5 avanços e a flag de ativação.
 20. `v`: RPM de partida, TPS de limpeza, atraso da injeção e tempo de redução.
 21. `w`: modo, abertura, alvos de RPM e parâmetros do motor de passo.
+22. `z`: flag da tabela de offset por cilindro e os 8 ângulos.
+23. `V`: identidade — perfil de hardware e revisão de placa.
+
+O bloco `V` é o último de propósito. Firmware anterior a ele simplesmente não o
+envia, e quem lê encontra a ausência em vez de encontrar o resto deslocado.
+A UI trata "a ECU não disse" como desconhecido, nunca como um valor padrão.
+
+```text
+;V,<perfil>,<revisão>,;      perfil 1 = Autoino, 2 = Speeduino
+```
+
+A revisão é a da placa para a qual o firmware foi **compilado** — ver *Pinagem*.
 
 Exemplo parcial:
 
