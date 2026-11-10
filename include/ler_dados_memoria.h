@@ -37,6 +37,32 @@ void __attribute__((noinline)) enviar_campo(int value) {
   enviar_byte_config(',');
 }
 
+// Tabela 16x16 em tres secoes seguidas: "<l>,map...;<l+1>,rpm...;<l+2>,matriz;"
+// ('a','b','c' na ignicao e 'd','e','f' na VE). Avanco e VE tinham cada uma
+// a sua copia destes lacos; uma so libera flash na Nano.
+static void enviar_tabela_16(char letra, const int *map_eixo, const int *rpm_eixo, byte matriz[16][16]) {
+  enviar_byte_config(letra);
+  enviar_byte_config(',');
+  for (int i = 0; i < 16; i++) {
+    enviar_campo(map_eixo[i]);
+  }
+  enviar_byte_config(';');
+  enviar_byte_config(letra + 1);
+  enviar_byte_config(',');
+  for (int i = 0; i < 16; i++) {
+    enviar_campo(rpm_eixo[i]);
+  }
+  enviar_byte_config(';');
+  enviar_byte_config(letra + 2);
+  enviar_byte_config(',');
+  for (int i = 0; i < 16; i++) {
+    for (int j = 0; j < 16; j++) {
+      enviar_campo(matriz[i][j]);
+    }
+  }
+  enviar_byte_config(';');
+}
+
 void ler_dados_memoria() {
 #ifndef DIAG_SEM_DUMP  // so para diagnostico que nao cabe na Nano com o dump
 
@@ -44,37 +70,9 @@ void ler_dados_memoria() {
   ler_dados_eeprom(); // Esta chamada estava faltando!
   // ========== TABELA IGNIÇÃO
   // Enviar o identificador de comando
-  // a) Vetor MAP/TPS ignição
+  // a) MAP/TPS, b) RPM e c) matriz da ignição
   enviar_byte_config(';');
-  enviar_byte_config('a');
-  enviar_byte_config(',');
-
-  // Enviar os valores do vetor_map_tps
-  for (int i = 0; i < 16; i++) {
-    enviar_campo(vetor_map_tps[i]);
-
-  }
-  enviar_byte_config(';');
-  // b) Vetor RPM ignição
-  enviar_byte_config('b');
-  enviar_byte_config(',');
-  // vetor rpm
-  for (int i = 0; i < 16; i++) {
-    enviar_campo(vetor_rpm[i]);
-
-  }
-  enviar_byte_config(';');
-
-  // transforma matriz em vetor
-  enviar_byte_config('c');
-  enviar_byte_config(',');
-  for (int i = 0; i < 16; i++) {
-    for (int j = 0; j < 16; j++) {
-      enviar_campo(matriz_avanco[i][j]);
-
-    }
-  }
-  enviar_byte_config(';');
+  enviar_tabela_16('a', vetor_map_tps, vetor_rpm, matriz_avanco);
   // ========== CONFIGURAÇÕES SISTEMA ==========
 
   // g) Configuração inicial
@@ -128,36 +126,8 @@ void ler_dados_memoria() {
 
   // ========== TABELA VE ==========
 
-  // d) Vetor MAP/TPS VE
-  enviar_byte_config('d');
-  enviar_byte_config(',');
-  // vetor map ou tps da ve
-  for (int i = 0; i < 16; i++) {
-    enviar_campo(vetor_map_tps_ve[i]);
-
-  }
-  enviar_byte_config(';');
-
-  // e) Vetor RPM VE
-  enviar_byte_config('e');
-  enviar_byte_config(',');
-  // vetor rpm da tabela ve
-  for (int i = 0; i < 16; i++) {
-    enviar_campo(vetor_rpm_ve[i]);
-
-  }
-  enviar_byte_config(';');
-
-  // f) Matriz VE (como vetor linear)
-  enviar_byte_config('f');
-  enviar_byte_config(',');
-  for (int i = 0; i < 16; i++) {
-    for (int j = 0; j < 16; j++) {
-      enviar_campo(matriz_ve[i][j]);
-
-    }
-  }
-  enviar_byte_config(';');
+  // d) MAP/TPS, e) RPM e f) matriz da VE
+  enviar_tabela_16('d', vetor_map_tps_ve, vetor_rpm_ve, matriz_ve);
 
   // ========== CONFIGURAÇÕES INJEÇÃO E PROTEÇÃO ==========
 

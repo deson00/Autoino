@@ -445,7 +445,7 @@ void loop(){
       grau_avanco = (byte)grau_corrigido;
     }
 
-          VE = matriz_ve[procura_indice(valor_referencia_busca_tempo_injecao, vetor_map_tps_ve, 16)][procura_indice(rpm, vetor_rpm_ve, 16)];
+          VE = ve_interpolada(valor_referencia_busca_tempo_injecao, (int)rpm);
           // Calcula o tempo de injeção ajustado
           // dreq_fuel ja esta em microssegundos - sem conversao, sem truncamento.
           unsigned long tempo_pulso = tempo_pulso_ve((unsigned long)dreq_fuel, VE);

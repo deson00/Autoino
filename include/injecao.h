@@ -12,6 +12,28 @@ unsigned long tempo_pulso_ve(unsigned long req_fuel_us, int VE) {
     return (req_fuel_us * (unsigned long)VE) / 100UL;
 }
 
+// VE interpolada entre as 4 celulas em volta do ponto de operacao, como a
+// Speeduino faz: primeiro pelo RPM na linha de carga de baixo e na de cima,
+// depois pela carga entre as duas. Ex.: 1100 rpm entre 1000 (VE 50) e 1500
+// (VE 60) da 52 - 1% de VE a cada 50 rpm.
+//
+// Antes a VE vinha da celula mais proxima (procura_indice): de 750 a 1250 rpm
+// era 50 cravado e a 1251 pulava para 60 de uma vez, um degrau de 20% de
+// combustivel que o motor sentia ao cruzar a metade entre duas colunas.
+//
+// Reaproveita o que o avanco linear ja usa: procura_indice_inferior (nunca
+// devolve o ultimo indice, entao i+1 e seguro) e busca_linear (interpola sem
+// extrapolar - fora do eixo fica no valor da ponta, igual a celula de antes).
+static int ve_interpolada(int carga, int rpm_atual) {
+  int i = procura_indice_inferior(carga, vetor_map_tps_ve, 16);
+  int j = procura_indice_inferior(rpm_atual, vetor_rpm_ve, 16);
+  int r0 = vetor_rpm_ve[j];
+  int r1 = vetor_rpm_ve[j + 1];
+  int ve_baixo = busca_linear(rpm_atual, r0, matriz_ve[i][j], r1, matriz_ve[i][j + 1]);
+  int ve_cima = busca_linear(rpm_atual, r0, matriz_ve[i + 1][j], r1, matriz_ve[i + 1][j + 1]);
+  return busca_linear(carga, vetor_map_tps_ve[i], ve_baixo, vetor_map_tps_ve[i + 1], ve_cima);
+}
+
 // (tempo_enriquecimento_gama removida: era codigo morto - quem e chamado e a
 // enriquecimento_gama de enriquecimento_gama.h, de nome parecido)
 

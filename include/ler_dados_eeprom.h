@@ -25,50 +25,34 @@ bool eeprom_configuracao_inicial_valida() {
     return true;
 }
 
-void ler_dados_eeprom_tabela_ignicao_map_rpm() {
-    eeprom_cursor = 10; // Endereço base
-
-    // 1. Ler vetor_rpm (16 valores de 16 bits cada)
+// Tabela 16x16 com os dois eixos: 16 RPM de 16 bits, 16 MAP/TPS de 8 bits e
+// a matriz de 256 bytes, cada bloco no seu endereco. Avanco e VE tinham cada
+// uma a sua copia destes laços; uma so libera flash na Nano.
+static void ler_tabela_16_eeprom(int endereco_rpm, int endereco_map, int endereco_matriz,
+                                 int *rpm_eixo, int *map_eixo, byte matriz[16][16]) {
+    eeprom_cursor = endereco_rpm;
     for (int i = 0; i < 16; i++) {
-        vetor_rpm[i] = eeprom_ler16_seguinte();
+        rpm_eixo[i] = eeprom_ler16_seguinte();
     }
-
-    // 2. Ler vetor_map_tps (16 valores de 8 bits cada)
-    eeprom_cursor = 50; // Força endereço como no código original
+    eeprom_cursor = endereco_map;
     for (int i = 0; i < 16; i++) {
-        vetor_map_tps[i] = eeprom_ler8_seguinte();
+        map_eixo[i] = eeprom_ler8_seguinte();
     }
-
-    // 3. Ler matriz_avanco (16x16 valores de 8 bits cada = 256 bytes)
-    eeprom_cursor = 100; // Força endereço como no código original
+    eeprom_cursor = endereco_matriz;
     for (int i = 0; i < 16; i++) {
         for (int j = 0; j < 16; j++) {
-            matriz_avanco[i][j] = eeprom_ler8_seguinte();
+            matriz[i][j] = eeprom_ler8_seguinte();
         }
     }
 }
+
+void ler_dados_eeprom_tabela_ignicao_map_rpm() {
+    // RPM em 10 (16 bits), MAP/TPS em 50 e a matriz em 100, como no código original.
+    ler_tabela_16_eeprom(10, 50, 100, vetor_rpm, vetor_map_tps, matriz_avanco);
+}
 void ler_dados_eeprom_tabela_ve_map_rpm() {
-    eeprom_cursor = 500; // Endereço base
-
-    // 1. Ler vetor_rpm_ve (16 valores de 16 bits cada)
-    for (int i = 0; i < 16; i++) {
-        vetor_rpm_ve[i] = eeprom_ler16_seguinte();
-    }
-    // endereco agora = 532
-
-    // 2. Ler vetor_map_tps_ve (16 valores de 8 bits cada)
-    for (int i = 0; i < 16; i++) {
-        vetor_map_tps_ve[i] = eeprom_ler8_seguinte();
-    }
-    // endereco agora = 548
-
-    // 3. Ler matriz_ve (16x16 valores de 8 bits cada = 256 bytes)
-    for (int i = 0; i < 16; i++) {
-        for (int j = 0; j < 16; j++) {
-            matriz_ve[i][j] = eeprom_ler8_seguinte();
-        }
-    }
-    // endereco final = 804
+    // Blocos seguidos: RPM 500-531, MAP/TPS 532-547, matriz 548-803.
+    ler_tabela_16_eeprom(500, 532, 548, vetor_rpm_ve, vetor_map_tps_ve, matriz_ve);
 }
 
 void ler_dados_eeprom_configuracao_partida() {
@@ -247,27 +231,31 @@ void ler_dados_eeprom_offset_evento() {
     usar_offset_personalizado = true;
 }
 
-void ler_dados_eeprom_enriquecimento_temperatura() {
-    // Ver a nota no gravador: 1020 estourava os 1024 bytes da 328P.
-    eeprom_cursor = 840;
-
-    // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
-    usar_injecao_temperatura = EEPROM.read(1015) == 1 ? 1 : 0;
+// Curva de 5 pontos (temperatura -> valor) gravada como 5 temperaturas e 5
+// valores seguidos a partir de "endereco". Bloco todo 0xFF = nunca gravado:
+// fica a curva padrao. Limita as temperaturas a 150, os valores a
+// "limite_valor" e nao deixa a temperatura voltar para tras.
+//
+// O enriquecimento e o avanco por temperatura tinham cada um a sua copia
+// desta leitura, identicas a nao ser pelo limite do valor; juntas aqui
+// liberaram flash na Nano para a VE interpolada.
+static void ler_curva_temperatura_eeprom(int endereco, byte limite_valor, byte *temperaturas, byte *valores) {
+    eeprom_cursor = endereco;
 
     byte temperaturas_local[5];
-    byte enriquecimento_local[5];
+    byte valores_local[5];
 
     for (int i = 0; i < 5; i++) {
         temperaturas_local[i] = eeprom_ler8_seguinte();
     }
     for (int i = 0; i < 5; i++) {
-        enriquecimento_local[i] = eeprom_ler8_seguinte();
+        valores_local[i] = eeprom_ler8_seguinte();
     }
 
     // Valida bloco vazio (EEPROM sem gravação).
     bool bloco_vazio = true;
     for (int i = 0; i < 5; i++) {
-        if (temperaturas_local[i] != 0xFF || enriquecimento_local[i] != 0xFF) {
+        if (temperaturas_local[i] != 0xFF || valores_local[i] != 0xFF) {
             bloco_vazio = false;
             break;
         }
@@ -281,8 +269,8 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
         if (temperaturas_local[i] > 150) {
             temperaturas_local[i] = 150;
         }
-        if (enriquecimento_local[i] > 250) {
-            enriquecimento_local[i] = 250;
+        if (valores_local[i] > limite_valor) {
+            valores_local[i] = limite_valor;
         }
     }
     for (int i = 1; i < 5; i++) {
@@ -292,57 +280,23 @@ void ler_dados_eeprom_enriquecimento_temperatura() {
     }
 
     for (int i = 0; i < 5; i++) {
-        vetor_temperatura_injecao[i] = temperaturas_local[i];
-        vetor_enriquecimento_temperatura[i] = enriquecimento_local[i];
+        temperaturas[i] = temperaturas_local[i];
+        valores[i] = valores_local[i];
     }
 }
 
-void ler_dados_eeprom_avanco_temperatura() {
-    // Ver a nota no gravador: 1030 caia em 6..15 e corrompia vetor_rpm.
-    eeprom_cursor = 850;
+void ler_dados_eeprom_enriquecimento_temperatura() {
+    // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
+    usar_injecao_temperatura = EEPROM.read(1015) == 1 ? 1 : 0;
+    // Ver a nota no gravador: 1020 estourava os 1024 bytes da 328P.
+    ler_curva_temperatura_eeprom(840, 250, vetor_temperatura_injecao, vetor_enriquecimento_temperatura);
+}
 
+void ler_dados_eeprom_avanco_temperatura() {
     // 0xFF indica que a flag ainda nao foi gravada; nesse caso permanece desativada.
     usar_avanco_temperatura = EEPROM.read(1016) == 1 ? 1 : 0;
-
-    byte temperaturas_local[5];
-    byte avanco_local[5];
-
-    for (int i = 0; i < 5; i++) {
-        temperaturas_local[i] = eeprom_ler8_seguinte();
-    }
-    for (int i = 0; i < 5; i++) {
-        avanco_local[i] = eeprom_ler8_seguinte();
-    }
-
-    bool bloco_vazio = true;
-    for (int i = 0; i < 5; i++) {
-        if (temperaturas_local[i] != 0xFF || avanco_local[i] != 0xFF) {
-            bloco_vazio = false;
-            break;
-        }
-    }
-    if (bloco_vazio) {
-        return;
-    }
-
-    for (int i = 0; i < 5; i++) {
-        if (temperaturas_local[i] > 150) {
-            temperaturas_local[i] = 150;
-        }
-        if (avanco_local[i] > 10) {
-            avanco_local[i] = 10;
-        }
-    }
-    for (int i = 1; i < 5; i++) {
-        if (temperaturas_local[i] < temperaturas_local[i - 1]) {
-            temperaturas_local[i] = temperaturas_local[i - 1];
-        }
-    }
-
-    for (int i = 0; i < 5; i++) {
-        vetor_temperatura[i] = temperaturas_local[i];
-        vetor_avanco_temperatura[i] = avanco_local[i];
-    }
+    // Ver a nota no gravador: 1030 caia em 6..15 e corrompia vetor_rpm.
+    ler_curva_temperatura_eeprom(850, 10, vetor_temperatura, vetor_avanco_temperatura);
 }
 
 void ler_dados_eeprom_configuracao_inicial() {
